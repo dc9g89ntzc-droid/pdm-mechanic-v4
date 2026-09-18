@@ -23,7 +23,7 @@ function requireSession() {
 }
 
 async function login(employeeName, password) {
-  const { data, error } = await supabase.rpc('mechanic_verify_login', {
+  const { data, error } = await sb.rpc('mechanic_verify_login', {
     p_employee_name: employeeName,
     p_password: password
   });
