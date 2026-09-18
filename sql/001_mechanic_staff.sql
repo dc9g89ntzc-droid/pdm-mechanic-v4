@@ -17,7 +17,7 @@ create or replace function mechanic_verify_login(p_employee_name text, p_passwor
 returns table (id uuid, employee_name text, role text)
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   return query
