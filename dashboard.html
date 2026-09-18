@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-border: #262b35;
+    --text: #e6e8ec;
+    --text-dim: #8b92a3;
+    --blue: #3b82f6;
+    --red: #ef4444;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--panel-border);
+  }
+  header h1 { font-size: 16px; margin: 0; }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button {
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  main {
+    padding: 40px 24px;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+  <main>
+    Logged in. Jobs, inventory, payroll and customer modules land here next.
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+</script>
+</body>
+</html>
