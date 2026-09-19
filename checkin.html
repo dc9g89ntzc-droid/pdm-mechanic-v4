@@ -228,6 +228,7 @@
       </div>
       <div class="selected-box" id="vehicleSelectedBox" style="display:none;">
         <span id="vehicleSelectedText"></span>
+        <a href="#" id="vehicleHistoryLink" target="_blank" rel="noopener" style="display:none; font-size:13px; color:var(--amber);">History</a>
         <button type="button" id="changeVehicleBtn">Change</button>
       </div>
     </div>
@@ -461,6 +462,13 @@
     document.getElementById('vehicleSelectedText').textContent =
       `${vehicle.registration} — ${vehicle.make || ''} ${vehicle.model || ''}`.trim();
     document.getElementById('vehiclePickedLabel').textContent = 'Selected';
+    const historyLink = document.getElementById('vehicleHistoryLink');
+    if (vehicle.owned_vehicle_id) {
+      historyLink.href = `history.html?vehicle=${vehicle.owned_vehicle_id}`;
+      historyLink.style.display = 'inline';
+    } else {
+      historyLink.style.display = 'none';
+    }
 
     // Known vehicle carries its owner -- auto-fill the Customer section so
     // a returning car only needs one lookup instead of two.

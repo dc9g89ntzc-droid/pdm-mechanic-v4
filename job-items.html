@@ -71,7 +71,9 @@
   .quote-line .ql-name { flex: 1; min-width: 0; }
   .quote-line .ql-qty { display: flex; align-items: center; gap: 4px; }
   .quote-line .ql-qty button { width: 20px; height: 20px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; cursor: pointer; font-size: 12px; line-height: 1; }
-  .quote-line .ql-total { width: 56px; text-align: right; color: var(--text-dim); }
+  .quote-line .ql-total { width: 56px; text-align: right; color: var(--text-dim); background: none; border: none; padding: 0; font: inherit; cursor: pointer; }
+  .quote-line .ql-total:hover { color: var(--text); text-decoration: underline dotted; }
+  .quote-line .ql-price-input { width: 56px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; padding: 2px 4px; font-size: 12px; text-align: right; }
   .quote-line .ql-remove { background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 0 2px; }
   .quote-line .ql-remove:hover { color: var(--red); }
   .quote-total { display: flex; justify-content: space-between; font-weight: 700; font-size: 15px; padding-top: 12px; margin-top: 4px; }
@@ -285,7 +287,7 @@
               <span>${line.quantity}</span>
               <button class="qty-inc">+</button>
             </div>
-            <div class="ql-total">${lineTotal}</div>
+            <button class="ql-total" title="Click to override unit price">${lineTotal}</button>
             <button class="ql-remove">✕</button>
           `;
           row.querySelector('.qty-inc').addEventListener('click', async () => {
@@ -304,6 +306,40 @@
           row.querySelector('.ql-remove').addEventListener('click', async () => {
             await removeJobItem(line.id, line.catalogue_item_id, Number(line.quantity), session?.id, jobId);
             await refreshQuote();
+          });
+          row.querySelector('.ql-total').addEventListener('click', (e) => {
+            const btn = e.currentTarget;
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.min = '0';
+            input.step = '0.01';
+            input.className = 'ql-price-input';
+            input.value = line.unit_price ?? '';
+            input.placeholder = 'Price';
+            btn.replaceWith(input);
+            input.focus();
+            input.select();
+
+            const commit = async () => {
+              const newPrice = input.value === '' ? null : Number(input.value);
+              const oldPrice = line.unit_price;
+              if (newPrice === oldPrice || (newPrice === null && oldPrice === null)) { await refreshQuote(); return; }
+              try {
+                await updateJobItemUnitPrice(line.id, newPrice);
+                logActivity({
+                  actorId: session?.id, action: 'job_item_price_overridden', entityType: 'job_item', entityId: line.id,
+                  summary: `${session?.employee_name || 'Someone'} changed the price of "${line.catalogue_items?.name || 'an item'}" on Job #${job.job_number} from ${formatMoney(oldPrice)} to ${formatMoney(newPrice)}`
+                });
+              } catch (err) {
+                alert(`Failed to update price: ${err.message}`);
+              }
+              await refreshQuote();
+            };
+            input.addEventListener('blur', commit);
+            input.addEventListener('keydown', (ev) => {
+              if (ev.key === 'Enter') input.blur();
+              if (ev.key === 'Escape') { input.value = line.unit_price ?? ''; input.blur(); }
+            });
           });
           linesEl.appendChild(row);
         });

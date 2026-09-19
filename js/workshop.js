@@ -105,6 +105,68 @@ async function createVehicle({ registration, make, model, class: vClass, owner_i
   return data;
 }
 
+// ---- Vehicle & customer history ----
+
+async function getOwnedVehicle(id) {
+  const { data, error } = await sb
+    .from('owned_vehicles')
+    .select('owned_vehicle_id, registration, make, model, class, mileage, owner_id, customers ( customer_id, customer_name, phone )')
+    .eq('owned_vehicle_id', id)
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function getCustomer(id) {
+  const { data, error } = await sb
+    .from('customers')
+    .select('customer_id, customer_name, phone, notes')
+    .eq('customer_id', id)
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function listVehiclesForCustomer(customerId) {
+  const { data, error } = await sb
+    .from('owned_vehicles')
+    .select('owned_vehicle_id, registration, make, model, class')
+    .eq('owner_id', customerId)
+    .order('registration');
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function listJobsForVehicle(vehicleId) {
+  const { data, error } = await sb
+    .from('jobs')
+    .select(`
+      id, job_number, status, job_types, quoted_total, arrival_time, created_at,
+      quote_document_url, receipt_document_url,
+      customers ( customer_name ),
+      owned_vehicles ( registration, make, model )
+    `)
+    .eq('owned_vehicle_id', vehicleId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function listJobsForCustomer(customerId) {
+  const { data, error } = await sb
+    .from('jobs')
+    .select(`
+      id, job_number, status, job_types, quoted_total, arrival_time, created_at,
+      quote_document_url, receipt_document_url,
+      customers ( customer_name ),
+      owned_vehicles ( registration, make, model )
+    `)
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 // Unfiltered version of listActiveMechanics, for resolving actor names on
 // historical records (activity log, old jobs) where the mechanic may have
 // since gone inactive.
@@ -198,6 +260,7 @@ async function listJobs(filters = {}) {
     .select(`
       id, job_number, job_types, status, short_description, quoted_total,
       arrival_time, expected_completion, created_at, assigned_staff_id,
+      customer_id, owned_vehicle_id,
       customers ( customer_name ),
       owned_vehicles ( registration, make, model )
     `)

@@ -265,7 +265,8 @@
       </div>
       <a href="#" id="editItemsLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:10px;">Add / edit items</a>
       <a href="#" id="viewQuoteLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:10px;">View / generate quote</a>
-      <a href="#" id="billCompleteLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:18px;">Bill &amp; complete</a>
+      <a href="#" id="billCompleteLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:10px;">Bill &amp; complete</a>
+      <a href="#" id="vehicleHistoryModalLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:18px;">Vehicle history</a>
       <div class="actions">
         <button class="cancel" id="statusCancelBtn">Cancel</button>
         <button class="save" id="statusSaveBtn">Save</button>
@@ -417,6 +418,7 @@
     document.getElementById('editItemsLink').href = `job-items.html?job=${job.id}`;
     document.getElementById('viewQuoteLink').href = `quote.html?job=${job.id}`;
     document.getElementById('billCompleteLink').href = `receipt.html?job=${job.id}`;
+    document.getElementById('vehicleHistoryModalLink').href = `history.html?vehicle=${job.owned_vehicle_id}`;
 
     const currentTypes = job.job_types || [];
     typeCheckboxes.innerHTML = JOB_TYPES.map(

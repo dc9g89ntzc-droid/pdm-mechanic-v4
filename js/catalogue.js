@@ -272,6 +272,15 @@ async function updateJobItemQuantity(id, catalogueItemId, newQuantity, oldQuanti
   }
 }
 
+// Price is independent of stock, so this never touches inventory_transactions
+// -- just the quoted line, which flows into jobs.quoted_total via the DB
+// trigger. Callers log the override to activity_log themselves since only
+// they know the old price for a readable summary.
+async function updateJobItemUnitPrice(id, unitPrice) {
+  const { error } = await sb.from('job_items').update({ unit_price: unitPrice }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 async function removeJobItem(id, catalogueItemId, quantity, performedBy, jobId) {
   const { error } = await sb.from('job_items').delete().eq('id', id);
   if (error) throw new Error(error.message);

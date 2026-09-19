@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — History</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary, .btn.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+
+  main { padding: 24px; max-width: 900px; margin: 0 auto; }
+
+  .context-card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  .context-card .kind { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); margin-bottom: 6px; }
+  .context-card .name { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .context-card .sub { color: var(--text-dim); font-size: 13px; }
+  .context-card .switch-link { display: inline-block; margin-top: 10px; font-size: 13px; color: var(--amber); text-decoration: none; }
+  .context-card .switch-link:hover { text-decoration: underline; }
+
+  .vehicle-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .vehicle-chip { background: var(--bg); border: 1px solid var(--panel-border); border-radius: 8px; padding: 8px 12px; font-size: 13px; text-decoration: none; color: var(--text); }
+  .vehicle-chip:hover { border-color: var(--red); }
+  .vehicle-chip .reg { font-weight: 600; }
+  .vehicle-chip .mk { color: var(--text-dim); }
+
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden; font-size: 13px; }
+  thead th { text-align: left; padding: 10px 14px; color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--panel-border); }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid var(--panel-border); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; margin: 0 4px 2px 0; background: rgba(216,31,39,0.15); color: #f0888c; }
+  .doc-links { display: flex; gap: 8px; }
+  .doc-links a { color: var(--amber); text-decoration: none; font-size: 12px; }
+  .doc-links a:hover { text-decoration: underline; }
+  .doc-links .none { color: var(--text-dim); font-size: 12px; font-style: italic; }
+  .total.unknown { color: var(--text-dim); font-style: italic; }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 40px; text-align: center; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="dashboard.html">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="catalogue.html">Catalogue</a>
+      <a href="reports.html">Reports</a>
+      <a href="staff.html">Staff</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="context-card" id="contextCard"><div class="empty-msg">Loading…</div></div>
+    <table>
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th id="vehicleColHeader" style="display:none;">Vehicle</th>
+          <th>Date</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Total</th>
+          <th>Documents</th>
+        </tr>
+      </thead>
+      <tbody id="jobsBody"></tbody>
+    </table>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  const params = new URLSearchParams(location.search);
+  const vehicleId = params.get('vehicle');
+  const customerId = params.get('customer');
+
+  function renderJobs(jobs, showVehicleColumn) {
+    document.getElementById('vehicleColHeader').style.display = showVehicleColumn ? '' : 'none';
+    const body = document.getElementById('jobsBody');
+    if (jobs.length === 0) {
+      body.innerHTML = `<tr><td colspan="7"><div class="empty-msg">No jobs on record.</div></td></tr>`;
+      return;
+    }
+    body.innerHTML = jobs.map((job) => {
+      const typeBadges = (job.job_types && job.job_types.length > 0)
+        ? job.job_types.map((t) => `<span class="badge">${jobTypeLabel(t)}</span>`).join('')
+        : '<span class="badge" style="background:rgba(156,150,145,0.15); color:var(--text-dim);">To confirm</span>';
+      const vehicleCell = showVehicleColumn
+        ? `<td>${job.owned_vehicles ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() : 'Unknown'}<div style="color:var(--text-dim); font-size:12px;">${job.owned_vehicles?.registration || ''}</div></td>`
+        : '';
+      const docs = [];
+      if (job.quote_document_url) docs.push(`<a href="${job.quote_document_url}" target="_blank" rel="noopener">Quote</a>`);
+      if (job.receipt_document_url) docs.push(`<a href="${job.receipt_document_url}" target="_blank" rel="noopener">Receipt</a>`);
+      const docsHtml = docs.length ? `<div class="doc-links">${docs.join('')}</div>` : '<span class="none">None yet</span>';
+      return `
+        <tr>
+          <td><a href="job-items.html?job=${job.id}" style="color:var(--text); text-decoration:none; font-weight:600;">#${job.job_number}</a></td>
+          ${vehicleCell}
+          <td>${formatDateTime(job.arrival_time || job.created_at)}</td>
+          <td>${typeBadges}</td>
+          <td>${jobStatusLabel(job.status)}</td>
+          <td class="${job.quoted_total === null ? 'total unknown' : 'total'}">${formatMoney(job.quoted_total)}</td>
+          <td>${docsHtml}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  async function loadVehicleView(id) {
+    const vehicle = await getOwnedVehicle(id);
+    const card = document.getElementById('contextCard');
+    const vehicleName = `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Unknown vehicle';
+    card.innerHTML = `
+      <div class="kind">Vehicle History</div>
+      <div class="name">${vehicleName} — ${vehicle.registration}</div>
+      <div class="sub">${vehicle.class || 'Unknown class'} · Owner: ${vehicle.customers?.customer_name || 'Unknown'}${vehicle.mileage ? ` · ${vehicle.mileage.toLocaleString()} mi` : ''}</div>
+      ${vehicle.customers ? `<a class="switch-link" href="history.html?customer=${vehicle.owner_id}">View owner's full history →</a>` : ''}
+    `;
+    const jobs = await listJobsForVehicle(id);
+    renderJobs(jobs, false);
+  }
+
+  async function loadCustomerView(id) {
+    const customer = await getCustomer(id);
+    const vehicles = await listVehiclesForCustomer(id);
+    const card = document.getElementById('contextCard');
+    card.innerHTML = `
+      <div class="kind">Customer History</div>
+      <div class="name">${customer.customer_name}</div>
+      <div class="sub">${customer.phone || 'No phone on file'}</div>
+      <div class="vehicle-chips">
+        ${vehicles.map((v) => `
+          <a class="vehicle-chip" href="history.html?vehicle=${v.owned_vehicle_id}">
+            <span class="reg">${v.registration}</span> <span class="mk">${v.make || ''} ${v.model || ''}</span>
+          </a>
+        `).join('') || '<span class="sub">No vehicles on file.</span>'}
+      </div>
+    `;
+    const jobs = await listJobsForCustomer(id);
+    renderJobs(jobs, true);
+  }
+
+  async function init() {
+    try {
+      if (vehicleId) {
+        await loadVehicleView(vehicleId);
+      } else if (customerId) {
+        await loadCustomerView(customerId);
+      } else {
+        document.getElementById('contextCard').innerHTML = '<div class="empty-msg">No vehicle or customer specified.</div>';
+      }
+    } catch (err) {
+      document.getElementById('contextCard').innerHTML = `<div class="empty-msg">Failed to load: ${err.message}</div>`;
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
