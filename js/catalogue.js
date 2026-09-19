@@ -21,6 +21,18 @@ const TRANSACTION_TYPES = [
   { value: 'adjustment', label: 'Manual adjustment' }
 ];
 
+// Where a purchased_in transaction's stock actually came from -- matters
+// because a private citizen sale price is a one-off, not a stable catalogue
+// price, so it's tracked per-purchase rather than as a fixed item field.
+const PURCHASE_SOURCE_TYPES = [
+  { value: 'autoparts_store', label: 'Autoparts Store' },
+  { value: 'private_citizen', label: 'Private Citizen Sale' }
+];
+
+function purchaseSourceLabel(value) {
+  return PURCHASE_SOURCE_TYPES.find((s) => s.value === value)?.label || value;
+}
+
 async function listDistinctCategories() {
   const { data, error } = await sb.from('catalogue_items').select('categories');
   if (error) throw new Error(error.message);
@@ -141,15 +153,31 @@ async function removeIngredient(ingredientRowId) {
   if (error) throw new Error(error.message);
 }
 
-async function recordInventoryTransaction({ itemId, transactionType, quantity, performedBy, notes, jobId }) {
+async function recordInventoryTransaction({ itemId, transactionType, quantity, performedBy, notes, jobId, unitCost, sourceType }) {
   const { error } = await sb.from('inventory_transactions').insert({
     item_id: itemId,
     transaction_type: transactionType,
     quantity,
     performed_by: performedBy || null,
     notes: notes || null,
-    job_id: jobId || null
+    job_id: jobId || null,
+    unit_cost: unitCost ?? null,
+    source_type: sourceType ?? null
   });
+  if (error) throw new Error(error.message);
+}
+
+// Buying a part -- from the autoparts store or off a private citizen -- is
+// how the shop stocks items it has no craft recipe or configured cost for
+// yet. Logs the movement like any purchase, but also rolls the price
+// actually paid into catalogue_items.purchase_cost so later job costing
+// (effectiveUnitCost) and Accounts' COGS calc use a real, current price
+// instead of a stale or never-set one.
+async function recordPurchase({ itemId, quantity, unitCost, sourceType, performedBy, notes }) {
+  await recordInventoryTransaction({
+    itemId, transactionType: 'purchased_in', quantity, performedBy, notes, unitCost, sourceType
+  });
+  const { error } = await sb.from('catalogue_items').update({ purchase_cost: unitCost }).eq('id', itemId);
   if (error) throw new Error(error.message);
 }
 
@@ -158,7 +186,7 @@ async function recordInventoryTransaction({ itemId, transactionType, quantity, p
 async function listInventoryTransactions(limit = 300) {
   const { data, error } = await sb
     .from('inventory_transactions')
-    .select('id, item_id, transaction_type, quantity, job_id, performed_by, notes, created_at, catalogue_items ( name )')
+    .select('id, item_id, transaction_type, quantity, unit_cost, source_type, job_id, performed_by, notes, created_at, catalogue_items ( name )')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);

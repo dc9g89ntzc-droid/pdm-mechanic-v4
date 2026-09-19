@@ -287,6 +287,12 @@
         <div class="txn-row" id="addTxnRow" style="display:none;">
           <select id="fTxnType"></select>
           <input type="number" id="fTxnQty" placeholder="Quantity (+/-)" />
+        </div>
+        <div class="txn-row" id="purchaseDetailsRow" style="display:none; margin-top:8px;">
+          <select id="fPurchaseSource"></select>
+          <input type="number" id="fPurchaseUnitCost" min="0" step="1" placeholder="Price paid per unit" />
+        </div>
+        <div class="txn-row" id="addTxnNotesRow" style="display:none; margin-top:8px;">
           <input type="text" id="fTxnNotes" placeholder="Notes (optional)" />
           <button id="addTxnBtn">Log</button>
         </div>
@@ -349,6 +355,13 @@
   document.getElementById('fSourcing').innerHTML = SOURCING_TYPES.map((s) => `<option value="${s.value}">${s.label}</option>`).join('');
   document.getElementById('fUsageType').innerHTML = USAGE_TYPES.map((u) => `<option value="${u.value}">${u.label}</option>`).join('');
   document.getElementById('fTxnType').innerHTML = TRANSACTION_TYPES.map((t) => `<option value="${t.value}">${t.label}</option>`).join('');
+  document.getElementById('fPurchaseSource').innerHTML = PURCHASE_SOURCE_TYPES.map((s) => `<option value="${s.value}">${s.label}</option>`).join('');
+
+  function updatePurchaseFieldsVisibility() {
+    const isPurchase = document.getElementById('fTxnType').value === 'purchased_in';
+    document.getElementById('purchaseDetailsRow').style.display = (editingItemId && isPurchase) ? 'flex' : 'none';
+  }
+  document.getElementById('fTxnType').addEventListener('change', updatePurchaseFieldsVisibility);
 
   function currentFilters() {
     return {
@@ -511,6 +524,12 @@
     document.getElementById('stockDisabledNote').style.display = editingItemId ? 'none' : 'block';
     document.getElementById('stockLine').style.display = editingItemId ? 'flex' : 'none';
     document.getElementById('addTxnRow').style.display = editingItemId ? 'flex' : 'none';
+    document.getElementById('addTxnNotesRow').style.display = editingItemId ? 'flex' : 'none';
+    document.getElementById('fTxnType').value = 'crafted_in';
+    document.getElementById('fTxnQty').value = '';
+    document.getElementById('fTxnNotes').value = '';
+    document.getElementById('fPurchaseUnitCost').value = '';
+    updatePurchaseFieldsVisibility();
     document.getElementById('ingredientsList').innerHTML = '';
 
     if (editingItemId) {
@@ -624,15 +643,38 @@
     const quantity = Number(document.getElementById('fTxnQty').value || 0);
     const notes = document.getElementById('fTxnNotes').value.trim();
     if (!quantity) { alert('Enter a non-zero quantity.'); return; }
+
+    const isPurchase = transactionType === 'purchased_in';
+    const sourceType = isPurchase ? document.getElementById('fPurchaseSource').value : null;
+    const unitCost = isPurchase ? numOrNull(document.getElementById('fPurchaseUnitCost').value) : null;
+    if (isPurchase) {
+      if (quantity <= 0) { alert('Enter a positive quantity for a purchase.'); return; }
+      if (unitCost === null || unitCost < 0) { alert('Enter the price paid per unit.'); return; }
+    }
+
     try {
-      await recordInventoryTransaction({
-        itemId: editingItemId, transactionType, quantity,
-        performedBy: session?.id, notes
-      });
+      const itemName = document.getElementById('fName').value;
+      if (isPurchase) {
+        await recordPurchase({
+          itemId: editingItemId, quantity, unitCost, sourceType,
+          performedBy: session?.id, notes
+        });
+        logActivity({
+          actorId: session?.id, action: 'catalogue_item_purchased', entityType: 'catalogue_item', entityId: editingItemId,
+          summary: `${session?.employee_name || 'Someone'} bought ${quantity} × "${itemName}" from ${purchaseSourceLabel(sourceType)} at ${formatMoney(unitCost)} each`
+        });
+      } else {
+        await recordInventoryTransaction({
+          itemId: editingItemId, transactionType, quantity,
+          performedBy: session?.id, notes
+        });
+      }
       const item = await getCatalogueItem(editingItemId);
       document.getElementById('stockQtyDisplay').textContent = item.stock_quantity;
+      document.getElementById('fPurchaseCost').value = item.purchase_cost ?? '';
       document.getElementById('fTxnQty').value = '';
       document.getElementById('fTxnNotes').value = '';
+      document.getElementById('fPurchaseUnitCost').value = '';
       await loadItems();
     } catch (err) {
       alert(`Failed to log stock movement: ${err.message}`);

@@ -210,6 +210,8 @@
       { label: 'Item', render: (t) => t.catalogue_items?.name || 'Unknown item' },
       { label: 'Type', render: (t) => `<span class="badge ${t.transaction_type}">${TRANSACTION_TYPES.find((x) => x.value === t.transaction_type)?.label || t.transaction_type}</span>` },
       { label: 'Qty', num: true, render: (t) => t.quantity },
+      { label: 'Source', render: (t) => t.source_type ? purchaseSourceLabel(t.source_type) : '' },
+      { label: 'Cost', num: true, render: (t) => t.unit_cost !== null ? formatMoney(t.unit_cost) : '' },
       { label: 'By', render: (t) => staffName(t.performed_by) },
       { label: 'Notes', render: (t) => t.notes || '' }
     ]);
