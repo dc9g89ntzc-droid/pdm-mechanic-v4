@@ -68,6 +68,15 @@
   #quoteSheet .sheet-footer { font-size: 11px; color: #777; margin-top: 24px; border-top: 1px solid #ddd; padding-top: 12px; }
   #quoteSheet .empty-note { color: #777; font-style: italic; font-size: 13px; padding: 20px 0; }
 
+  #quoteSheet .section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 26px 0 10px; border-bottom: 1px solid #1a1a1a; padding-bottom: 4px; }
+  #quoteSheet .section-title:first-of-type { margin-top: 0; }
+  #quoteSheet .inspection-category { font-size: 12px; font-weight: 700; margin: 12px 0 4px; color: #333; }
+  #quoteSheet .inspection-cols { columns: 2; column-gap: 24px; font-size: 12px; }
+  #quoteSheet .inspection-row { break-inside: avoid; padding: 2px 0; }
+  #quoteSheet .inspection-row .cond-advisory { color: #a15c00; font-weight: 600; }
+  #quoteSheet .inspection-row .cond-fail { color: #b3261e; font-weight: 600; }
+  #quoteSheet .no-inspection { color: #777; font-style: italic; font-size: 13px; }
+
   @media print {
     header, .job-bar, .actions-row, .share-box { display: none; }
     body { background: white; }
@@ -135,6 +144,10 @@
           <div id="sheetVehicle"></div>
         </div>
       </div>
+      <div class="section-title">Inspection Results</div>
+      <div id="sheetInspection"><div class="no-inspection">No inspection recorded yet.</div></div>
+
+      <div class="section-title">Quote — Parts &amp; Labour</div>
       <table>
         <thead>
           <tr><th>Item</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Total</th></tr>
@@ -154,6 +167,7 @@
 <script src="js/auth.js"></script>
 <script src="js/workshop.js"></script>
 <script src="js/catalogue.js"></script>
+<script src="js/inspection.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -213,6 +227,57 @@
     }).join('');
   }
 
+  async function loadInspectionResults() {
+    const container = document.getElementById('sheetInspection');
+    const inspection = await getLatestInspectionForJob(jobId);
+    if (!inspection) {
+      container.innerHTML = '<div class="no-inspection">No inspection recorded yet.</div>';
+      return;
+    }
+    const findings = await listFindings(inspection.id);
+
+    const bodyFindings = findings.filter((f) => f.finding_type === 'body_area' && f.severity);
+    const mechFindings = findings.filter((f) => f.finding_type === 'mechanical' && f.item_label);
+    const customFindings = findings.filter((f) => f.finding_type === 'mechanical' && !f.item_label);
+
+    if (bodyFindings.length === 0 && mechFindings.length === 0 && customFindings.length === 0) {
+      container.innerHTML = '<div class="no-inspection">No issues recorded during inspection.</div>';
+      return;
+    }
+
+    let html = '';
+
+    if (bodyFindings.length > 0) {
+      html += '<div class="inspection-category">Body &amp; Exterior</div><div class="inspection-cols">';
+      html += bodyFindings.map((f) => `<div class="inspection-row">${bodyZoneLabel(f.area)}: <span class="cond-${f.severity === 'minor' ? 'advisory' : 'fail'}">${severityLabel(f.severity)}</span></div>`).join('');
+      html += '</div>';
+    }
+
+    const byCategory = {};
+    mechFindings.forEach((f) => {
+      (byCategory[f.area] = byCategory[f.area] || []).push(f);
+    });
+    Object.entries(byCategory).forEach(([category, items]) => {
+      html += `<div class="inspection-category">${category}</div><div class="inspection-cols">`;
+      html += items.map((f) => {
+        const cls = f.pass_status === 'fail' ? 'cond-fail' : f.pass_status === 'advisory' ? 'cond-advisory' : '';
+        return `<div class="inspection-row">${f.item_label}: <span class="${cls}">${f.condition}</span></div>`;
+      }).join('');
+      html += '</div>';
+    });
+
+    if (customFindings.length > 0) {
+      html += '<div class="inspection-category">Other Findings</div><div class="inspection-cols">';
+      html += customFindings.map((f) => {
+        const cls = f.pass_status === 'fail' ? 'cond-fail' : f.pass_status === 'advisory' ? 'cond-advisory' : '';
+        return `<div class="inspection-row">${f.area}${f.fault ? ` — ${f.fault}` : ''}: <span class="${cls}">${f.condition || (f.pass_status ? PASS_STATUSES.find((p) => p.value === f.pass_status)?.label : '') || ''}</span></div>`;
+      }).join('');
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+  }
+
   document.getElementById('generateBtn').addEventListener('click', async () => {
     const btn = document.getElementById('generateBtn');
     btn.disabled = true;
@@ -248,7 +313,7 @@
     navigator.clipboard?.writeText(input.value).catch(() => {});
   });
 
-  loadJob().then(loadLines);
+  loadJob().then(() => Promise.all([loadLines(), loadInspectionResults()]));
 </script>
 </body>
 </html>

@@ -250,6 +250,24 @@ async function getOrCreateInspection(jobId, staffId) {
   return created;
 }
 
+// Read-only lookup for pages (like the quote) that want to show inspection
+// results without creating an inspection if none exists yet.
+async function getLatestInspectionForJob(jobId) {
+  const { data, error } = await sb
+    .from('inspections')
+    .select('id, completed_at')
+    .eq('job_id', jobId)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+function bodyZoneLabel(key) {
+  return BODY_ZONES.find((z) => z.key === key)?.label || key;
+}
+
 async function listFindings(inspectionId) {
   const { data, error } = await sb
     .from('inspection_findings')
@@ -292,6 +310,41 @@ async function upsertChecklistFinding(inspectionId, existingFindingId, category,
     item_label: itemLabel,
     ...payload
   });
+  if (error) throw new Error(error.message);
+}
+
+// Bootstraps a brand-new inspection with every checklist item defaulted to
+// its first (best-case) option, so the mechanic only has to touch the rows
+// that are actually a problem. Only runs once -- guarded by the caller
+// checking there are no mechanical findings yet at all, so a deliberate
+// "Deselect all" on one category later doesn't get silently re-seeded on
+// the next page load (some other category will still have findings).
+async function seedDefaultChecklistFindings(inspectionId) {
+  const rows = [];
+  Object.entries(INSPECTION_CHECKLIST).forEach(([category, items]) => {
+    items.forEach((item) => {
+      const first = item.options[0];
+      rows.push({
+        inspection_id: inspectionId,
+        finding_type: 'mechanical',
+        area: category,
+        item_label: item.label,
+        condition: first.value,
+        pass_status: TIER_TO_PASS_STATUS[first.tier] || null
+      });
+    });
+  });
+  const { error } = await sb.from('inspection_findings').insert(rows);
+  if (error) throw new Error(error.message);
+}
+
+async function deselectChecklistCategory(inspectionId, category) {
+  const { error } = await sb
+    .from('inspection_findings')
+    .delete()
+    .eq('inspection_id', inspectionId)
+    .eq('finding_type', 'mechanical')
+    .eq('area', category);
   if (error) throw new Error(error.message);
 }
 
