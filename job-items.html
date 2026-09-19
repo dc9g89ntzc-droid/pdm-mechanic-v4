@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Add Items</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary, .btn.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+  header button:hover, .btn:hover { background: var(--red-dim); }
+
+  .job-bar { padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .job-bar .job-title { font-weight: 600; font-size: 14px; }
+  .job-bar .job-sub { color: var(--text-dim); font-size: 13px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; margin-right: 4px; }
+
+  .breadcrumb { padding: 12px 24px; font-size: 13px; color: var(--text-dim); display: flex; gap: 6px; align-items: center; }
+  .breadcrumb a { color: var(--text-dim); text-decoration: none; cursor: pointer; }
+  .breadcrumb a:hover { color: var(--text); text-decoration: underline; }
+  .breadcrumb .current { color: var(--text); font-weight: 600; }
+
+  .layout { display: flex; gap: 20px; padding: 0 24px 40px; align-items: flex-start; flex-wrap: wrap; }
+  main { flex: 1 1 560px; min-width: 0; }
+
+  .tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+  .tile { background: var(--panel); border: 1px solid var(--panel-border); border-left: 3px solid var(--red); border-radius: 10px; padding: 18px; cursor: pointer; transition: border-color 0.15s; }
+  .tile:hover { border-color: var(--red); background: rgba(216,31,39,0.06); }
+  .tile .tile-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .tile .tile-count { color: var(--text-dim); font-size: 12px; }
+
+  .item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .item-card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .item-card img { width: 100%; height: 100px; object-fit: contain; background: var(--bg); border-radius: 8px; }
+  .item-card .item-name { font-weight: 600; font-size: 13px; }
+  .item-card .item-price { color: var(--amber); font-weight: 600; font-size: 13px; }
+  .item-card .item-meta { color: var(--text-dim); font-size: 11px; }
+  .item-card .item-meta.low { color: var(--red); }
+  .item-card .add-row { display: flex; gap: 6px; margin-top: auto; }
+  .item-card .add-row select { flex: 1; }
+  .item-card .add-row input[type="number"] { width: 52px; }
+  .item-card .add-row input, .item-card .add-row select {
+    background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 6px; padding: 6px; font-size: 12px;
+  }
+  .item-card .add-row button { flex: 0 0 auto; background: var(--red); border: none; color: white; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .item-card .add-row button:hover { background: var(--red-dim); }
+
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 40px; text-align: center; }
+
+  .quote-panel { flex: 0 0 320px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; position: sticky; top: 16px; }
+  .quote-panel h2 { font-size: 14px; margin: 0 0 12px; }
+  .quote-line { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--panel-border); font-size: 12px; }
+  .quote-line img { width: 32px; height: 32px; object-fit: contain; background: var(--bg); border-radius: 6px; flex: 0 0 auto; }
+  .quote-line .ql-name { flex: 1; min-width: 0; }
+  .quote-line .ql-qty { display: flex; align-items: center; gap: 4px; }
+  .quote-line .ql-qty button { width: 20px; height: 20px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; cursor: pointer; font-size: 12px; line-height: 1; }
+  .quote-line .ql-total { width: 56px; text-align: right; color: var(--text-dim); }
+  .quote-line .ql-remove { background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 0 2px; }
+  .quote-line .ql-remove:hover { color: var(--red); }
+  .quote-total { display: flex; justify-content: space-between; font-weight: 700; font-size: 15px; padding-top: 12px; margin-top: 4px; }
+  .quote-empty { color: var(--text-dim); font-size: 12px; padding: 12px 0; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="dashboard.html">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="catalogue.html">Catalogue</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <div class="job-bar">
+    <div>
+      <div class="job-title" id="jobTitle">Loading job…</div>
+      <div class="job-sub" id="jobSub"></div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <a id="quoteLink" href="#" class="btn">View / generate quote</a>
+      <a href="dashboard.html" class="btn secondary">&larr; Back to Workshop</a>
+    </div>
+  </div>
+
+  <div class="breadcrumb" id="breadcrumb"></div>
+
+  <div class="layout">
+    <main id="mainArea"></main>
+    <aside class="quote-panel">
+      <h2>Items on this job</h2>
+      <div id="quoteLines"></div>
+      <div class="quote-total"><span>Total</span><span id="quoteTotal">To confirm</span></div>
+    </aside>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/catalogue.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+
+  const params = new URLSearchParams(location.search);
+  const jobId = params.get('job');
+  const mainArea = document.getElementById('mainArea');
+  const breadcrumb = document.getElementById('breadcrumb');
+
+  let job = null;
+  let level = 'categories'; // categories | subcategories | items
+  let currentCategory = null;
+  let currentSubcategory = null; // { id, name }
+
+  if (!jobId) {
+    mainArea.innerHTML = '<div class="empty-msg">No job specified.</div>';
+    throw new Error('No job id in URL');
+  }
+
+  async function loadJobBar() {
+    job = await getJobSummary(jobId);
+    const vehicle = job.owned_vehicles ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() || 'Unknown vehicle' : 'Unknown vehicle';
+    const reg = job.owned_vehicles?.registration || 'Unknown';
+    document.getElementById('jobTitle').textContent = `Job #${job.job_number} — ${job.customers?.customer_name || 'Unknown customer'}`;
+    document.getElementById('jobSub').textContent = `${vehicle} · ${reg} · ${jobStatusLabel(job.status)}`;
+    document.getElementById('quoteTotal').textContent = formatMoney(job.quoted_total);
+    document.getElementById('quoteLink').href = `quote.html?job=${jobId}`;
+  }
+
+  function renderBreadcrumb() {
+    const parts = ['<a id="bcRoot">Categories</a>'];
+    if (currentCategory) parts.push(`<span>/</span>${level === 'subcategories' ? `<span class="current">${currentCategory}</span>` : `<a id="bcCategory">${currentCategory}</a>`}`);
+    if (currentSubcategory) parts.push(`<span>/</span><span class="current">${currentSubcategory.name}</span>`);
+    breadcrumb.innerHTML = parts.join(' ');
+    document.getElementById('bcRoot').addEventListener('click', () => showCategories());
+    const bcCat = document.getElementById('bcCategory');
+    if (bcCat) bcCat.addEventListener('click', () => showSubcategories(currentCategory));
+  }
+
+  async function showCategories() {
+    level = 'categories'; currentCategory = null; currentSubcategory = null;
+    renderBreadcrumb();
+    mainArea.innerHTML = '<div class="empty-msg">Loading categories…</div>';
+    try {
+      const categories = await listDistinctCategories();
+      if (categories.length === 0) { mainArea.innerHTML = '<div class="empty-msg">No catalogue categories yet.</div>'; return; }
+      const grid = document.createElement('div');
+      grid.className = 'tile-grid';
+      categories.forEach((c) => {
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        tile.style.borderLeftColor = categoryColor(c);
+        tile.innerHTML = `<div class="tile-name">${c}</div><div class="tile-count">Browse items</div>`;
+        tile.addEventListener('click', () => showSubcategories(c));
+        grid.appendChild(tile);
+      });
+      mainArea.innerHTML = '';
+      mainArea.appendChild(grid);
+    } catch (err) {
+      mainArea.innerHTML = `<div class="empty-msg">Failed to load categories: ${err.message}</div>`;
+    }
+  }
+
+  async function showSubcategories(category) {
+    level = 'subcategories'; currentCategory = category; currentSubcategory = null;
+    renderBreadcrumb();
+    mainArea.innerHTML = '<div class="empty-msg">Loading subcategories…</div>';
+    try {
+      const subcats = await listSubcategoriesForCategory(category);
+      if (subcats.length === 0) { mainArea.innerHTML = '<div class="empty-msg">No items in this category yet.</div>'; return; }
+      const grid = document.createElement('div');
+      grid.className = 'tile-grid';
+      subcats.forEach((s) => {
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        tile.style.borderLeftColor = categoryColor(category);
+        tile.innerHTML = `<div class="tile-name">${s.name}</div><div class="tile-count">${s.count} item${s.count === 1 ? '' : 's'}</div>`;
+        tile.addEventListener('click', () => showItems(category, s));
+        grid.appendChild(tile);
+      });
+      mainArea.innerHTML = '';
+      mainArea.appendChild(grid);
+    } catch (err) {
+      mainArea.innerHTML = `<div class="empty-msg">Failed to load subcategories: ${err.message}</div>`;
+    }
+  }
+
+  async function showItems(category, subcategory) {
+    level = 'items'; currentCategory = category; currentSubcategory = subcategory;
+    renderBreadcrumb();
+    mainArea.innerHTML = '<div class="empty-msg">Loading items…</div>';
+    try {
+      const items = await listItemsForTile(category, subcategory.id);
+      if (items.length === 0) { mainArea.innerHTML = '<div class="empty-msg">No items here.</div>'; return; }
+      const grid = document.createElement('div');
+      grid.className = 'item-grid';
+      items.forEach((item) => {
+        const card = document.createElement('div');
+        card.className = 'item-card';
+        const low = item.reorder_threshold !== null && item.stock_quantity <= item.reorder_threshold;
+        const img = item.image_url
+          ? `<img src="${item.image_url}" alt="${item.name}" />`
+          : `<div style="width:100%;height:100px;background:var(--bg);border-radius:8px;"></div>`;
+        const sourcingSelect = item.sourcing === 'both'
+          ? `<select class="src-select"><option value="purchased">Purchased</option><option value="crafted">Crafted</option></select>`
+          : '';
+        card.innerHTML = `
+          ${img}
+          <div class="item-name">${item.name}</div>
+          <div class="item-price">${item.customer_price !== null ? formatMoney(item.customer_price) : 'To confirm'}</div>
+          <div class="item-meta ${low ? 'low' : ''}">${sourcingLabel(item.sourcing)} · Stock: ${item.stock_quantity}</div>
+          <div class="add-row">
+            ${sourcingSelect}
+            <input type="number" class="qty-input" min="0.01" step="1" value="1" />
+            <button class="add-btn">Add</button>
+          </div>
+        `;
+        card.querySelector('.add-btn').addEventListener('click', async () => {
+          const qty = Number(card.querySelector('.qty-input').value || 1);
+          const srcEl = card.querySelector('.src-select');
+          const sourcingChoice = srcEl ? srcEl.value : null;
+          try {
+            await addJobItem({ jobId, catalogueItem: item, quantity: qty, sourcingChoice, performedBy: session?.id });
+            await refreshQuote();
+          } catch (err) {
+            alert(`Failed to add item: ${err.message}`);
+          }
+        });
+        grid.appendChild(card);
+      });
+      mainArea.innerHTML = '';
+      mainArea.appendChild(grid);
+    } catch (err) {
+      mainArea.innerHTML = `<div class="empty-msg">Failed to load items: ${err.message}</div>`;
+    }
+  }
+
+  async function refreshQuote() {
+    const linesEl = document.getElementById('quoteLines');
+    try {
+      const lines = await listJobItems(jobId);
+      if (lines.length === 0) {
+        linesEl.innerHTML = '<div class="quote-empty">No items added yet.</div>';
+      } else {
+        linesEl.innerHTML = '';
+        lines.forEach((line) => {
+          const row = document.createElement('div');
+          row.className = 'quote-line';
+          const img = line.catalogue_items?.image_url
+            ? `<img src="${line.catalogue_items.image_url}" alt="" />`
+            : `<div style="width:32px;height:32px;background:var(--bg);border-radius:6px;"></div>`;
+          const lineTotal = line.unit_price !== null ? formatMoney(Number(line.unit_price) * Number(line.quantity)) : 'To confirm';
+          row.innerHTML = `
+            ${img}
+            <div class="ql-name">${line.catalogue_items?.name || 'Unknown item'}</div>
+            <div class="ql-qty">
+              <button class="qty-dec">−</button>
+              <span>${line.quantity}</span>
+              <button class="qty-inc">+</button>
+            </div>
+            <div class="ql-total">${lineTotal}</div>
+            <button class="ql-remove">✕</button>
+          `;
+          row.querySelector('.qty-inc').addEventListener('click', async () => {
+            await updateJobItemQuantity(line.id, line.catalogue_item_id, Number(line.quantity) + 1, Number(line.quantity), session?.id, jobId);
+            await refreshQuote();
+          });
+          row.querySelector('.qty-dec').addEventListener('click', async () => {
+            const newQty = Number(line.quantity) - 1;
+            if (newQty <= 0) {
+              await removeJobItem(line.id, line.catalogue_item_id, Number(line.quantity), session?.id, jobId);
+            } else {
+              await updateJobItemQuantity(line.id, line.catalogue_item_id, newQty, Number(line.quantity), session?.id, jobId);
+            }
+            await refreshQuote();
+          });
+          row.querySelector('.ql-remove').addEventListener('click', async () => {
+            await removeJobItem(line.id, line.catalogue_item_id, Number(line.quantity), session?.id, jobId);
+            await refreshQuote();
+          });
+          linesEl.appendChild(row);
+        });
+      }
+      await loadJobBar();
+    } catch (err) {
+      linesEl.innerHTML = `<div class="quote-empty">Failed to load items: ${err.message}</div>`;
+    }
+  }
+
+  loadJobBar().then(showCategories).then(refreshQuote);
+</script>
+</body>
+</html>

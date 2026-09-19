@@ -3,16 +3,17 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>PDM Mechanic Shop</title>
+<title>PDM Mechanic Shop — Workshop</title>
 <style>
   :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --panel-border: #262b35;
-    --text: #e6e8ec;
-    --text-dim: #8b92a3;
-    --blue: #3b82f6;
-    --red: #ef4444;
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
     --green: #22c55e;
   }
   * { box-sizing: border-box; }
@@ -27,49 +28,412 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding: 14px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--panel-border);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 8px 14px;
+    border-radius: 8px;
+  }
+  nav a.active {
+    color: var(--text);
+    background: var(--red);
+  }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn {
+    background: var(--red);
+    border: none;
+    color: white;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-block;
+  }
+  header button.secondary, .btn.secondary {
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    font-weight: 400;
+  }
+  header button:hover, .btn:hover { background: var(--red-dim); }
+
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
     padding: 16px 24px;
     background: var(--panel);
     border-bottom: 1px solid var(--panel-border);
   }
-  header h1 { font-size: 16px; margin: 0; }
-  header .who { color: var(--text-dim); font-size: 13px; }
-  header button {
-    background: transparent;
+  .filters select, .filters input {
+    background: var(--bg);
     border: 1px solid var(--panel-border);
     color: var(--text);
-    padding: 6px 14px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .filters button {
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--text-dim);
+    padding: 8px 14px;
     border-radius: 8px;
     cursor: pointer;
     font-size: 13px;
   }
+
   main {
-    padding: 40px 24px;
-    color: var(--text-dim);
-    font-size: 14px;
+    padding: 20px 24px 60px;
   }
+  .board {
+    display: flex;
+    gap: 14px;
+    overflow-x: auto;
+    align-items: flex-start;
+    padding-bottom: 20px;
+  }
+  .column {
+    flex: 0 0 280px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 10px;
+    min-height: 60px;
+  }
+  .column-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .column-header .count {
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .card {
+    background: var(--bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .card:hover { border-color: var(--red); }
+  .card .job-number { color: var(--text-dim); font-size: 12px; margin-bottom: 4px; }
+  .card .customer { font-weight: 600; margin-bottom: 2px; }
+  .card .vehicle { color: var(--text-dim); margin-bottom: 8px; }
+  .card .desc { color: var(--text-dim); margin-bottom: 8px; font-size: 12px; line-height: 1.4; }
+  .card .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge.type-repair { background: rgba(216,31,39,0.15); color: #f0888c; }
+  .badge.type-customisation { background: rgba(240,165,44,0.15); color: var(--amber); }
+  .badge.type-performance { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.type-engine_building { background: rgba(124,58,237,0.15); color: #a78bfa; }
+  .badge.type-unclassified { background: rgba(156,150,145,0.15); color: var(--text-dim); font-style: italic; font-weight: 400; }
+  .badges { display: flex; flex-wrap: wrap; gap: 4px; }
+  .total { font-weight: 600; }
+  .total.unknown { color: var(--text-dim); font-weight: 400; font-style: italic; }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 40px; text-align: center; }
+
+  /* Status change modal */
+  .modal-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    align-items: center; justify-content: center;
+    z-index: 10;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 24px;
+    width: 100%;
+    max-width: 380px;
+  }
+  .modal h2 { font-size: 16px; margin: 0 0 4px; }
+  .modal p.sub { color: var(--text-dim); font-size: 13px; margin: 0 0 18px; }
+  .modal label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+  .modal select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 18px;
+  }
+  .modal .actions { display: flex; gap: 10px; }
+  .modal .actions button { flex: 1; padding: 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .modal .actions .save { background: var(--red); border: none; color: white; font-weight: 600; }
+  .modal .actions .cancel { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
+  .type-checkboxes { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+  .type-checkboxes label {
+    display: flex; align-items: center; gap: 8px;
+    margin: 0; font-size: 13px; color: var(--text); cursor: pointer;
+  }
+  .type-checkboxes input { width: auto; }
 </style>
 </head>
 <body>
   <header>
     <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="dashboard.html" class="active">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="catalogue.html">Catalogue</a>
+    </nav>
     <div style="display:flex; align-items:center; gap:16px;">
       <span class="who" id="whoami"></span>
-      <button id="logoutBtn">Sign out</button>
+      <button class="secondary" id="logoutBtn">Sign out</button>
     </div>
   </header>
+
+  <div class="filters">
+    <select id="filterMechanic"><option value="">All mechanics</option></select>
+    <select id="filterJobType">
+      <option value="">All job types</option>
+      <option value="repair">Repair and Service</option>
+      <option value="customisation">Customisation</option>
+      <option value="performance">Performance</option>
+      <option value="engine_building">Engine Building</option>
+    </select>
+    <input type="date" id="filterFrom" title="From date" />
+    <input type="date" id="filterTo" title="To date" />
+    <button id="clearFilters">Clear filters</button>
+    <a href="checkin.html" class="btn" style="margin-left:auto;">+ New Job</a>
+  </div>
+
   <main>
-    Logged in. Jobs, inventory, payroll and customer modules land here next.
+    <div class="board" id="board"></div>
   </main>
+
+  <div class="modal-backdrop" id="statusModalBackdrop">
+    <div class="modal">
+      <h2 id="statusModalTitle">Job details</h2>
+      <p class="sub" id="statusModalSub"></p>
+      <label>Work type (any combination — add more any time before completion)</label>
+      <div class="type-checkboxes" id="typeCheckboxes"></div>
+      <label for="statusSelect">Status</label>
+      <select id="statusSelect"></select>
+      <a href="#" id="editItemsLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:10px;">Add / edit items</a>
+      <a href="#" id="viewQuoteLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:18px;">View / generate quote</a>
+      <div class="actions">
+        <button class="cancel" id="statusCancelBtn">Cancel</button>
+        <button class="save" id="statusSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="js/supabaseClient.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
 <script>
   const session = requireSession();
   if (session) {
     document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
   }
   document.getElementById('logoutBtn').addEventListener('click', logout);
+
+  const boardEl = document.getElementById('board');
+  const mechanicFilter = document.getElementById('filterMechanic');
+  const jobTypeFilter = document.getElementById('filterJobType');
+  const fromFilter = document.getElementById('filterFrom');
+  const toFilter = document.getElementById('filterTo');
+
+  let activeJobId = null;
+  let mechanicsById = {};
+
+  function currentFilters() {
+    return {
+      mechanicId: mechanicFilter.value || null,
+      jobType: jobTypeFilter.value || null,
+      fromDate: fromFilter.value || null,
+      toDate: toFilter.value || null
+    };
+  }
+
+  function renderBoard(jobs) {
+    boardEl.innerHTML = '';
+
+    if (jobs.length === 0) {
+      boardEl.innerHTML = '<div class="empty-msg">No jobs match the current filters.</div>';
+      return;
+    }
+
+    JOB_STATUSES.forEach((statusDef) => {
+      const jobsInColumn = jobs.filter((j) => j.status === statusDef.value);
+      const column = document.createElement('div');
+      column.className = 'column';
+      column.innerHTML = `
+        <div class="column-header">
+          <span>${statusDef.label}</span>
+          <span class="count">${jobsInColumn.length}</span>
+        </div>
+      `;
+
+      jobsInColumn.forEach((job) => {
+        const vehicle = job.owned_vehicles
+          ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() || 'Unknown vehicle'
+          : 'Unknown vehicle';
+        const reg = job.owned_vehicles?.registration || 'Unknown';
+        const mechanic = job.assigned_staff_id
+          ? (mechanicsById[job.assigned_staff_id] || 'Unknown')
+          : 'Unassigned';
+        const typeBadges = (job.job_types && job.job_types.length > 0)
+          ? job.job_types.map((t) => `<span class="badge type-${t}">${jobTypeLabel(t)}</span>`).join('')
+          : `<span class="badge type-unclassified">To confirm</span>`;
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="job-number">Job #${job.job_number}</div>
+          <div class="customer">${job.customers?.customer_name || 'Unknown customer'}</div>
+          <div class="vehicle">${vehicle} &middot; ${reg}</div>
+          ${job.short_description ? `<div class="desc">${job.short_description}</div>` : ''}
+          <div class="badges" style="margin-bottom:8px;">${typeBadges}</div>
+          <div class="meta-row">
+            <span class="${job.quoted_total === null ? 'total unknown' : 'total'}">${formatMoney(job.quoted_total)}</span>
+          </div>
+          <div class="meta-row" style="margin-top:6px;">
+            <span>${mechanic}</span>
+            <span>${formatDateTime(job.arrival_time)}</span>
+          </div>
+        `;
+        card.addEventListener('click', () => {
+          if (job.status === 'awaiting_inspection' || job.status === 'inspection_in_progress') {
+            window.location.href = `inspection.html?job=${job.id}`;
+          } else {
+            openStatusModal(job);
+          }
+        });
+        column.appendChild(card);
+      });
+
+      boardEl.appendChild(column);
+    });
+  }
+
+  async function loadBoard() {
+    try {
+      const jobs = await listJobs(currentFilters());
+      renderBoard(jobs);
+    } catch (err) {
+      boardEl.innerHTML = `<div class="empty-msg">Failed to load jobs: ${err.message}</div>`;
+    }
+  }
+
+  async function loadMechanicFilter() {
+    try {
+      const mechanics = await listActiveMechanics();
+      mechanics.forEach((m) => {
+        mechanicsById[m.id] = m.employee_name;
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.employee_name;
+        mechanicFilter.appendChild(opt);
+      });
+    } catch (err) {
+      console.error('Failed to load mechanics', err);
+    }
+  }
+
+  [mechanicFilter, jobTypeFilter, fromFilter, toFilter].forEach((el) => {
+    el.addEventListener('change', loadBoard);
+  });
+
+  document.getElementById('clearFilters').addEventListener('click', () => {
+    mechanicFilter.value = '';
+    jobTypeFilter.value = '';
+    fromFilter.value = '';
+    toFilter.value = '';
+    loadBoard();
+  });
+
+  // Status change modal
+  const modalBackdrop = document.getElementById('statusModalBackdrop');
+  const statusSelect = document.getElementById('statusSelect');
+
+  const typeCheckboxes = document.getElementById('typeCheckboxes');
+
+  function openStatusModal(job) {
+    activeJobId = job.id;
+    document.getElementById('statusModalTitle').textContent = `Job #${job.job_number}`;
+    document.getElementById('statusModalSub').textContent =
+      `${job.customers?.customer_name || 'Unknown customer'} — ${job.owned_vehicles?.registration || 'Unknown reg'}`;
+    document.getElementById('editItemsLink').href = `job-items.html?job=${job.id}`;
+    document.getElementById('viewQuoteLink').href = `quote.html?job=${job.id}`;
+
+    const currentTypes = job.job_types || [];
+    typeCheckboxes.innerHTML = JOB_TYPES.map(
+      (t) => `<label><input type="checkbox" value="${t.value}" ${currentTypes.includes(t.value) ? 'checked' : ''} /> ${t.label}</label>`
+    ).join('');
+
+    statusSelect.innerHTML = JOB_STATUSES.map(
+      (s) => `<option value="${s.value}" ${s.value === job.status ? 'selected' : ''}>${s.label}</option>`
+    ).join('');
+    modalBackdrop.classList.add('open');
+  }
+
+  function closeStatusModal() {
+    modalBackdrop.classList.remove('open');
+    activeJobId = null;
+  }
+
+  document.getElementById('statusCancelBtn').addEventListener('click', closeStatusModal);
+  modalBackdrop.addEventListener('click', (e) => {
+    if (e.target === modalBackdrop) closeStatusModal();
+  });
+
+  document.getElementById('statusSaveBtn').addEventListener('click', async () => {
+    if (!activeJobId) return;
+    const selectedTypes = Array.from(typeCheckboxes.querySelectorAll('input:checked')).map((cb) => cb.value);
+    try {
+      await updateJobStatus(activeJobId, statusSelect.value);
+      await updateJobTypes(activeJobId, selectedTypes);
+      closeStatusModal();
+      loadBoard();
+    } catch (err) {
+      alert(`Failed to update job: ${err.message}`);
+    }
+  });
+
+  loadMechanicFilter().then(loadBoard);
 </script>
 </body>
 </html>

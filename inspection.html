@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Inspection</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--panel-border);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  nav a.active { color: var(--text); background: var(--red); }
+  header button {
+    background: transparent; border: 1px solid var(--panel-border); color: var(--text);
+    padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+
+  main { padding: 24px; max-width: 920px; margin: 0 auto; }
+
+  .job-header {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .job-header .title { font-size: 16px; font-weight: 600; }
+  .job-header .sub { color: var(--text-dim); font-size: 13px; margin-top: 2px; }
+  .status-pill {
+    background: rgba(240,165,44,0.15);
+    color: var(--amber);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 20px;
+  }
+
+  .section {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .section h2 {
+    font-size: 14px;
+    margin: 0 0 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-dim);
+  }
+  .section h3 {
+    font-size: 13px;
+    margin: 20px 0 10px;
+    color: var(--text);
+  }
+  .section h3:first-of-type { margin-top: 0; }
+
+  .diagram-wrap { display: flex; flex-direction: column; gap: 16px; }
+  #carDiagram { width: 100%; max-width: 760px; height: auto; background: #f2f2f2; border-radius: 8px; }
+  .diagram-label { font-size: 20px; fill: #888; font-family: inherit; }
+  .zone { fill: transparent; stroke: none; cursor: pointer; pointer-events: all; transition: fill 0.15s, stroke 0.15s, filter 0.15s; }
+  .zone:hover { fill: rgba(216,31,39,0.18); stroke: var(--red); stroke-width: 2; }
+  /* Tagged zones set their colour via inline style (wins over these CSS
+     rules, which is what we want so the severity colour always shows) --
+     filter is a separate property so it still layers on top for hover. */
+  .zone.tagged:hover { filter: brightness(1.2); }
+
+  .zone-panel { flex: 1; min-width: 220px; }
+  .zone-panel .hint { color: var(--text-dim); font-size: 13px; }
+  .zone-panel h3 { font-size: 14px; margin: 0 0 10px; }
+  .body-overall-btn {
+    background: var(--bg); border: 1px solid var(--panel-border); color: var(--text);
+    padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; margin-bottom: 14px;
+    display: inline-block;
+  }
+  .body-overall-btn:hover { border-color: var(--red); }
+  .severity-buttons { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+  .severity-buttons button {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .severity-buttons button.active { border-color: currentColor; font-weight: 600; }
+  .remove-finding {
+    background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim);
+    padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
+  }
+
+  .findings-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .finding-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  .finding-row .main { flex: 1; }
+  .finding-row .area { font-weight: 600; }
+  .finding-row .detail { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  .finding-row .severity-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; margin-right: 10px; }
+  .finding-row .del { background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 16px; padding: 0 6px; }
+  .finding-row .del:hover { color: var(--red); }
+
+  .checklist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+  .checklist-row {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg);
+    border-left: 3px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .checklist-row .icon { font-size: 14px; }
+  .checklist-row .item-label { flex: 1; font-size: 13px; }
+  .checklist-row select { padding: 6px 8px; font-size: 12px; width: auto; max-width: 170px; }
+
+  .add-finding-form { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--panel-border); }
+  .add-finding-form.open { display: block; }
+  label { display: block; font-size: 12px; color: var(--text-dim); margin: 12px 0 6px; }
+  label:first-child { margin-top: 0; }
+  input, select, textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--red); }
+  textarea { resize: vertical; min-height: 50px; }
+  .row { display: flex; gap: 12px; }
+  .row > * { flex: 1; }
+  .new-toggle { color: var(--red); font-size: 12px; cursor: pointer; display: inline-block; margin-top: 14px; }
+
+  .submit-row { display: flex; justify-content: flex-end; gap: 12px; margin-top: 14px; }
+  .submit-row button {
+    padding: 11px 22px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none;
+  }
+  .submit-row .primary { background: var(--red); color: white; }
+  .submit-row .primary:hover { background: var(--red-dim); }
+  .submit-row .secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+
+  .complete-bar {
+    display: flex; justify-content: flex-end; align-items: center; gap: 12px;
+    padding: 16px 0 40px;
+  }
+  .complete-bar button {
+    background: var(--red); border: none; color: white; padding: 13px 26px;
+    border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;
+  }
+  .complete-bar button:hover { background: var(--red-dim); }
+  .empty-msg { color: var(--text-dim); font-size: 13px; text-align: center; padding: 10px; }
+  .error-box {
+    display: none; margin-bottom: 16px; padding: 10px 12px;
+    background: rgba(216,31,39,0.1); border: 1px solid rgba(216,31,39,0.3);
+    color: #f0888c; border-radius: 8px; font-size: 13px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="dashboard.html">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="catalogue.html">Catalogue</a>
+    </nav>
+    <button id="logoutBtn">Sign out</button>
+  </header>
+
+  <main>
+    <div class="error-box" id="errorBox"></div>
+
+    <div class="job-header" id="jobHeader">Loading job…</div>
+
+    <div class="section">
+      <h2>Vehicle diagram</h2>
+      <div class="diagram-wrap">
+        <svg id="carDiagram" viewBox="0 315 1080 620" xmlns="http://www.w3.org/2000/svg">
+          <!--
+            Real reference diagram supplied by the shop (4-view line art:
+            left side / front / right side / rear), displayed 1:1 at its own
+            pixel size -- see BODY_ZONES in js/inspection.js. Zone outlines
+            are exact paths the user hand-traced over this same diagram
+            (several logical parts, e.g. the front bumper, are visible in
+            more than one view and so have multiple regions sharing one
+            key). Replaces an SVG silhouette drawn from scratch that never
+            read as a convincing car through several rounds of attempts.
+          -->
+          <image href="images/vehicle-diagram.png" x="0" y="315" width="1080" height="620" />
+          <text class="diagram-label" x="155" y="345" text-anchor="middle">Left Side</text>
+          <text class="diagram-label" x="840" y="345" text-anchor="middle">Front</text>
+          <text class="diagram-label" x="155" y="590" text-anchor="middle">Right Side</text>
+          <text class="diagram-label" x="840" y="590" text-anchor="middle">Rear</text>
+          <g id="zonesGroup"></g>
+        </svg>
+        <div class="zone-panel" id="zonePanel">
+          <button type="button" class="body-overall-btn" id="bodyOverallBtn">Body (overall condition)</button>
+          <p class="hint">Click a zone on the diagram, or the button above, to record damage.</p>
+        </div>
+      </div>
+      <div class="findings-list" id="bodyFindingsList"></div>
+    </div>
+
+    <div class="section">
+      <h2>Mechanical inspection</h2>
+      <div id="checklistContainer"></div>
+
+      <span class="new-toggle" id="addMechanicalToggle">+ Add custom finding (anything off the standard checklist)</span>
+      <div class="add-finding-form" id="addMechanicalForm">
+        <label for="mCategory">Category</label>
+        <select id="mCategory"></select>
+
+        <div class="row">
+          <div>
+            <label for="mCondition">Condition</label>
+            <input type="text" id="mCondition" placeholder="e.g. Worn, cracked" />
+          </div>
+          <div>
+            <label for="mFault">Fault</label>
+            <input type="text" id="mFault" placeholder="e.g. Leaking coolant" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="mUrgency">Urgency</label>
+            <select id="mUrgency"></select>
+          </div>
+          <div>
+            <label for="mPassStatus">Pass / advisory / fail</label>
+            <select id="mPassStatus"></select>
+          </div>
+        </div>
+
+        <label for="mRecommendedService">Recommended service</label>
+        <input type="text" id="mRecommendedService" placeholder="To confirm" />
+
+        <label for="mCustomerExplanation">Customer-facing explanation</label>
+        <textarea id="mCustomerExplanation"></textarea>
+
+        <label for="mInternalNote">Internal note</label>
+        <textarea id="mInternalNote"></textarea>
+
+        <label for="mPhotoReference">Photo / evidence reference</label>
+        <input type="text" id="mPhotoReference" placeholder="Optional link or note" />
+
+        <div class="submit-row">
+          <button type="button" class="secondary" id="cancelMechanicalBtn">Cancel</button>
+          <button type="button" class="primary" id="saveMechanicalBtn">Add finding</button>
+        </div>
+      </div>
+
+      <div class="findings-list" id="customFindingsList"></div>
+    </div>
+
+    <div class="complete-bar">
+      <button id="completeBtn">Complete inspection → Quote preparation</button>
+    </div>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/inspection.js"></script>
+<script>
+  const session = requireSession();
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+
+  const errorBox = document.getElementById('errorBox');
+  function showError(msg) { errorBox.textContent = msg; errorBox.style.display = 'block'; }
+  function clearError() { errorBox.style.display = 'none'; }
+
+  const params = new URLSearchParams(window.location.search);
+  const jobId = params.get('job');
+  if (!jobId) {
+    document.getElementById('jobHeader').textContent = 'No job specified. Open an inspection from a job card on the Workshop board.';
+  }
+
+  let inspection = null;
+  let findings = [];
+
+  async function init() {
+    if (!jobId) return;
+    try {
+      const job = await getJobContext(jobId);
+      renderJobHeader(job);
+
+      inspection = await getOrCreateInspection(jobId, session ? session.id : null);
+      findings = await listFindings(inspection.id);
+
+      renderDiagram();
+      renderBodyFindings();
+      renderChecklist();
+      renderCustomFindings();
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  function renderJobHeader(job) {
+    const vehicle = job.owned_vehicles
+      ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() || 'Unknown vehicle'
+      : 'Unknown vehicle';
+    document.getElementById('jobHeader').innerHTML = `
+      <div>
+        <div class="title">Job #${job.job_number} — ${job.customers?.customer_name || 'Unknown customer'}</div>
+        <div class="sub">${vehicle} &middot; ${job.owned_vehicles?.registration || 'Unknown reg'} &middot; ${job.mileage_at_checkin ? job.mileage_at_checkin + ' mi' : 'Mileage unknown'}</div>
+      </div>
+      <span class="status-pill">${jobStatusLabel(job.status)}</span>
+    `;
+  }
+
+  // --- Diagram ---
+  const svgNS = 'http://www.w3.org/2000/svg';
+
+  function renderDiagram() {
+    // The car silhouette (body/cabin/wheels/mirrors) is static markup in
+    // the page -- only the zones (which change colour as findings are
+    // tagged) get redrawn, so the silhouette is never at risk of being
+    // wiped by an innerHTML reset.
+    const zonesGroup = document.getElementById('zonesGroup');
+    zonesGroup.innerHTML = '';
+
+    BODY_ZONES.forEach((zone) => {
+      if (zone.shape === 'external') return;
+      const finding = findings.find((f) => f.finding_type === 'body_area' && f.area === zone.key);
+
+      const el = document.createElementNS(svgNS, 'path');
+      el.setAttribute('d', zone.d);
+      el.setAttribute('class', finding ? 'zone tagged' : 'zone');
+      if (finding) {
+        // Inline style (not setAttribute) so this wins over the .zone CSS
+        // class rule -- SVG presentation attributes rank below stylesheet
+        // rules in the cascade and would otherwise be silently overridden.
+        const color = severityColor(finding.severity);
+        el.style.fill = color;
+        el.style.fillOpacity = '0.65';
+        el.style.stroke = color;
+        el.style.strokeWidth = '1.5';
+      }
+      el.dataset.zone = zone.key;
+      el.addEventListener('click', () => openZonePanel(zone));
+      zonesGroup.appendChild(el);
+    });
+  }
+
+  document.getElementById('bodyOverallBtn').addEventListener('click', () => {
+    openZonePanel(BODY_ZONES.find((z) => z.key === 'body_overall'));
+  });
+
+  function openZonePanel(zone) {
+    const finding = findings.find((f) => f.finding_type === 'body_area' && f.area === zone.key);
+    const panel = document.getElementById('zonePanel');
+    panel.innerHTML = `
+      <button type="button" class="body-overall-btn" id="bodyOverallBtn">Body (overall condition)</button>
+      <h3>${zone.label}</h3>
+      <div class="severity-buttons" id="severityButtons"></div>
+      ${finding ? '<button class="remove-finding" id="removeFindingBtn">Remove finding</button>' : ''}
+    `;
+    document.getElementById('bodyOverallBtn').addEventListener('click', () => {
+      openZonePanel(BODY_ZONES.find((z) => z.key === 'body_overall'));
+    });
+
+    const btnWrap = document.getElementById('severityButtons');
+    SEVERITIES.forEach((sev) => {
+      const btn = document.createElement('button');
+      btn.textContent = sev.label;
+      btn.style.color = sev.color;
+      if (finding && finding.severity === sev.value) btn.classList.add('active');
+      btn.addEventListener('click', async () => {
+        try {
+          await upsertBodyFinding(inspection.id, finding ? finding.id : null, zone.key, sev.value);
+          findings = await listFindings(inspection.id);
+          renderDiagram();
+          renderBodyFindings();
+          openZonePanel(zone);
+        } catch (err) {
+          showError(err.message);
+        }
+      });
+      btnWrap.appendChild(btn);
+    });
+
+    const removeBtn = document.getElementById('removeFindingBtn');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', async () => {
+        try {
+          await deleteFinding(finding.id);
+          findings = await listFindings(inspection.id);
+          renderDiagram();
+          renderBodyFindings();
+          openZonePanel(zone);
+        } catch (err) {
+          showError(err.message);
+        }
+      });
+    }
+  }
+
+  function renderBodyFindings() {
+    const list = document.getElementById('bodyFindingsList');
+    const bodyFindings = findings.filter((f) => f.finding_type === 'body_area');
+    if (bodyFindings.length === 0) {
+      list.innerHTML = '<div class="empty-msg">No damage tagged yet.</div>';
+      return;
+    }
+    list.innerHTML = bodyFindings.map((f) => {
+      const zone = BODY_ZONES.find((z) => z.key === f.area);
+      return `
+        <div class="finding-row">
+          <div class="main">
+            <span class="severity-tag" style="background:${severityColor(f.severity)}22; color:${severityColor(f.severity)};">${severityLabel(f.severity)}</span>
+            <span class="area">${zone ? zone.label : f.area}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // --- Standard checklist (Engine Bay / Undercarriage / Drivetrain / Performance Parts) ---
+  function renderChecklist() {
+    const container = document.getElementById('checklistContainer');
+    container.innerHTML = '';
+
+    Object.entries(INSPECTION_CHECKLIST).forEach(([category, items]) => {
+      const heading = document.createElement('h3');
+      heading.textContent = category;
+      container.appendChild(heading);
+
+      const grid = document.createElement('div');
+      grid.className = 'checklist-grid';
+
+      items.forEach((item) => {
+        const existing = findings.find(
+          (f) => f.finding_type === 'mechanical' && f.area === category && f.item_label === item.label
+        );
+        const currentTier = existing
+          ? item.options.find((o) => o.value === existing.condition)?.tier
+          : null;
+
+        const row = document.createElement('div');
+        row.className = 'checklist-row';
+        row.style.borderLeftColor = currentTier ? TIER_COLORS[currentTier] : 'var(--panel-border)';
+        row.innerHTML = `
+          ${item.icon ? `<span class="icon">${item.icon}</span>` : ''}
+          <span class="item-label">${item.label}</span>
+          <select data-category="${category}" data-item="${item.key}">
+            <option value="">Not inspected</option>
+            ${item.options.map((o) => `<option value="${o.value}" ${existing?.condition === o.value ? 'selected' : ''}>${o.value}</option>`).join('')}
+          </select>
+        `;
+
+        const select = row.querySelector('select');
+        select.addEventListener('change', async () => {
+          clearError();
+          const value = select.value;
+          if (!value) return;
+          const tier = item.options.find((o) => o.value === value)?.tier;
+          try {
+            await upsertChecklistFinding(inspection.id, existing ? existing.id : null, category, item.label, value, tier);
+            findings = await listFindings(inspection.id);
+            renderChecklist();
+          } catch (err) {
+            showError(err.message);
+          }
+        });
+
+        grid.appendChild(row);
+      });
+
+      container.appendChild(grid);
+    });
+  }
+
+  // --- Custom findings (anything off the standard checklist) ---
+  function populateSelect(id, options, valueKey, labelKey) {
+    const el = document.getElementById(id);
+    el.innerHTML = options.map((o) => {
+      const value = typeof o === 'string' ? o : o[valueKey];
+      const label = typeof o === 'string' ? o : o[labelKey];
+      return `<option value="${value}">${label}</option>`;
+    }).join('');
+  }
+  populateSelect('mCategory', MECHANICAL_CATEGORIES);
+  populateSelect('mUrgency', URGENCIES, 'value', 'label');
+  populateSelect('mPassStatus', PASS_STATUSES, 'value', 'label');
+
+  document.getElementById('addMechanicalToggle').addEventListener('click', () => {
+    document.getElementById('addMechanicalForm').classList.toggle('open');
+  });
+  document.getElementById('cancelMechanicalBtn').addEventListener('click', () => {
+    document.getElementById('addMechanicalForm').classList.remove('open');
+  });
+
+  document.getElementById('saveMechanicalBtn').addEventListener('click', async () => {
+    clearError();
+    try {
+      await addMechanicalFinding({
+        inspection_id: inspection.id,
+        area: document.getElementById('mCategory').value,
+        condition: document.getElementById('mCondition').value.trim() || null,
+        fault: document.getElementById('mFault').value.trim() || null,
+        urgency: document.getElementById('mUrgency').value,
+        pass_status: document.getElementById('mPassStatus').value,
+        recommended_service: document.getElementById('mRecommendedService').value.trim() || null,
+        customer_explanation: document.getElementById('mCustomerExplanation').value.trim() || null,
+        internal_note: document.getElementById('mInternalNote').value.trim() || null,
+        photo_reference: document.getElementById('mPhotoReference').value.trim() || null
+      });
+      findings = await listFindings(inspection.id);
+      renderCustomFindings();
+      ['mCondition', 'mFault', 'mRecommendedService', 'mCustomerExplanation', 'mInternalNote', 'mPhotoReference'].forEach((id) => {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('addMechanicalForm').classList.remove('open');
+    } catch (err) {
+      showError(err.message);
+    }
+  });
+
+  function renderCustomFindings() {
+    const list = document.getElementById('customFindingsList');
+    const customFindings = findings.filter((f) => f.finding_type === 'mechanical' && !f.item_label);
+    if (customFindings.length === 0) {
+      list.innerHTML = '';
+      return;
+    }
+    const passColors = { pass: '#22c55e', advisory: '#f0a52c', fail: '#d81f27' };
+    list.innerHTML = customFindings.map((f) => `
+      <div class="finding-row">
+        <div class="main">
+          <span class="severity-tag" style="background:${passColors[f.pass_status]}22; color:${passColors[f.pass_status]};">${f.pass_status || 'Unknown'}</span>
+          <span class="area">${f.area}</span>
+          <div class="detail">${f.fault || f.condition || 'No detail recorded'} — ${f.recommended_service || 'Recommended service: To confirm'}</div>
+        </div>
+        <button class="del" data-id="${f.id}" title="Delete finding">&times;</button>
+      </div>
+    `).join('');
+    list.querySelectorAll('.del').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        try {
+          await deleteFinding(btn.dataset.id);
+          findings = await listFindings(inspection.id);
+          renderCustomFindings();
+        } catch (err) {
+          showError(err.message);
+        }
+      });
+    });
+  }
+
+  document.getElementById('completeBtn').addEventListener('click', async () => {
+    if (!inspection) return;
+    clearError();
+    try {
+      await completeInspection(inspection.id, jobId);
+      window.location.href = 'dashboard.html';
+    } catch (err) {
+      showError(err.message);
+    }
+  });
+
+  init();
+</script>
+</body>
+</html>

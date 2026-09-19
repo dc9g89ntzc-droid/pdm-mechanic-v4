@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — New Job</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--panel-border);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 8px 14px;
+    border-radius: 8px;
+  }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button {
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+
+  main { padding: 24px; max-width: 760px; margin: 0 auto; }
+  .section {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .section h2 {
+    font-size: 14px;
+    margin: 0 0 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-dim);
+  }
+  .section h2 .picked { color: var(--green); text-transform: none; letter-spacing: normal; font-size: 13px; margin-left: 8px; }
+  .row { display: flex; gap: 12px; }
+  .row > * { flex: 1; }
+  label { display: block; font-size: 12px; color: var(--text-dim); margin: 12px 0 6px; }
+  label:first-child { margin-top: 0; }
+  input, select, textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--red); }
+  textarea { resize: vertical; min-height: 60px; }
+  .search-row { display: flex; gap: 8px; }
+  .search-row input { flex: 1; }
+  .search-row button {
+    background: var(--red);
+    border: none;
+    color: white;
+    padding: 0 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .results { margin-top: 10px; }
+  .result-item {
+    padding: 10px 12px;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .result-item:hover { border-color: var(--red); }
+  .result-item .name { font-weight: 600; }
+  .result-item .sub { color: var(--text-dim); font-size: 12px; }
+  .selected-box {
+    background: rgba(34,197,94,0.08);
+    border: 1px solid rgba(34,197,94,0.3);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .selected-box button {
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--text-dim);
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .new-toggle {
+    color: var(--red);
+    font-size: 12px;
+    cursor: pointer;
+    margin-top: 10px;
+    display: inline-block;
+  }
+  .new-form { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--panel-border); }
+  .new-form.open { display: block; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
+  .checkbox-row input { width: auto; }
+  .submit-row { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
+  .submit-row button {
+    background: var(--red);
+    border: none;
+    color: white;
+    padding: 12px 28px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .submit-row button:disabled { opacity: 0.6; cursor: default; }
+  .error-box {
+    display: none;
+    margin-bottom: 16px;
+    padding: 10px 12px;
+    background: rgba(216,31,39,0.1);
+    border: 1px solid rgba(216,31,39,0.3);
+    color: #f0888c;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .success-box {
+    display: none;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    background: rgba(34,197,94,0.1);
+    border: 1px solid rgba(34,197,94,0.3);
+    color: var(--green);
+    border-radius: 8px;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="dashboard.html">Workshop</a>
+      <a href="checkin.html" class="active">New Job</a>
+      <a href="catalogue.html">Catalogue</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="success-box" id="successBox"></div>
+    <div class="error-box" id="errorBox"></div>
+
+    <!-- Vehicle (searched first -- picking a known vehicle auto-fills its owner below) -->
+    <div class="section">
+      <h2>Vehicle <span class="picked" id="vehiclePickedLabel"></span></h2>
+      <div id="vehicleSearchBlock">
+        <div class="search-row">
+          <input type="text" id="vehicleSearchInput" placeholder="Search by registration" />
+          <button type="button" id="vehicleSearchBtn">Search</button>
+        </div>
+        <div class="results" id="vehicleResults"></div>
+        <span class="new-toggle" id="newVehicleToggle">+ New vehicle</span>
+        <div class="new-form" id="newVehicleForm">
+          <label for="newVehicleReg">Registration</label>
+          <input type="text" id="newVehicleReg" />
+          <div class="row">
+            <div>
+              <label for="newVehicleMake">Make</label>
+              <input type="text" id="newVehicleMake" />
+            </div>
+            <div>
+              <label for="newVehicleModel">Model</label>
+              <input type="text" id="newVehicleModel" />
+            </div>
+          </div>
+          <label for="newVehicleClass">Class</label>
+          <input type="text" id="newVehicleClass" />
+          <p style="color:var(--text-dim); font-size:12px; margin:12px 0 0;">New vehicle — select or create its owner in the Customer section below, then come back here to create it.</p>
+          <div class="submit-row">
+            <button type="button" id="createVehicleBtn">Create vehicle</button>
+          </div>
+        </div>
+      </div>
+      <div class="selected-box" id="vehicleSelectedBox" style="display:none;">
+        <span id="vehicleSelectedText"></span>
+        <button type="button" id="changeVehicleBtn">Change</button>
+      </div>
+    </div>
+
+    <!-- Customer (auto-filled when an existing vehicle is picked above) -->
+    <div class="section">
+      <h2>Customer <span class="picked" id="customerPickedLabel"></span></h2>
+      <div id="customerSearchBlock">
+        <div class="search-row">
+          <input type="text" id="customerSearchInput" placeholder="Search by name or phone" />
+          <button type="button" id="customerSearchBtn">Search</button>
+        </div>
+        <div class="results" id="customerResults"></div>
+        <span class="new-toggle" id="newCustomerToggle">+ New customer</span>
+        <div class="new-form" id="newCustomerForm">
+          <label for="newCustomerName">Name</label>
+          <input type="text" id="newCustomerName" />
+          <label for="newCustomerPhone">Phone</label>
+          <input type="text" id="newCustomerPhone" />
+          <label for="newCustomerNotes">Notes</label>
+          <textarea id="newCustomerNotes"></textarea>
+          <div class="submit-row">
+            <button type="button" id="createCustomerBtn">Create customer</button>
+          </div>
+        </div>
+      </div>
+      <div class="selected-box" id="customerSelectedBox" style="display:none;">
+        <span id="customerSelectedText"></span>
+        <button type="button" id="changeCustomerBtn">Change</button>
+      </div>
+    </div>
+
+    <!-- Check-in details -->
+    <div class="section">
+      <h2>Check-in details</h2>
+      <p style="color:var(--text-dim); font-size:12px; margin:0 0 4px;">Work type isn't chosen here — it's tagged on the job during inspection, and more can be added any time before completion.</p>
+
+      <div class="row">
+        <div>
+          <label for="mileage">Mileage</label>
+          <input type="number" id="mileage" min="0" />
+        </div>
+        <div>
+          <label for="assignedMechanic">Assigned mechanic</label>
+          <select id="assignedMechanic"><option value="">Unassigned</option></select>
+        </div>
+      </div>
+
+      <label for="reportedIssue">Customer-reported issue</label>
+      <textarea id="reportedIssue"></textarea>
+
+      <label for="existingDamage">Existing visible damage</label>
+      <textarea id="existingDamage"></textarea>
+
+      <div class="row">
+        <div>
+          <label for="bayLocation">Parking / bay location</label>
+          <input type="text" id="bayLocation" />
+        </div>
+        <div>
+          <label for="shortDescription">Short description (for the job board card)</label>
+          <input type="text" id="shortDescription" />
+        </div>
+      </div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="keyTaken" />
+        <label for="keyTaken" style="margin:0;">Vehicle key has been taken</label>
+      </div>
+
+      <label for="internalNotes">Internal notes</label>
+      <textarea id="internalNotes"></textarea>
+
+      <div class="submit-row">
+        <button type="button" id="submitJobBtn" disabled>Create job</button>
+      </div>
+    </div>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+
+  const errorBox = document.getElementById('errorBox');
+  const successBox = document.getElementById('successBox');
+
+  function showError(msg) {
+    errorBox.textContent = msg;
+    errorBox.style.display = 'block';
+    successBox.style.display = 'none';
+  }
+  function clearError() { errorBox.style.display = 'none'; }
+
+  let selectedCustomer = null;
+  let selectedVehicle = null;
+  let customerAutoFilled = false;
+
+  function updateSubmitState() {
+    document.getElementById('submitJobBtn').disabled = !(selectedCustomer && selectedVehicle);
+  }
+
+  // --- Customer search / select / create ---
+  document.getElementById('customerSearchBtn').addEventListener('click', async () => {
+    clearError();
+    const q = document.getElementById('customerSearchInput').value;
+    const resultsEl = document.getElementById('customerResults');
+    resultsEl.innerHTML = '';
+    try {
+      const results = await searchCustomers(q);
+      if (results.length === 0) {
+        resultsEl.innerHTML = '<div class="result-item">No matches. Try "+ New customer" below.</div>';
+        return;
+      }
+      results.forEach((c) => {
+        const item = document.createElement('div');
+        item.className = 'result-item';
+        item.innerHTML = `<div class="name">${c.customer_name}</div><div class="sub">${c.phone || 'No phone on file'}</div>`;
+        item.addEventListener('click', () => selectCustomer(c));
+        resultsEl.appendChild(item);
+      });
+    } catch (err) {
+      showError(err.message);
+    }
+  });
+
+  document.getElementById('newCustomerToggle').addEventListener('click', () => {
+    document.getElementById('newCustomerForm').classList.toggle('open');
+  });
+
+  document.getElementById('createCustomerBtn').addEventListener('click', async () => {
+    clearError();
+    const name = document.getElementById('newCustomerName').value.trim();
+    if (!name) { showError('Customer name is required.'); return; }
+    try {
+      const customer = await createCustomer({
+        name,
+        phone: document.getElementById('newCustomerPhone').value.trim(),
+        notes: document.getElementById('newCustomerNotes').value.trim()
+      });
+      selectCustomer(customer);
+    } catch (err) {
+      showError(err.message);
+    }
+  });
+
+  function selectCustomer(customer, autoFilled = false) {
+    selectedCustomer = customer;
+    customerAutoFilled = autoFilled;
+    document.getElementById('customerSearchBlock').style.display = 'none';
+    document.getElementById('customerSelectedBox').style.display = 'flex';
+    document.getElementById('customerSelectedText').textContent =
+      `${customer.customer_name}${customer.phone ? ' — ' + customer.phone : ''}${autoFilled ? ' (from vehicle)' : ''}`;
+    document.getElementById('customerPickedLabel').textContent = 'Selected';
+    updateSubmitState();
+  }
+
+  function clearCustomer() {
+    selectedCustomer = null;
+    customerAutoFilled = false;
+    document.getElementById('customerSearchBlock').style.display = 'block';
+    document.getElementById('customerSelectedBox').style.display = 'none';
+    document.getElementById('customerPickedLabel').textContent = '';
+    updateSubmitState();
+  }
+
+  document.getElementById('changeCustomerBtn').addEventListener('click', clearCustomer);
+
+  // --- Vehicle search / select / create ---
+  document.getElementById('vehicleSearchBtn').addEventListener('click', async () => {
+    clearError();
+    const q = document.getElementById('vehicleSearchInput').value;
+    const resultsEl = document.getElementById('vehicleResults');
+    resultsEl.innerHTML = '';
+    try {
+      const results = await searchVehicleByRegistration(q);
+      if (results.length === 0) {
+        resultsEl.innerHTML = '<div class="result-item">No matches. Try "+ New vehicle" below.</div>';
+        return;
+      }
+      results.forEach((v) => {
+        const item = document.createElement('div');
+        item.className = 'result-item';
+        item.innerHTML = `<div class="name">${v.registration}</div><div class="sub">${v.make || ''} ${v.model || ''} &middot; Owner: ${v.customers?.customer_name || 'Unknown'}</div>`;
+        item.addEventListener('click', () => selectVehicle(v));
+        resultsEl.appendChild(item);
+      });
+    } catch (err) {
+      showError(err.message);
+    }
+  });
+
+  document.getElementById('newVehicleToggle').addEventListener('click', () => {
+    document.getElementById('newVehicleForm').classList.toggle('open');
+    if (!selectedCustomer) {
+      document.getElementById('customerSearchBlock').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+
+  document.getElementById('createVehicleBtn').addEventListener('click', async () => {
+    clearError();
+    if (!selectedCustomer) { showError('Select or create a customer before adding a new vehicle.'); return; }
+    const registration = document.getElementById('newVehicleReg').value.trim();
+    if (!registration) { showError('Registration is required.'); return; }
+    try {
+      const vehicle = await createVehicle({
+        registration,
+        make: document.getElementById('newVehicleMake').value.trim(),
+        model: document.getElementById('newVehicleModel').value.trim(),
+        class: document.getElementById('newVehicleClass').value.trim(),
+        owner_id: selectedCustomer.customer_id,
+        mileage: document.getElementById('mileage').value || null
+      });
+      selectVehicle(vehicle);
+    } catch (err) {
+      showError(err.message);
+    }
+  });
+
+  function selectVehicle(vehicle) {
+    selectedVehicle = vehicle;
+    document.getElementById('vehicleSearchBlock').style.display = 'none';
+    document.getElementById('vehicleSelectedBox').style.display = 'flex';
+    document.getElementById('vehicleSelectedText').textContent =
+      `${vehicle.registration} — ${vehicle.make || ''} ${vehicle.model || ''}`.trim();
+    document.getElementById('vehiclePickedLabel').textContent = 'Selected';
+
+    // Known vehicle carries its owner -- auto-fill the Customer section so
+    // a returning car only needs one lookup instead of two.
+    if (vehicle.customers) {
+      selectCustomer(
+        { customer_id: vehicle.customers.customer_id, customer_name: vehicle.customers.customer_name, phone: vehicle.customers.phone },
+        true
+      );
+    }
+    updateSubmitState();
+  }
+
+  document.getElementById('changeVehicleBtn').addEventListener('click', () => {
+    selectedVehicle = null;
+    document.getElementById('vehicleSearchBlock').style.display = 'block';
+    document.getElementById('vehicleSelectedBox').style.display = 'none';
+    document.getElementById('vehiclePickedLabel').textContent = '';
+    // Only clear the customer if it was inferred from this vehicle --
+    // a manually-picked customer (mid new-vehicle flow) should survive.
+    if (customerAutoFilled) clearCustomer();
+    updateSubmitState();
+  });
+
+  // --- Mechanics dropdown ---
+  async function loadMechanics() {
+    try {
+      const mechanics = await listActiveMechanics();
+      const select = document.getElementById('assignedMechanic');
+      mechanics.forEach((m) => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.employee_name;
+        select.appendChild(opt);
+      });
+    } catch (err) {
+      console.error('Failed to load mechanics', err);
+    }
+  }
+  loadMechanics();
+
+  // --- Submit ---
+  document.getElementById('submitJobBtn').addEventListener('click', async () => {
+    clearError();
+    if (!selectedCustomer || !selectedVehicle) return;
+
+    const btn = document.getElementById('submitJobBtn');
+    btn.disabled = true;
+    btn.textContent = 'Creating...';
+
+    try {
+      const job = await createJob({
+        customer_id: selectedCustomer.customer_id,
+        owned_vehicle_id: selectedVehicle.owned_vehicle_id,
+        status: 'awaiting_inspection',
+        assigned_staff_id: document.getElementById('assignedMechanic').value || null,
+        short_description: document.getElementById('shortDescription').value.trim() || null,
+        reported_issue: document.getElementById('reportedIssue').value.trim() || null,
+        existing_damage: document.getElementById('existingDamage').value.trim() || null,
+        bay_location: document.getElementById('bayLocation').value.trim() || null,
+        key_taken: document.getElementById('keyTaken').checked,
+        mileage_at_checkin: document.getElementById('mileage').value || null,
+        internal_notes: document.getElementById('internalNotes').value.trim() || null,
+        created_by: session ? session.id : null
+      });
+
+      successBox.textContent = `Job #${job.job_number} created and added to the Workshop board.`;
+      successBox.style.display = 'block';
+      setTimeout(() => { window.location.href = 'dashboard.html'; }, 1200);
+    } catch (err) {
+      showError(err.message);
+      btn.disabled = false;
+      btn.textContent = 'Create job';
+    }
+  });
+</script>
+</body>
+</html>

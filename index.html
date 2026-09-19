@@ -6,13 +6,14 @@
 <title>PDM Mechanic Shop</title>
 <style>
   :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --panel-border: #262b35;
-    --text: #e6e8ec;
-    --text-dim: #8b92a3;
-    --blue: #3b82f6;
-    --red: #ef4444;
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
     --green: #22c55e;
   }
   * { box-sizing: border-box; }
@@ -61,18 +62,21 @@
   }
   input:focus {
     outline: none;
-    border-color: var(--blue);
+    border-color: var(--red);
   }
   button {
     width: 100%;
     padding: 11px;
-    background: var(--blue);
+    background: var(--red);
     border: none;
     border-radius: 8px;
     color: white;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
+  }
+  button:hover:not(:disabled) {
+    background: var(--red-dim);
   }
   button:disabled {
     opacity: 0.6;
