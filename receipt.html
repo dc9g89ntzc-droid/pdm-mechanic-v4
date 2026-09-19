@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Receipt</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary, .btn.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+  header button:hover, .btn:hover { background: var(--red-dim); }
+  header button:disabled { opacity: 0.5; cursor: default; }
+
+  .job-bar { padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .job-bar .job-title { font-weight: 600; font-size: 14px; }
+  .job-bar .job-sub { color: var(--text-dim); font-size: 13px; }
+
+  main { max-width: 760px; margin: 0 auto; padding: 28px 24px 60px; }
+
+  .actions-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
+  .share-box { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 14px; margin-bottom: 20px; display: none; }
+  .share-box.open { display: block; }
+  .share-box label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+  .share-row { display: flex; gap: 8px; }
+  .share-row input { flex: 1; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); padding: 10px; border-radius: 8px; font-size: 13px; }
+  .share-row button { flex: 0 0 auto; }
+  .share-meta { color: var(--text-dim); font-size: 12px; margin-top: 8px; }
+
+  /* Printable quote sheet -- deliberately light, styled like a real
+     document, since this is what gets rendered to an image and handed to
+     the customer, not the dark staff UI. */
+  #quoteSheet {
+    background: #ffffff;
+    color: #1a1a1a;
+    border-radius: 6px;
+    padding: 36px;
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+  #quoteSheet .sheet-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1a1a1a; padding-bottom: 16px; margin-bottom: 20px; }
+  #quoteSheet .shop-name { font-size: 22px; font-weight: 700; letter-spacing: 0.02em; }
+  #quoteSheet .shop-tag { font-size: 12px; color: #555; margin-top: 2px; }
+  #quoteSheet .quote-meta { text-align: right; font-size: 12px; color: #333; }
+  #quoteSheet .quote-meta .quote-label { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  #quoteSheet .paid-stamp {
+    display: inline-block; border: 3px solid #1a7a3a; color: #1a7a3a;
+    font-weight: 700; font-size: 13px; letter-spacing: 0.08em;
+    padding: 3px 10px; border-radius: 4px; transform: rotate(-6deg);
+    margin: 4px 0 8px;
+  }
+  #quoteSheet .parties { display: flex; gap: 36px; margin-bottom: 24px; font-size: 13px; }
+  #quoteSheet .parties .block-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #777; margin-bottom: 4px; }
+  #quoteSheet table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }
+  #quoteSheet th { text-align: left; padding: 8px 6px; border-bottom: 2px solid #1a1a1a; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  #quoteSheet td { padding: 8px 6px; border-bottom: 1px solid #ddd; }
+  #quoteSheet td.num, #quoteSheet th.num { text-align: right; }
+  #quoteSheet .total-row td { border-bottom: none; border-top: 2px solid #1a1a1a; font-weight: 700; font-size: 15px; padding-top: 12px; }
+  #quoteSheet .sheet-footer { font-size: 11px; color: #777; margin-top: 24px; border-top: 1px solid #ddd; padding-top: 12px; }
+  #quoteSheet .empty-note { color: #777; font-style: italic; font-size: 13px; padding: 20px 0; }
+
+  #quoteSheet .section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 26px 0 10px; border-bottom: 1px solid #1a1a1a; padding-bottom: 4px; }
+  #quoteSheet .section-title.first { margin-top: 0; }
+  #quoteSheet .inspection-category { font-size: 12px; font-weight: 700; margin: 12px 0 4px; color: #333; }
+  #quoteSheet .inspection-cols { columns: 2; column-gap: 24px; font-size: 12px; }
+  #quoteSheet .inspection-row { break-inside: avoid; padding: 2px 0; }
+  #quoteSheet .inspection-row .cond-advisory { color: #a15c00; font-weight: 600; }
+  #quoteSheet .inspection-row .cond-fail { color: #b3261e; font-weight: 600; }
+  #quoteSheet .no-inspection { color: #777; font-style: italic; font-size: 13px; }
+
+  #quoteSheet #carDiagram { width: 100%; max-width: 700px; height: auto; background: #f2f2f2; border-radius: 6px; display: block; margin: 0 auto; }
+
+  @media print {
+    header, .job-bar, .actions-row, .share-box { display: none; }
+    body { background: white; }
+    main { max-width: none; padding: 0; }
+    #quoteSheet { border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="dashboard.html">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="catalogue.html">Catalogue</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <div class="job-bar">
+    <div>
+      <div class="job-title" id="jobTitle">Loading job…</div>
+      <div class="job-sub" id="jobSub"></div>
+    </div>
+    <a href="#" id="backLink" class="btn secondary">&larr; Back to Workshop</a>
+  </div>
+
+  <main>
+    <div class="actions-row">
+      <button class="btn" id="generateBtn">Mark billed &amp; complete</button>
+    </div>
+
+    <div class="share-box" id="shareBox">
+      <label>Shareable receipt link (uploaded to Fivemanage)</label>
+      <div class="share-row">
+        <input type="text" id="shareUrl" readonly />
+        <button class="btn secondary" id="copyBtn">Copy</button>
+        <a class="btn secondary" id="openBtn" target="_blank" rel="noopener">Open</a>
+      </div>
+      <div class="share-meta" id="shareMeta"></div>
+    </div>
+
+    <div id="quoteSheet">
+      <div class="sheet-header">
+        <div>
+          <div class="shop-name">PDM 8230 — Mechanic Shop</div>
+          <div class="shop-tag">Paid Receipt</div>
+        </div>
+        <div class="quote-meta">
+          <div class="quote-label">RECEIPT</div><div class="paid-stamp">PAID</div>
+          <div id="sheetJobNumber"></div>
+          <div id="sheetDate"></div>
+        </div>
+      </div>
+      <div class="parties">
+        <div>
+          <div class="block-label">Customer</div>
+          <div id="sheetCustomer"></div>
+        </div>
+        <div>
+          <div class="block-label">Vehicle</div>
+          <div id="sheetVehicle"></div>
+        </div>
+        <div>
+          <div class="block-label">Mechanic</div>
+          <div id="sheetMechanic"></div>
+        </div>
+      </div>
+      <div class="section-title first">Inspection Results</div>
+      <div id="sheetInspection"><div class="no-inspection">No inspection recorded yet.</div></div>
+
+      <div id="sheetDiagramSection" style="display:none;">
+        <div class="section-title">Vehicle Condition</div>
+        <canvas id="carDiagram" width="1080" height="620"></canvas>
+      </div>
+
+      <div class="section-title">Parts &amp; Labour</div>
+      <table>
+        <thead>
+          <tr><th>Item</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Total</th></tr>
+        </thead>
+        <tbody id="sheetLines"></tbody>
+        <tfoot>
+          <tr class="total-row"><td colspan="3">Total Paid</td><td class="num" id="sheetTotal">To confirm</td></tr>
+        </tfoot>
+      </table>
+      <div class="sheet-footer">Paid in full. Thank you for choosing PDM 8230.</div>
+    </div>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas-pro@2.4.3/dist/html2canvas-pro.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/catalogue.js"></script>
+<script src="js/inspection.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+
+  const params = new URLSearchParams(location.search);
+  const jobId = params.get('job');
+  if (!jobId) {
+    document.querySelector('main').innerHTML = '<div class="empty-msg">No job specified.</div>';
+    throw new Error('No job id in URL');
+  }
+  document.getElementById('backLink').href = 'dashboard.html';
+
+  let job = null;
+
+  function renderShareBox() {
+    const box = document.getElementById('shareBox');
+    if (job.receipt_document_url) {
+      box.classList.add('open');
+      document.getElementById('shareUrl').value = job.receipt_document_url;
+      document.getElementById('openBtn').href = job.receipt_document_url;
+      document.getElementById('shareMeta').textContent = job.receipt_generated_at
+        ? `Generated ${formatDateTime(job.receipt_generated_at)}`
+        : '';
+    }
+  }
+
+  async function loadJob() {
+    job = await getJobSummary(jobId);
+    const vehicle = job.owned_vehicles ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() || 'Unknown vehicle' : 'Unknown vehicle';
+    const reg = job.owned_vehicles?.registration || 'Unknown';
+    document.getElementById('jobTitle').textContent = `Job #${job.job_number} — ${job.customers?.customer_name || 'Unknown customer'}`;
+    document.getElementById('jobSub').textContent = `${vehicle} · ${reg} · ${jobStatusLabel(job.status)}`;
+
+    document.getElementById('sheetJobNumber').textContent = `Job #${job.job_number}`;
+    document.getElementById('sheetDate').textContent = formatDateTimeEST();
+    document.getElementById('sheetCustomer').textContent = job.customers?.customer_name || 'Unknown customer';
+    document.getElementById('sheetVehicle').textContent = `${vehicle} — ${reg}`;
+    document.getElementById('sheetTotal').textContent = formatMoney(job.quoted_total);
+
+    // Assigned mechanic if the job has one; otherwise whoever's generating
+    // this document right now, so the quote never shows a blank mechanic.
+    let mechanicName = session?.employee_name || 'Unknown';
+    if (job.assigned_staff_id) {
+      try {
+        const staff = await getStaffMember(job.assigned_staff_id);
+        if (staff) mechanicName = staff.employee_name;
+      } catch (err) {
+        // fall back to session mechanic if the lookup fails
+      }
+    }
+    document.getElementById('sheetMechanic').textContent = mechanicName;
+
+    renderShareBox();
+  }
+
+  async function loadLines() {
+    const lines = await listJobItems(jobId);
+    const tbody = document.getElementById('sheetLines');
+    if (lines.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-note">No items added to this job yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = lines.map((line) => {
+      const lineTotal = line.unit_price !== null ? formatMoney(Number(line.unit_price) * Number(line.quantity)) : 'To confirm';
+      const unit = line.unit_price !== null ? formatMoney(line.unit_price) : 'To confirm';
+      return `<tr><td>${line.catalogue_items?.name || 'Unknown item'}</td><td class="num">${line.quantity}</td><td class="num">${unit}</td><td class="num">${lineTotal}</td></tr>`;
+    }).join('');
+  }
+
+  async function loadInspectionResults() {
+    const container = document.getElementById('sheetInspection');
+    const inspection = await getLatestInspectionForJob(jobId);
+    if (!inspection) {
+      container.innerHTML = '<div class="no-inspection">No inspection recorded yet.</div>';
+      return;
+    }
+    const findings = await listFindings(inspection.id);
+
+    document.getElementById('sheetDiagramSection').style.display = 'block';
+    await renderBodyDiagramCanvas(document.getElementById('carDiagram'), findings);
+
+    const bodyFindings = findings.filter((f) => f.finding_type === 'body_area' && f.severity);
+    const mechFindings = findings.filter((f) => f.finding_type === 'mechanical' && f.item_label);
+    const customFindings = findings.filter((f) => f.finding_type === 'mechanical' && !f.item_label);
+
+    if (bodyFindings.length === 0 && mechFindings.length === 0 && customFindings.length === 0) {
+      container.innerHTML = '<div class="no-inspection">No issues recorded during inspection.</div>';
+      return;
+    }
+
+    let html = '';
+
+    if (bodyFindings.length > 0) {
+      html += '<div class="inspection-category">Body &amp; Exterior</div><div class="inspection-cols">';
+      html += bodyFindings.map((f) => `<div class="inspection-row">${bodyZoneLabel(f.area)}: <span class="cond-${f.severity === 'minor' ? 'advisory' : 'fail'}">${severityLabel(f.severity)}</span></div>`).join('');
+      html += '</div>';
+    }
+
+    const byCategory = {};
+    mechFindings.forEach((f) => {
+      (byCategory[f.area] = byCategory[f.area] || []).push(f);
+    });
+    Object.entries(byCategory).forEach(([category, items]) => {
+      html += `<div class="inspection-category">${category}</div><div class="inspection-cols">`;
+      html += items.map((f) => {
+        const cls = f.pass_status === 'fail' ? 'cond-fail' : f.pass_status === 'advisory' ? 'cond-advisory' : '';
+        return `<div class="inspection-row">${f.item_label}: <span class="${cls}">${f.condition}</span></div>`;
+      }).join('');
+      html += '</div>';
+    });
+
+    if (customFindings.length > 0) {
+      html += '<div class="inspection-category">Other Findings</div><div class="inspection-cols">';
+      html += customFindings.map((f) => {
+        const cls = f.pass_status === 'fail' ? 'cond-fail' : f.pass_status === 'advisory' ? 'cond-advisory' : '';
+        return `<div class="inspection-row">${f.area}${f.fault ? ` — ${f.fault}` : ''}: <span class="${cls}">${f.condition || (f.pass_status ? PASS_STATUSES.find((p) => p.value === f.pass_status)?.label : '') || ''}</span></div>`;
+      }).join('');
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+  }
+
+  document.getElementById('generateBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    btn.textContent = 'Generating…';
+    try {
+      const canvas = await html2canvas(document.getElementById('quoteSheet'), { backgroundColor: '#ffffff', scale: 2 });
+      const imageBase64 = canvas.toDataURL('image/png');
+
+      btn.textContent = 'Uploading…';
+      const res = await fetch('/.netlify/functions/upload-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64, filename: `receipt-job-${job.job_number}.png` })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Upload failed');
+
+      await updateJobReceiptDocument(jobId, json.url);
+      job.status = 'completed';
+      document.getElementById('jobSub').textContent = `${document.getElementById('jobSub').textContent.split(' · ').slice(0,2).join(' · ')} · ${jobStatusLabel('completed')}`;
+      job.receipt_document_url = json.url;
+      job.receipt_generated_at = new Date().toISOString();
+      renderShareBox();
+    } catch (err) {
+      alert(`Failed to generate receipt: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Mark billed & complete';
+    }
+  });
+
+  document.getElementById('copyBtn').addEventListener('click', () => {
+    const input = document.getElementById('shareUrl');
+    input.select();
+    navigator.clipboard?.writeText(input.value).catch(() => {});
+  });
+
+  loadJob().then(() => Promise.all([loadLines(), loadInspectionResults()]));
+</script>
+</body>
+</html>

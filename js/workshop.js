@@ -140,6 +140,7 @@ async function getJobSummary(jobId) {
     .select(`
       id, job_number, status, job_types, quoted_total, assigned_staff_id,
       quote_document_url, quote_generated_at,
+      receipt_document_url, receipt_generated_at,
       customers ( customer_name ),
       owned_vehicles ( registration, make, model )
     `)
@@ -153,6 +154,17 @@ async function updateJobQuoteDocument(jobId, url) {
   const { error } = await sb
     .from('jobs')
     .update({ quote_document_url: url, quote_generated_at: new Date().toISOString() })
+    .eq('id', jobId);
+  if (error) throw new Error(error.message);
+}
+
+// Sets the receipt link and flips the job to completed in one call --
+// generating a receipt is what "billed" means for this shop, there's no
+// separate payment-processing step.
+async function updateJobReceiptDocument(jobId, url) {
+  const { error } = await sb
+    .from('jobs')
+    .update({ receipt_document_url: url, receipt_generated_at: new Date().toISOString(), status: 'completed' })
     .eq('id', jobId);
   if (error) throw new Error(error.message);
 }
