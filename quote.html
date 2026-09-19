@@ -101,7 +101,6 @@
   <main>
     <div class="actions-row">
       <button class="btn" id="generateBtn">Generate &amp; upload quote</button>
-      <button class="btn secondary" id="printBtn">Print</button>
     </div>
 
     <div class="share-box" id="shareBox">
@@ -213,8 +212,6 @@
       return `<tr><td>${line.catalogue_items?.name || 'Unknown item'}</td><td class="num">${line.quantity}</td><td class="num">${unit}</td><td class="num">${lineTotal}</td></tr>`;
     }).join('');
   }
-
-  document.getElementById('printBtn').addEventListener('click', () => window.print());
 
   document.getElementById('generateBtn').addEventListener('click', async () => {
     const btn = document.getElementById('generateBtn');
