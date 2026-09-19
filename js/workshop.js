@@ -50,7 +50,7 @@ function hasManagementAccess(session) {
 // requireSession() on every page that has these links in its header.
 function applyRoleNav(session) {
   if (hasManagementAccess(session)) return;
-  document.querySelectorAll('nav a[href^="catalogue.html"], nav a[href^="reports.html"], nav a[href^="staff.html"], nav a[href^="payroll.html"], nav a[href^="accounts.html"]').forEach((el) => el.remove());
+  document.querySelectorAll('nav a[href^="catalogue.html"], nav a[href^="purchasing.html"], nav a[href^="reports.html"], nav a[href^="staff.html"], nav a[href^="payroll.html"], nav a[href^="accounts.html"]').forEach((el) => el.remove());
 }
 
 async function searchCustomers(query) {

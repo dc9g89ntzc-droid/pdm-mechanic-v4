@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Purchasing</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary, .btn.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+  header button:hover, .btn:hover { background: var(--red-dim); }
+
+  .page-bar { padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); }
+  .page-bar .page-title { font-weight: 600; font-size: 14px; }
+  .page-bar .page-sub { color: var(--text-dim); font-size: 13px; margin-top: 2px; }
+
+  .breadcrumb { padding: 12px 24px; font-size: 13px; color: var(--text-dim); display: flex; gap: 6px; align-items: center; }
+  .breadcrumb a { color: var(--text-dim); text-decoration: none; cursor: pointer; }
+  .breadcrumb a:hover { color: var(--text); text-decoration: underline; }
+  .breadcrumb .current { color: var(--text); font-weight: 600; }
+
+  .layout { display: flex; gap: 20px; padding: 0 24px 40px; align-items: flex-start; flex-wrap: wrap; }
+  main { flex: 1 1 560px; min-width: 0; }
+
+  .tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+  .tile { background: var(--panel); border: 1px solid var(--panel-border); border-left: 3px solid var(--red); border-radius: 10px; padding: 18px; cursor: pointer; transition: border-color 0.15s; }
+  .tile:hover { border-color: var(--red); background: rgba(216,31,39,0.06); }
+  .tile .tile-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .tile .tile-count { color: var(--text-dim); font-size: 12px; }
+
+  .item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .item-card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .item-card img { width: 100%; height: 100px; object-fit: contain; background: var(--bg); border-radius: 8px; }
+  .item-card .item-name { font-weight: 600; font-size: 13px; }
+  .item-card .item-price { color: var(--amber); font-weight: 600; font-size: 13px; }
+  .item-card .item-meta { color: var(--text-dim); font-size: 11px; }
+  .item-card .item-meta.low { color: var(--red); }
+  .item-card .add-row { display: flex; gap: 6px; margin-top: auto; }
+  .item-card .add-row input[type="number"] { width: 56px; }
+  .item-card .add-row input {
+    background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 6px; padding: 6px; font-size: 12px;
+  }
+  .item-card .add-row button { flex: 1; background: var(--red); border: none; color: white; border-radius: 6px; padding: 6px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .item-card .add-row button:hover { background: var(--red-dim); }
+
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 40px; text-align: center; }
+
+  .cart-panel { flex: 0 0 340px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; position: sticky; top: 16px; }
+  .cart-panel h2 { font-size: 14px; margin: 0 0 12px; }
+  .cart-field { margin-bottom: 10px; }
+  .cart-field label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+  .cart-field select, .cart-field input {
+    width: 100%; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text);
+    border-radius: 6px; padding: 8px; font-size: 13px;
+  }
+  .cart-lines { margin: 14px 0; }
+  .cart-line { display: flex; align-items: center; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--panel-border); font-size: 12px; }
+  .cart-line img { width: 32px; height: 32px; object-fit: contain; background: var(--bg); border-radius: 6px; flex: 0 0 auto; }
+  .cart-line .cl-name { flex: 1 1 auto; min-width: 0; }
+  .cart-line .cl-qty { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+  .cart-line .cl-qty button { width: 20px; height: 20px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; cursor: pointer; font-size: 12px; line-height: 1; }
+  .cart-line .cl-cost-input { width: 64px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; padding: 3px 4px; font-size: 12px; text-align: right; flex: 0 0 auto; }
+  .cart-line .cl-remove { background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 0 2px; flex: 0 0 auto; }
+  .cart-line .cl-remove:hover { color: var(--red); }
+  .cart-total { display: flex; justify-content: space-between; font-weight: 700; font-size: 15px; padding-top: 12px; margin-top: 4px; border-top: 1px solid var(--panel-border); }
+  .cart-empty { color: var(--text-dim); font-size: 12px; padding: 12px 0; }
+  .cart-panel .btn { width: 100%; margin-top: 14px; text-align: center; }
+  .cart-panel .btn:disabled { opacity: 0.6; cursor: default; }
+  .cart-status { font-size: 12px; margin-top: 10px; padding: 8px 10px; border-radius: 8px; display: none; }
+  .cart-status.success { display: block; background: rgba(34,197,94,0.12); color: var(--green); }
+  .cart-status.error { display: block; background: rgba(216,31,39,0.12); color: #f0888c; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="my-dashboard.html">Home</a>
+      <a href="dashboard.html">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="catalogue.html">Catalogue</a>
+      <a href="purchasing.html" class="active">Purchasing</a>
+      <a href="reports.html">Reports</a>
+      <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
+      <a href="accounts.html">Accounts</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <div class="page-bar">
+    <div class="page-title">Buy parts</div>
+    <div class="page-sub">Browse the catalogue, add what you're buying, then log it as one purchase from the Autoparts Store or a private citizen.</div>
+  </div>
+
+  <div class="breadcrumb" id="breadcrumb"></div>
+
+  <div class="layout">
+    <main id="mainArea"></main>
+    <aside class="cart-panel">
+      <h2>Purchase Cart</h2>
+      <div class="cart-field">
+        <label for="purchaseSource">Buying from</label>
+        <select id="purchaseSource"></select>
+      </div>
+      <div class="cart-field">
+        <label for="purchaseNotes">Notes (optional — e.g. citizen name)</label>
+        <input type="text" id="purchaseNotes" placeholder="Notes" />
+      </div>
+      <div class="cart-lines" id="cartLines"></div>
+      <div class="cart-total"><span>Total</span><span id="cartTotal">$0.00</span></div>
+      <button class="btn" id="completePurchaseBtn">Complete Purchase</button>
+      <div class="cart-status" id="cartStatus"></div>
+    </aside>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
+<script src="js/catalogue.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  // UI-level only -- see hasManagementAccess in workshop.js for why this
+  // isn't a real security boundary in this app's current auth model.
+  if (!hasManagementAccess(session)) {
+    document.querySelector('.layout').innerHTML = '<div class="empty-msg" style="padding:60px; text-align:center;">This page is restricted to management roles.</div>';
+    throw new Error('Access restricted to management roles');
+  }
+
+  const mainArea = document.getElementById('mainArea');
+  const breadcrumb = document.getElementById('breadcrumb');
+
+  let level = 'categories'; // categories | subcategories | items
+  let currentCategory = null;
+  let currentSubcategory = null; // { id, name }
+  let cart = []; // { itemId, name, imageUrl, quantity, unitCost }
+
+  document.getElementById('purchaseSource').innerHTML = PURCHASE_SOURCE_TYPES.map((s) => `<option value="${s.value}">${s.label}</option>`).join('');
+
+  function renderBreadcrumb() {
+    const parts = ['<a id="bcRoot">Categories</a>'];
+    if (currentCategory) parts.push(`<span>/</span>${level === 'subcategories' ? `<span class="current">${currentCategory}</span>` : `<a id="bcCategory">${currentCategory}</a>`}`);
+    if (currentSubcategory) parts.push(`<span>/</span><span class="current">${currentSubcategory.name}</span>`);
+    breadcrumb.innerHTML = parts.join(' ');
+    document.getElementById('bcRoot').addEventListener('click', () => showCategories());
+    const bcCat = document.getElementById('bcCategory');
+    if (bcCat) bcCat.addEventListener('click', () => showSubcategories(currentCategory));
+  }
+
+  async function showCategories() {
+    level = 'categories'; currentCategory = null; currentSubcategory = null;
+    renderBreadcrumb();
+    mainArea.innerHTML = '<div class="empty-msg">Loading categories…</div>';
+    try {
+      const categories = await listDistinctCategories();
+      if (categories.length === 0) { mainArea.innerHTML = '<div class="empty-msg">No catalogue categories yet.</div>'; return; }
+      const grid = document.createElement('div');
+      grid.className = 'tile-grid';
+      categories.forEach((c) => {
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        tile.style.borderLeftColor = categoryColor(c);
+        tile.innerHTML = `<div class="tile-name">${c}</div><div class="tile-count">Browse items</div>`;
+        tile.addEventListener('click', () => showSubcategories(c));
+        grid.appendChild(tile);
+      });
+      mainArea.innerHTML = '';
+      mainArea.appendChild(grid);
+    } catch (err) {
+      mainArea.innerHTML = `<div class="empty-msg">Failed to load categories: ${err.message}</div>`;
+    }
+  }
+
+  async function showSubcategories(category) {
+    level = 'subcategories'; currentCategory = category; currentSubcategory = null;
+    renderBreadcrumb();
+    mainArea.innerHTML = '<div class="empty-msg">Loading subcategories…</div>';
+    try {
+      const subcats = await listSubcategoriesForCategory(category);
+      if (subcats.length === 0) { mainArea.innerHTML = '<div class="empty-msg">No items in this category yet.</div>'; return; }
+      const grid = document.createElement('div');
+      grid.className = 'tile-grid';
+      subcats.forEach((s) => {
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        tile.style.borderLeftColor = categoryColor(category);
+        tile.innerHTML = `<div class="tile-name">${s.name}</div><div class="tile-count">${s.count} item${s.count === 1 ? '' : 's'}</div>`;
+        tile.addEventListener('click', () => showItems(category, s));
+        grid.appendChild(tile);
+      });
+      mainArea.innerHTML = '';
+      mainArea.appendChild(grid);
+    } catch (err) {
+      mainArea.innerHTML = `<div class="empty-msg">Failed to load subcategories: ${err.message}</div>`;
+    }
+  }
+
+  async function showItems(category, subcategory) {
+    level = 'items'; currentCategory = category; currentSubcategory = subcategory;
+    renderBreadcrumb();
+    mainArea.innerHTML = '<div class="empty-msg">Loading items…</div>';
+    try {
+      const items = await listItemsForTile(category, subcategory.id);
+      if (items.length === 0) { mainArea.innerHTML = '<div class="empty-msg">No items here.</div>'; return; }
+      const grid = document.createElement('div');
+      grid.className = 'item-grid';
+      items.forEach((item) => {
+        const card = document.createElement('div');
+        card.className = 'item-card';
+        const low = item.reorder_threshold !== null && item.stock_quantity <= item.reorder_threshold;
+        const img = item.image_url
+          ? `<img src="${item.image_url}" alt="${item.name}" />`
+          : `<div style="width:100%;height:100px;background:var(--bg);border-radius:8px;"></div>`;
+        card.innerHTML = `
+          ${img}
+          <div class="item-name">${item.name}</div>
+          <div class="item-price">${item.purchase_cost !== null ? `Last paid ${formatMoney(item.purchase_cost)}` : 'No price on file yet'}</div>
+          <div class="item-meta ${low ? 'low' : ''}">Stock: ${item.stock_quantity}</div>
+          <div class="add-row">
+            <input type="number" class="qty-input" min="1" step="1" value="1" />
+            <button class="add-btn">Add to cart</button>
+          </div>
+        `;
+        card.querySelector('.add-btn').addEventListener('click', () => {
+          const qty = Number(card.querySelector('.qty-input').value || 1);
+          addToCart(item, qty);
+        });
+        grid.appendChild(card);
+      });
+      mainArea.innerHTML = '';
+      mainArea.appendChild(grid);
+    } catch (err) {
+      mainArea.innerHTML = `<div class="empty-msg">Failed to load items: ${err.message}</div>`;
+    }
+  }
+
+  function addToCart(item, qty) {
+    const existing = cart.find((l) => l.itemId === item.id);
+    if (existing) {
+      existing.quantity = Number(existing.quantity) + qty;
+    } else {
+      cart.push({
+        itemId: item.id,
+        name: item.name,
+        imageUrl: item.image_url,
+        quantity: qty,
+        unitCost: item.purchase_cost !== null ? item.purchase_cost : ''
+      });
+    }
+    renderCart();
+  }
+
+  function updateCartTotal() {
+    const total = cart.reduce((sum, l) => {
+      const cost = Number(l.unitCost);
+      return sum + (isNaN(cost) ? 0 : cost * Number(l.quantity));
+    }, 0);
+    document.getElementById('cartTotal').textContent = formatMoney(total);
+  }
+
+  function renderCart() {
+    const linesEl = document.getElementById('cartLines');
+    if (cart.length === 0) {
+      linesEl.innerHTML = '<div class="cart-empty">No items added yet.</div>';
+      updateCartTotal();
+      return;
+    }
+    linesEl.innerHTML = '';
+    cart.forEach((line, idx) => {
+      const row = document.createElement('div');
+      row.className = 'cart-line';
+      const img = line.imageUrl
+        ? `<img src="${line.imageUrl}" alt="" />`
+        : `<div style="width:32px;height:32px;background:var(--bg);border-radius:6px;"></div>`;
+      row.innerHTML = `
+        ${img}
+        <div class="cl-name">${line.name}</div>
+        <div class="cl-qty">
+          <button class="qty-dec">−</button>
+          <span>${line.quantity}</span>
+          <button class="qty-inc">+</button>
+        </div>
+        <input type="number" class="cl-cost-input" min="0" step="1" placeholder="Price" value="${line.unitCost}" />
+        <button class="cl-remove">✕</button>
+      `;
+      row.querySelector('.qty-inc').addEventListener('click', () => {
+        cart[idx].quantity = Number(cart[idx].quantity) + 1;
+        renderCart();
+      });
+      row.querySelector('.qty-dec').addEventListener('click', () => {
+        const newQty = Number(cart[idx].quantity) - 1;
+        if (newQty <= 0) { cart.splice(idx, 1); } else { cart[idx].quantity = newQty; }
+        renderCart();
+      });
+      row.querySelector('.cl-remove').addEventListener('click', () => {
+        cart.splice(idx, 1);
+        renderCart();
+      });
+      row.querySelector('.cl-cost-input').addEventListener('input', (e) => {
+        cart[idx].unitCost = e.target.value;
+        updateCartTotal();
+      });
+      linesEl.appendChild(row);
+    });
+    updateCartTotal();
+  }
+
+  function showStatus(message, type) {
+    const el = document.getElementById('cartStatus');
+    el.textContent = message;
+    el.className = `cart-status ${type}`;
+  }
+
+  document.getElementById('completePurchaseBtn').addEventListener('click', async () => {
+    if (cart.length === 0) return;
+    showStatus('', '');
+    for (const line of cart) {
+      if (!line.quantity || line.quantity <= 0) { alert(`Enter a valid quantity for "${line.name}".`); return; }
+      if (line.unitCost === '' || line.unitCost === null || isNaN(Number(line.unitCost)) || Number(line.unitCost) < 0) {
+        alert(`Enter the price paid for "${line.name}".`);
+        return;
+      }
+    }
+
+    const source = document.getElementById('purchaseSource').value;
+    const notes = document.getElementById('purchaseNotes').value.trim() || null;
+    const btn = document.getElementById('completePurchaseBtn');
+    btn.disabled = true;
+    btn.textContent = 'Logging purchase…';
+
+    const purchased = [];
+    try {
+      while (cart.length > 0) {
+        const line = cart[0];
+        await recordPurchase({
+          itemId: line.itemId, quantity: Number(line.quantity), unitCost: Number(line.unitCost),
+          sourceType: source, performedBy: session?.id, notes
+        });
+        purchased.push(line);
+        cart.shift();
+        renderCart();
+      }
+      const totalCost = purchased.reduce((sum, l) => sum + Number(l.quantity) * Number(l.unitCost), 0);
+      const detail = purchased.map((l) => `${l.quantity} × ${l.name} @ ${formatMoney(l.unitCost)} each`).join('\n');
+      logActivity({
+        actorId: session?.id, action: 'inventory_purchase_batch', entityType: 'catalogue_item', entityId: null,
+        summary: `${session?.employee_name || 'Someone'} bought ${purchased.length} item type${purchased.length === 1 ? '' : 's'} from ${purchaseSourceLabel(source)} for ${formatMoney(totalCost)}`,
+        detail
+      });
+      showStatus(`Purchase logged — ${purchased.length} item type${purchased.length === 1 ? '' : 's'} for ${formatMoney(totalCost)}.`, 'success');
+      document.getElementById('purchaseNotes').value = '';
+      if (level === 'items') await showItems(currentCategory, currentSubcategory);
+    } catch (err) {
+      showStatus(`Stopped logging: ${err.message}. Items already logged were removed from the cart — fix and retry the rest.`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Complete Purchase';
+    }
+  });
+
+  showCategories();
+  renderCart();
+</script>
+</body>
+</html>
