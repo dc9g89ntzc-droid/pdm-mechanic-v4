@@ -458,6 +458,35 @@ function jobTypeLabel(value) {
   return JOB_TYPES.find((t) => t.value === value)?.label || value;
 }
 
+// "Overdue" is judged against jobs.created_at (no separate status-change
+// timestamp exists) -- different job shapes get different grace periods
+// since a fast repair sitting for 3 hours means something different than
+// an engine build or a job genuinely blocked on parts.
+const OVERDUE_THRESHOLD_MS = {
+  waiting_for_parts: 24 * 60 * 60 * 1000,
+  engine_building: 12 * 60 * 60 * 1000,
+  default: 3 * 60 * 60 * 1000
+};
+
+function overdueThresholdFor(job) {
+  if (job.status === 'waiting_for_parts') return OVERDUE_THRESHOLD_MS.waiting_for_parts;
+  if ((job.job_types || []).includes('engine_building')) return OVERDUE_THRESHOLD_MS.engine_building;
+  return OVERDUE_THRESHOLD_MS.default;
+}
+
+function isJobOverdue(job) {
+  if (job.status === 'completed' || job.status === 'cancelled') return false;
+  return (Date.now() - new Date(job.created_at).getTime()) > overdueThresholdFor(job);
+}
+
+function jobAgeLabel(job) {
+  const ms = Date.now() - new Date(job.created_at).getTime();
+  const hours = ms / 3600000;
+  if (hours < 1) return `${Math.max(1, Math.round(ms / 60000))}m open`;
+  if (hours < 48) return `${hours.toFixed(1)}h open`;
+  return `${(hours / 24).toFixed(1)}d open`;
+}
+
 function formatMoney(value) {
   if (value === null || value === undefined) return 'To confirm';
   return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

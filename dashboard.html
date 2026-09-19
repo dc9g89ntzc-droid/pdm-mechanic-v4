@@ -140,6 +140,8 @@
     font-size: 13px;
   }
   .card:hover { border-color: var(--red); }
+  .card.overdue { border-color: var(--red); box-shadow: inset 3px 0 0 var(--red); }
+  .badge.overdue { background: rgba(216,31,39,0.25); color: #ff6b6f; }
   .card .job-number { color: var(--text-dim); font-size: 12px; margin-bottom: 4px; }
   .card .customer { font-weight: 600; margin-bottom: 2px; }
   .card .vehicle { color: var(--text-dim); margin-bottom: 8px; }
@@ -246,6 +248,9 @@
     </select>
     <input type="date" id="filterFrom" title="From date" />
     <input type="date" id="filterTo" title="To date" />
+    <label style="display:flex; align-items:center; gap:6px; color:var(--text-dim); font-size:13px;">
+      <input type="checkbox" id="filterOverdue" style="width:auto;" /> Overdue only
+    </label>
     <button id="clearFilters">Clear filters</button>
     <a href="checkin.html" class="btn" style="margin-left:auto;">+ New Job</a>
   </div>
@@ -340,14 +345,15 @@
         const typeBadges = (job.job_types && job.job_types.length > 0)
           ? job.job_types.map((t) => `<span class="badge type-${t}">${jobTypeLabel(t)}</span>`).join('')
           : `<span class="badge type-unclassified">To confirm</span>`;
+        const overdue = isJobOverdue(job);
         const card = document.createElement('div');
-        card.className = 'card';
+        card.className = overdue ? 'card overdue' : 'card';
         card.innerHTML = `
           <div class="job-number">Job #${job.job_number}</div>
           <div class="customer">${job.customers?.customer_name || 'Unknown customer'}</div>
           <div class="vehicle">${vehicle} &middot; ${reg}</div>
           ${job.short_description ? `<div class="desc">${job.short_description}</div>` : ''}
-          <div class="badges" style="margin-bottom:8px;">${typeBadges}</div>
+          <div class="badges" style="margin-bottom:8px;">${typeBadges}${overdue ? `<span class="badge overdue">Overdue &middot; ${jobAgeLabel(job)}</span>` : ''}</div>
           <div class="meta-row">
             <span class="${job.quoted_total === null ? 'total unknown' : 'total'}">${formatMoney(grandTotalFor(job.quoted_total))}</span>
           </div>
@@ -372,7 +378,10 @@
 
   async function loadBoard() {
     try {
-      const jobs = await listJobs(currentFilters());
+      let jobs = await listJobs(currentFilters());
+      if (document.getElementById('filterOverdue').checked) {
+        jobs = jobs.filter(isJobOverdue);
+      }
       renderBoard(jobs);
     } catch (err) {
       boardEl.innerHTML = `<div class="empty-msg">Failed to load jobs: ${err.message}</div>`;
@@ -397,12 +406,14 @@
   [mechanicFilter, jobTypeFilter, fromFilter, toFilter].forEach((el) => {
     el.addEventListener('change', loadBoard);
   });
+  document.getElementById('filterOverdue').addEventListener('change', loadBoard);
 
   document.getElementById('clearFilters').addEventListener('click', () => {
     mechanicFilter.value = '';
     jobTypeFilter.value = '';
     fromFilter.value = '';
     toFilter.value = '';
+    document.getElementById('filterOverdue').checked = false;
     loadBoard();
   });
 
