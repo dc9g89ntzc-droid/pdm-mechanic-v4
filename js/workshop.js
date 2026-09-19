@@ -34,23 +34,70 @@ function staffRoleLabel(value) {
   return STAFF_ROLES.find((r) => r.value === value)?.label || value;
 }
 
-// Foreman and above run the shop; apprentice/mechanic/master_mechanic are
-// the tool-turning tiers. This is UI-level gating only, not a real
-// security boundary: every mechanic's browser uses the same anon key
-// regardless of who's logged in (no per-user Supabase Auth session), so a
-// technical user could bypass it. It's there to stop honest mistakes (a
-// mechanic wandering into the catalogue editor), not to stop misuse.
-const MANAGEMENT_ROLES = ['foreman', 'manager', 'boss'];
+// Which areas exist as gated pages, and (for nav hiding) which page each
+// one is. Access per role is configurable from the Staff page's permissions
+// matrix (role_permissions table, sql/027) rather than hardcoded -- these
+// are just the fixed list of areas that exist, not who can reach them.
+const PERMISSION_AREAS = [
+  { value: 'catalogue', label: 'Catalogue' },
+  { value: 'purchasing', label: 'Purchasing' },
+  { value: 'reports', label: 'Reports' },
+  { value: 'staff', label: 'Staff' },
+  { value: 'payroll', label: 'Payroll' },
+  { value: 'accounts', label: 'Accounts' }
+];
 
-function hasManagementAccess(session) {
-  return !!session && MANAGEMENT_ROLES.includes((session.role || '').toLowerCase());
+const AREA_NAV_HREF = {
+  catalogue: 'catalogue.html', purchasing: 'purchasing.html', reports: 'reports.html',
+  staff: 'staff.html', payroll: 'payroll.html', accounts: 'accounts.html'
+};
+
+// Real boundary is RLS (has_area_permission() in Postgres, sql/027) -- this
+// is just what the UI uses to decide what to show. Fetches the whole
+// role_permissions table once per page load (36 rows, cheap) and caches it
+// so a gated page's own check and applyRoleNav don't both fetch it.
+let _permissionMapCache = null;
+
+async function loadPermissionMap() {
+  if (_permissionMapCache) return _permissionMapCache;
+  const { data, error } = await sb.from('role_permissions').select('role, area, allowed');
+  if (error) throw new Error(error.message);
+  const map = {};
+  data.forEach((row) => {
+    if (!map[row.role]) map[row.role] = {};
+    map[row.role][row.area] = row.allowed;
+  });
+  _permissionMapCache = map;
+  return map;
 }
 
-// Hides nav links to management-only pages for everyone else. Call after
-// requireSession() on every page that has these links in its header.
-function applyRoleNav(session) {
-  if (hasManagementAccess(session)) return;
-  document.querySelectorAll('nav a[href^="catalogue.html"], nav a[href^="purchasing.html"], nav a[href^="reports.html"], nav a[href^="staff.html"], nav a[href^="payroll.html"], nav a[href^="accounts.html"]').forEach((el) => el.remove());
+async function hasAreaAccess(session, area) {
+  if (!session) return false;
+  const map = await loadPermissionMap();
+  return !!map[session.role]?.[area];
+}
+
+// Hides nav links to areas this role can't reach. Called as a bare,
+// unawaited statement on every page (same as before) -- nav links disappear
+// a moment after paint instead of instantly now, which is fine since the
+// real boundary is RLS + each gated page's own hasAreaAccess check, not this.
+async function applyRoleNav(session) {
+  if (!session) return;
+  const map = await loadPermissionMap();
+  PERMISSION_AREAS.forEach(({ value: area }) => {
+    if (!map[session.role]?.[area]) {
+      document.querySelectorAll(`nav a[href^="${AREA_NAV_HREF[area]}"]`).forEach((el) => el.remove());
+    }
+  });
+}
+
+async function updateRolePermission(role, area, allowed) {
+  const { error } = await sb.from('role_permissions').update({ allowed }).eq('role', role).eq('area', area);
+  if (error) throw new Error(error.message);
+  if (_permissionMapCache) {
+    if (!_permissionMapCache[role]) _permissionMapCache[role] = {};
+    _permissionMapCache[role][area] = allowed;
+  }
 }
 
 async function searchCustomers(query) {

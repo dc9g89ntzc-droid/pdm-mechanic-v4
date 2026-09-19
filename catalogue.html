@@ -336,14 +336,6 @@
   document.getElementById('logoutBtn').addEventListener('click', logout);
   applyRoleNav(session);
 
-  // UI-level only -- see hasManagementAccess in workshop.js for why this
-  // isn't a real security boundary in this app's current auth model.
-  if (!hasManagementAccess(session)) {
-    document.querySelector('.filters').remove();
-    document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px; text-align:center;">This page is restricted to management roles.</div>';
-    throw new Error('Access restricted to management roles');
-  }
-
   const itemsBody = document.getElementById('itemsBody');
   const filterCategory = document.getElementById('filterCategory');
   const filterSubcategory = document.getElementById('filterSubcategory');
@@ -732,7 +724,16 @@
     }
   });
 
-  Promise.all([loadSubcategories(), loadCategoryFilter()]).then(loadItems);
+  // hasAreaAccess is DB-backed (role_permissions, sql/027) -- real
+  // enforcement is RLS, this just decides what to render.
+  (async () => {
+    if (!(await hasAreaAccess(session, 'catalogue'))) {
+      document.querySelector('.filters').remove();
+      document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px; text-align:center;">This page is restricted to your role.</div>';
+      return;
+    }
+    Promise.all([loadSubcategories(), loadCategoryFilter()]).then(loadItems);
+  })();
 </script>
 </body>
 </html>

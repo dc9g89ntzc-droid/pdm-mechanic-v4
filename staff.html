@@ -59,6 +59,10 @@
   .reset-row > div { flex: 1; }
   .reset-row button { flex: 0 0 auto; background: transparent; border: 1px solid var(--panel-border); color: var(--text); border-radius: 8px; padding: 10px 14px; cursor: pointer; font-size: 13px; }
   .hint { color: var(--text-dim); font-size: 12px; margin: 4px 0 0; }
+  .section-title { font-size: 14px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 28px 0 12px; }
+  .perm-table th, .perm-table td { text-align: center; }
+  .perm-table th:first-child, .perm-table td:first-child { text-align: left; }
+  .perm-table input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -90,6 +94,12 @@
       <thead><tr><th>Name</th><th>Role</th><th>Status</th></tr></thead>
       <tbody id="staffBody"></tbody>
     </table>
+
+    <div class="section-title">Role Permissions</div>
+    <table class="perm-table">
+      <thead id="permHead"></thead>
+      <tbody id="permBody"></tbody>
+    </table>
   </main>
 
   <!-- New staff modal -->
@@ -102,7 +112,7 @@
       <input type="password" id="nPassword" />
       <label>Role</label>
       <select id="nRole"></select>
-      <p class="hint">Foreman, Manager, and Boss get access to Catalogue, Reports, and Staff.</p>
+      <p class="hint">What this role can access is configured in the Role Permissions table below.</p>
       <label>Citizen ID</label>
       <input type="text" id="nCitizenId" />
       <label>Phone number</label>
@@ -161,12 +171,6 @@
   }
   document.getElementById('logoutBtn').addEventListener('click', logout);
   applyRoleNav(session);
-
-  if (!hasManagementAccess(session)) {
-    document.querySelector('.actions-row').remove();
-    document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px;">This page is restricted to management roles.</div>';
-    throw new Error('Access restricted to management roles');
-  }
 
   let staffList = [];
   let editingId = null;
@@ -290,7 +294,68 @@
     }
   });
 
-  loadStaff();
+  // ---- Role permissions matrix ----
+  function areaLabel(area) {
+    return PERMISSION_AREAS.find((a) => a.value === area)?.label || area;
+  }
+
+  async function loadPermissionsMatrix() {
+    const map = await loadPermissionMap();
+    document.getElementById('permHead').innerHTML =
+      `<tr><th>Area</th>${STAFF_ROLES.map((r) => `<th>${r.label}</th>`).join('')}</tr>`;
+    document.getElementById('permBody').innerHTML = PERMISSION_AREAS.map((area) => `
+      <tr>
+        <td>${area.label}</td>
+        ${STAFF_ROLES.map((r) => `<td><input type="checkbox" class="perm-checkbox" data-role="${r.value}" data-area="${area.value}" ${map[r.value]?.[area.value] ? 'checked' : ''} /></td>`).join('')}
+      </tr>
+    `).join('');
+
+    document.querySelectorAll('.perm-checkbox').forEach((cb) => {
+      cb.addEventListener('change', async () => {
+        const role = cb.dataset.role;
+        const area = cb.dataset.area;
+        const allowed = cb.checked;
+
+        // Refusing to remove the last role with Staff access -- otherwise
+        // nobody could ever reopen this matrix to fix it.
+        if (area === 'staff' && !allowed) {
+          const map = await loadPermissionMap();
+          const othersWithStaffAccess = STAFF_ROLES.filter((r) => r.value !== role && map[r.value]?.staff).length;
+          if (othersWithStaffAccess === 0) {
+            alert('At least one role needs Staff access, or nobody could reopen this page to fix it. Grant it to another role first.');
+            cb.checked = true;
+            return;
+          }
+        }
+
+        cb.disabled = true;
+        try {
+          await updateRolePermission(role, area, allowed);
+          logActivity({
+            actorId: session?.id, action: 'role_permission_changed', entityType: 'role_permissions', entityId: null,
+            summary: `${session?.employee_name || 'Someone'} ${allowed ? 'granted' : 'revoked'} ${staffRoleLabel(role)} access to ${areaLabel(area)}`
+          });
+        } catch (err) {
+          alert(`Failed to update permission: ${err.message}`);
+          cb.checked = !allowed;
+        } finally {
+          cb.disabled = false;
+        }
+      });
+    });
+  }
+
+  // hasAreaAccess is DB-backed (role_permissions, sql/027) -- real
+  // enforcement is RLS, this just decides what to render.
+  (async () => {
+    if (!(await hasAreaAccess(session, 'staff'))) {
+      document.querySelector('.actions-row').remove();
+      document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px;">This page is restricted to your role.</div>';
+      return;
+    }
+    loadStaff();
+    loadPermissionsMatrix();
+  })();
 </script>
 </body>
 </html>

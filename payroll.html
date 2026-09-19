@@ -119,11 +119,6 @@
   document.getElementById('logoutBtn').addEventListener('click', logout);
   applyRoleNav(session);
 
-  if (!hasManagementAccess(session)) {
-    document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px;">This page is restricted to management roles.</div>';
-    throw new Error('Access restricted to management roles');
-  }
-
   let staffById = {};
   let ledger = [];
   let periodStart = getPayPeriodStart(new Date());
@@ -261,7 +256,15 @@
     }
   });
 
-  loadStaff().then(loadLedger);
+  // hasAreaAccess is DB-backed (role_permissions, sql/027) -- real
+  // enforcement is RLS, this just decides what to render.
+  (async () => {
+    if (!(await hasAreaAccess(session, 'payroll'))) {
+      document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px;">This page is restricted to your role.</div>';
+      return;
+    }
+    loadStaff().then(loadLedger);
+  })();
 </script>
 </body>
 </html>
