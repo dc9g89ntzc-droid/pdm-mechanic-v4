@@ -25,7 +25,7 @@ returns uuid
 language sql
 stable
 as $$
-  select nullif(current_setting('request.jwt.claims', true), '')::json ->> 'mechanic_id';
+  select (nullif(current_setting('request.jwt.claims', true), '')::json ->> 'mechanic_id')::uuid;
 $$;
 
 create or replace function is_management_mechanic()
