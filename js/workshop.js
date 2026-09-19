@@ -36,7 +36,7 @@ function hasManagementAccess(session) {
 // requireSession() on every page that has these links in its header.
 function applyRoleNav(session) {
   if (hasManagementAccess(session)) return;
-  document.querySelectorAll('nav a[href^="catalogue.html"], nav a[href^="reports.html"]').forEach((el) => el.remove());
+  document.querySelectorAll('nav a[href^="catalogue.html"], nav a[href^="reports.html"], nav a[href^="staff.html"]').forEach((el) => el.remove());
 }
 
 async function searchCustomers(query) {
@@ -102,6 +102,29 @@ async function listAllStaff() {
     .order('employee_name');
   if (error) throw new Error(error.message);
   return data;
+}
+
+// mechanic_employees has zero anon policies (it holds password_hash), so
+// these go through security-definer RPCs (019_staff_management_rpcs.sql)
+// rather than direct table access -- same pattern as mechanic_verify_login.
+async function createStaff({ employeeName, password, role }) {
+  const { data, error } = await sb.rpc('mechanic_create_staff', {
+    p_employee_name: employeeName, p_password: password, p_role: role
+  });
+  if (error) throw new Error(error.message);
+  return data?.[0];
+}
+
+async function updateStaff({ id, role, active }) {
+  const { data, error } = await sb.rpc('mechanic_update_staff', { p_id: id, p_role: role, p_active: active });
+  if (error) throw new Error(error.message);
+  return data?.[0];
+}
+
+async function resetStaffPassword(id, newPassword) {
+  const { data, error } = await sb.rpc('mechanic_reset_password', { p_id: id, p_new_password: newPassword });
+  if (error) throw new Error(error.message);
+  return data?.[0];
 }
 
 async function listActiveMechanics() {
