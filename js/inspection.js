@@ -56,19 +56,24 @@ const BODY_ZONES = [
   { key: 'right_taillight', label: 'Right Taillight', shape: 'path', d: 'M926 713 Q941 709 953 716 Q960 726 958 738 Q937 744 916 739 Q918 722 926 713Z' },
 
   // Wheels: user marked circles/rects over the same reference image at a
-  // different crop (0-offset in x, +314 in y vs. this file's viewBox) --
-  // positions converted from that image, cross-checked against existing
-  // headlight/bumper/taillight x-ranges in each view to confirm front vs.
-  // rear and left vs. right. Each wheel is a circle in its own side view
-  // plus a small mark in the front/rear view, like bumpers/lights above.
-  { key: 'left_front_wheel', label: 'Left Front Wheel', shape: 'path', d: 'M133 190 A48 48 0 1 0 229 190 A48 48 0 1 0 133 190Z' },
-  { key: 'left_front_wheel', label: 'Left Front Wheel', shape: 'path', d: 'M708 207 L760 207 L760 242 L708 242Z' },
-  { key: 'left_rear_wheel', label: 'Left Rear Wheel', shape: 'path', d: 'M494 190 A49 49 0 1 0 592 190 A49 49 0 1 0 494 190Z' },
-  { key: 'left_rear_wheel', label: 'Left Rear Wheel', shape: 'path', d: 'M707 493 L759 493 L759 529 L707 529Z' },
-  { key: 'right_front_wheel', label: 'Right Front Wheel', shape: 'path', d: 'M509 478 A48 48 0 1 0 605 478 A48 48 0 1 0 509 478Z' },
-  { key: 'right_front_wheel', label: 'Right Front Wheel', shape: 'path', d: 'M921 209 L975 209 L975 244 L921 244Z' },
-  { key: 'right_rear_wheel', label: 'Right Rear Wheel', shape: 'path', d: 'M147 477 A48 48 0 1 0 243 477 A48 48 0 1 0 147 477Z' },
-  { key: 'right_rear_wheel', label: 'Right Rear Wheel', shape: 'path', d: 'M916 490 L972 490 L972 525 L916 525Z' }
+  // different crop (x aligned, y offset +1 vs. this file's viewBox once
+  // the image's own y=315 SVG placement is also accounted for -- easy to
+  // get wrong, as a first pass here did, by converting to the cropped
+  // PNG's own pixel space and forgetting the SVG re-adds that offset).
+  // Positions cross-checked against existing headlight/bumper/taillight
+  // x-ranges in each view to confirm front/rear and left/right, then
+  // verified by overlaying on the real viewBox="0 315 1080 620" SVG
+  // structure (not just the flat PNG) before trusting the alignment.
+  // Each wheel is a circle in its own side view plus a small mark in the
+  // front/rear view, like bumpers/lights above.
+  { key: 'left_front_wheel', label: 'Left Front Wheel', shape: 'path', d: 'M133 505 A48 48 0 1 0 229 505 A48 48 0 1 0 133 505Z' },
+  { key: 'left_front_wheel', label: 'Left Front Wheel', shape: 'path', d: 'M708 522 L760 522 L760 557 L708 557Z' },
+  { key: 'left_rear_wheel', label: 'Left Rear Wheel', shape: 'path', d: 'M494 505 A49 49 0 1 0 592 505 A49 49 0 1 0 494 505Z' },
+  { key: 'left_rear_wheel', label: 'Left Rear Wheel', shape: 'path', d: 'M707 808 L759 808 L759 844 L707 844Z' },
+  { key: 'right_front_wheel', label: 'Right Front Wheel', shape: 'path', d: 'M509 793 A48 48 0 1 0 605 793 A48 48 0 1 0 509 793Z' },
+  { key: 'right_front_wheel', label: 'Right Front Wheel', shape: 'path', d: 'M921 524 L975 524 L975 559 L921 559Z' },
+  { key: 'right_rear_wheel', label: 'Right Rear Wheel', shape: 'path', d: 'M147 792 A48 48 0 1 0 243 792 A48 48 0 1 0 147 792Z' },
+  { key: 'right_rear_wheel', label: 'Right Rear Wheel', shape: 'path', d: 'M916 805 L972 805 L972 840 L916 840Z' }
 ];
 
 const SEVERITIES = [
