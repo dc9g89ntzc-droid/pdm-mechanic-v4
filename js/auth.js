@@ -14,6 +14,22 @@ function clearSession() {
   localStorage.removeItem('pdm_mechanic_session');
 }
 
+// The signed session token proving who this is to Postgres (RLS) -- kept
+// separate from the plain session object above, which is just display data
+// (employee_name/role shown in the header etc). js/supabaseClient.js reads
+// this same key to attach it as the Authorization header.
+function getToken() {
+  return localStorage.getItem('pdm_mechanic_token');
+}
+
+function setToken(token) {
+  localStorage.setItem('pdm_mechanic_token', token);
+}
+
+function clearToken() {
+  localStorage.removeItem('pdm_mechanic_token');
+}
+
 function requireSession() {
   const session = getSession();
   if (!session) {
@@ -23,19 +39,21 @@ function requireSession() {
 }
 
 async function login(employeeName, password) {
-  const { data, error } = await sb.rpc('mechanic_verify_login', {
-    p_employee_name: employeeName,
-    p_password: password
+  const res = await fetch('/.netlify/functions/mechanic-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ employeeName, password })
   });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || 'Invalid employee name or password.');
 
-  if (error) throw new Error(error.message);
-  if (!data || data.length === 0) throw new Error('Invalid employee name or password.');
-
-  setSession(data[0]);
-  return data[0];
+  setSession(body.session);
+  setToken(body.token);
+  return body.session;
 }
 
 function logout() {
   clearSession();
+  clearToken();
   window.location.href = 'index.html';
 }
