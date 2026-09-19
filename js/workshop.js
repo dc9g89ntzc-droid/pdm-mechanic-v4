@@ -8,7 +8,6 @@ const JOB_STATUSES = [
   { value: 'approved', label: 'Approved' },
   { value: 'work_in_progress', label: 'Work in progress' },
   { value: 'ready_to_bill', label: 'Ready to bill' },
-  { value: 'ready_to_collect', label: 'Ready to collect' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' }
 ];

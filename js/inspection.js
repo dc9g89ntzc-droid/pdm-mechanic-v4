@@ -53,7 +53,22 @@ const BODY_ZONES = [
   { key: 'left_taillight', label: 'Left Taillight', shape: 'path', d: 'M659 425 L641 426 Q632 432 629 445 L659 445Z' },
   { key: 'right_taillight', label: 'Right Taillight', shape: 'path', d: 'M82 713 L98 714 Q108 720 113 732 L82 732Z' },
   { key: 'left_taillight', label: 'Left Taillight', shape: 'path', d: 'M728 714 Q742 709 754 713 Q763 721 766 739 Q747 744 723 738 Q722 723 728 714Z' },
-  { key: 'right_taillight', label: 'Right Taillight', shape: 'path', d: 'M926 713 Q941 709 953 716 Q960 726 958 738 Q937 744 916 739 Q918 722 926 713Z' }
+  { key: 'right_taillight', label: 'Right Taillight', shape: 'path', d: 'M926 713 Q941 709 953 716 Q960 726 958 738 Q937 744 916 739 Q918 722 926 713Z' },
+
+  // Wheels: user marked circles/rects over the same reference image at a
+  // different crop (0-offset in x, +314 in y vs. this file's viewBox) --
+  // positions converted from that image, cross-checked against existing
+  // headlight/bumper/taillight x-ranges in each view to confirm front vs.
+  // rear and left vs. right. Each wheel is a circle in its own side view
+  // plus a small mark in the front/rear view, like bumpers/lights above.
+  { key: 'left_front_wheel', label: 'Left Front Wheel', shape: 'path', d: 'M133 190 A48 48 0 1 0 229 190 A48 48 0 1 0 133 190Z' },
+  { key: 'left_front_wheel', label: 'Left Front Wheel', shape: 'path', d: 'M708 207 L760 207 L760 242 L708 242Z' },
+  { key: 'left_rear_wheel', label: 'Left Rear Wheel', shape: 'path', d: 'M494 190 A49 49 0 1 0 592 190 A49 49 0 1 0 494 190Z' },
+  { key: 'left_rear_wheel', label: 'Left Rear Wheel', shape: 'path', d: 'M707 493 L759 493 L759 529 L707 529Z' },
+  { key: 'right_front_wheel', label: 'Right Front Wheel', shape: 'path', d: 'M509 478 A48 48 0 1 0 605 478 A48 48 0 1 0 509 478Z' },
+  { key: 'right_front_wheel', label: 'Right Front Wheel', shape: 'path', d: 'M921 209 L975 209 L975 244 L921 244Z' },
+  { key: 'right_rear_wheel', label: 'Right Rear Wheel', shape: 'path', d: 'M147 477 A48 48 0 1 0 243 477 A48 48 0 1 0 147 477Z' },
+  { key: 'right_rear_wheel', label: 'Right Rear Wheel', shape: 'path', d: 'M916 490 L972 490 L972 525 L916 525Z' }
 ];
 
 const SEVERITIES = [
