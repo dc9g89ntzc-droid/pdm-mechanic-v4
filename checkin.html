@@ -182,6 +182,7 @@
       <a href="dashboard.html">Workshop</a>
       <a href="checkin.html" class="active">New Job</a>
       <a href="catalogue.html">Catalogue</a>
+      <a href="reports.html">Reports</a>
     </nav>
     <div style="display:flex; align-items:center; gap:16px;">
       <span class="who" id="whoami"></span>
@@ -315,6 +316,7 @@
     document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
   }
   document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
 
   const errorBox = document.getElementById('errorBox');
   const successBox = document.getElementById('successBox');

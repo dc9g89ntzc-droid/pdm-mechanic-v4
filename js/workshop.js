@@ -19,6 +19,26 @@ const JOB_TYPES = [
   { value: 'engine_building', label: 'Engine Building' }
 ];
 
+// Role naming isn't standardised yet (live data has "manager"; earlier
+// test data used "foreman") -- check against a small set of elevated
+// names rather than one exact string. This is UI-level gating only, not
+// a real security boundary: every mechanic's browser uses the same anon
+// key regardless of who's logged in (no per-user Supabase Auth session),
+// so a technical user could bypass it. It's there to stop honest mistakes
+// (a mechanic wandering into the catalogue editor), not to stop misuse.
+const MANAGEMENT_ROLES = ['manager', 'foreman', 'admin', 'owner'];
+
+function hasManagementAccess(session) {
+  return !!session && MANAGEMENT_ROLES.includes((session.role || '').toLowerCase());
+}
+
+// Hides nav links to management-only pages for everyone else. Call after
+// requireSession() on every page that has these links in its header.
+function applyRoleNav(session) {
+  if (hasManagementAccess(session)) return;
+  document.querySelectorAll('nav a[href^="catalogue.html"], nav a[href^="reports.html"]').forEach((el) => el.remove());
+}
+
 async function searchCustomers(query) {
   const q = query.trim();
   if (!q) return [];
@@ -68,6 +88,18 @@ async function createVehicle({ registration, make, model, class: vClass, owner_i
     })
     .select('owned_vehicle_id, registration, make, model, class, owner_id, mileage')
     .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Unfiltered version of listActiveMechanics, for resolving actor names on
+// historical records (activity log, old jobs) where the mechanic may have
+// since gone inactive.
+async function listAllStaff() {
+  const { data, error } = await sb
+    .from('staff_directory')
+    .select('id, employee_name, role')
+    .order('employee_name');
   if (error) throw new Error(error.message);
   return data;
 }
@@ -208,4 +240,39 @@ function formatDateTimeEST(value) {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
   });
+}
+
+// Append-only activity trail (see 018_activity_log.sql) covering the
+// actions inventory_transactions doesn't: job status changes, catalogue
+// edits/deletions, quote/receipt generation. Never throws -- a logging
+// failure shouldn't block the actual action the user was trying to do,
+// so callers fire-and-forget this (errors just go to the console).
+async function logActivity({ actorId, action, entityType, entityId, summary, detail }) {
+  try {
+    const { error } = await sb.from('activity_log').insert({
+      actor_id: actorId || null,
+      action,
+      entity_type: entityType,
+      entity_id: entityId || null,
+      summary,
+      detail: detail || null
+    });
+    if (error) console.error('Failed to log activity:', error.message);
+  } catch (err) {
+    console.error('Failed to log activity:', err.message);
+  }
+}
+
+// actor_id has a real FK to mechanic_employees, but anon has no grant on
+// that base table (see 002_workshop_checkin.sql -- password_hash lives
+// there), so PostgREST can't auto-embed it. Resolve names client-side via
+// staff_directory instead, same workaround as listJobs' mechanicName.
+async function listActivityLog(limit = 100) {
+  const { data, error } = await sb
+    .from('activity_log')
+    .select('id, actor_id, action, entity_type, summary, detail, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return data;
 }

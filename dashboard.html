@@ -223,6 +223,7 @@
       <a href="dashboard.html" class="active">Workshop</a>
       <a href="checkin.html">New Job</a>
       <a href="catalogue.html">Catalogue</a>
+      <a href="reports.html">Reports</a>
     </nav>
     <div style="display:flex; align-items:center; gap:16px;">
       <span class="who" id="whoami"></span>
@@ -281,6 +282,7 @@
     document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
   }
   document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
 
   const boardEl = document.getElementById('board');
   const mechanicFilter = document.getElementById('filterMechanic');
@@ -289,6 +291,8 @@
   const toFilter = document.getElementById('filterTo');
 
   let activeJobId = null;
+  let activeJobNumber = null;
+  let activeJobPrevStatus = null;
   let mechanicsById = {};
 
   function currentFilters() {
@@ -404,6 +408,8 @@
 
   function openStatusModal(job) {
     activeJobId = job.id;
+    activeJobNumber = job.job_number;
+    activeJobPrevStatus = job.status;
     document.getElementById('statusModalTitle').textContent = `Job #${job.job_number}`;
     document.getElementById('statusModalSub').textContent =
       `${job.customers?.customer_name || 'Unknown customer'} — ${job.owned_vehicles?.registration || 'Unknown reg'}`;
@@ -436,6 +442,10 @@
     if (!activeJobId) return;
     try {
       await updateJobStatus(activeJobId, status);
+      logActivity({
+        actorId: session?.id, action: 'job_status_changed', entityType: 'job', entityId: activeJobId,
+        summary: `${session?.employee_name || 'Someone'} moved Job #${activeJobNumber} from ${jobStatusLabel(activeJobPrevStatus)} to ${jobStatusLabel(status)}`
+      });
       closeStatusModal();
       loadBoard();
     } catch (err) {
@@ -451,6 +461,12 @@
     try {
       await updateJobStatus(activeJobId, statusSelect.value);
       await updateJobTypes(activeJobId, selectedTypes);
+      if (statusSelect.value !== activeJobPrevStatus) {
+        logActivity({
+          actorId: session?.id, action: 'job_status_changed', entityType: 'job', entityId: activeJobId,
+          summary: `${session?.employee_name || 'Someone'} moved Job #${activeJobNumber} from ${jobStatusLabel(activeJobPrevStatus)} to ${jobStatusLabel(statusSelect.value)}`
+        });
+      }
       closeStatusModal();
       loadBoard();
     } catch (err) {

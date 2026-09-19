@@ -153,6 +153,32 @@ async function recordInventoryTransaction({ itemId, transactionType, quantity, p
   if (error) throw new Error(error.message);
 }
 
+// ---- Reporting (foreman) ----
+
+async function listInventoryTransactions(limit = 300) {
+  const { data, error } = await sb
+    .from('inventory_transactions')
+    .select('id, item_id, transaction_type, quantity, job_id, performed_by, notes, created_at, catalogue_items ( name )')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// PostgREST can't compare two columns of the same row in a filter
+// (stock_quantity <= reorder_threshold), so fetch active items that have
+// a threshold set and filter client-side -- fine at this catalogue's size.
+async function listLowStockItems() {
+  const { data, error } = await sb
+    .from('catalogue_items')
+    .select('id, name, stock_quantity, reorder_threshold, categories')
+    .not('reorder_threshold', 'is', null)
+    .eq('active', true)
+    .order('name');
+  if (error) throw new Error(error.message);
+  return data.filter((item) => item.stock_quantity <= item.reorder_threshold);
+}
+
 // ---- Tile browser (category -> subcategory -> item) ----
 
 async function listSubcategoriesForCategory(category) {

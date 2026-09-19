@@ -140,6 +140,7 @@
       <a href="dashboard.html">Workshop</a>
       <a href="checkin.html">New Job</a>
       <a href="catalogue.html" class="active">Catalogue</a>
+      <a href="reports.html">Reports</a>
     </nav>
     <div style="display:flex; align-items:center; gap:16px;">
       <span class="who" id="whoami"></span>
@@ -321,6 +322,15 @@
     document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
   }
   document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  // UI-level only -- see hasManagementAccess in workshop.js for why this
+  // isn't a real security boundary in this app's current auth model.
+  if (!hasManagementAccess(session)) {
+    document.querySelector('.filters').remove();
+    document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px; text-align:center;">This page is restricted to management roles.</div>';
+    throw new Error('Access restricted to management roles');
+  }
 
   const itemsBody = document.getElementById('itemsBody');
   const filterCategory = document.getElementById('filterCategory');
@@ -524,6 +534,10 @@
     try {
       if (editingItemId) {
         await updateCatalogueItem(editingItemId, form);
+        logActivity({
+          actorId: session?.id, action: 'catalogue_item_updated', entityType: 'catalogue_item', entityId: editingItemId,
+          summary: `${session?.employee_name || 'Someone'} updated "${form.name}"`
+        });
       } else {
         const startingStock = Number(document.getElementById('fStartingStock').value || 0);
         const { id } = await createCatalogueItem(form);
@@ -534,6 +548,10 @@
           });
         }
         editingItemId = id;
+        logActivity({
+          actorId: session?.id, action: 'catalogue_item_created', entityType: 'catalogue_item', entityId: id,
+          summary: `${session?.employee_name || 'Someone'} created "${form.name}"`
+        });
       }
       await loadItems();
       // Reopen in edit mode so ingredients/stock can be added straight away.
@@ -571,6 +589,10 @@
       `;
       div.querySelector('button').addEventListener('click', async () => {
         await removeIngredient(row.id);
+        logActivity({
+          actorId: session?.id, action: 'catalogue_ingredient_removed', entityType: 'catalogue_item', entityId: editingItemId,
+          summary: `${session?.employee_name || 'Someone'} removed ingredient "${ingredientName}" from an item`
+        });
         await loadIngredientsList();
       });
       container.appendChild(div);
@@ -625,6 +647,10 @@
       div.querySelector('button').addEventListener('click', async () => {
         try {
           await deleteSubcategory(s.id);
+          logActivity({
+            actorId: session?.id, action: 'catalogue_subcategory_deleted', entityType: 'catalogue_subcategory', entityId: s.id,
+            summary: `${session?.employee_name || 'Someone'} deleted subcategory "${s.name}"`
+          });
           await loadSubcategories();
           await renderSubcatList();
           await loadItems();

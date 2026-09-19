@@ -94,6 +94,7 @@
       <a href="dashboard.html">Workshop</a>
       <a href="checkin.html">New Job</a>
       <a href="catalogue.html">Catalogue</a>
+      <a href="reports.html">Reports</a>
     </nav>
     <div style="display:flex; align-items:center; gap:16px;">
       <span class="who" id="whoami"></span>
@@ -185,6 +186,7 @@
     document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
   }
   document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
 
   const params = new URLSearchParams(location.search);
   const jobId = params.get('job');
@@ -325,6 +327,10 @@
       await updateJobQuoteDocument(jobId, json.url);
       job.quote_document_url = json.url;
       job.quote_generated_at = new Date().toISOString();
+      logActivity({
+        actorId: session?.id, action: 'quote_generated', entityType: 'job', entityId: jobId,
+        summary: `${session?.employee_name || 'Someone'} generated a quote for Job #${job.job_number}`
+      });
       renderShareBox();
     } catch (err) {
       alert(`Failed to generate quote: ${err.message}`);

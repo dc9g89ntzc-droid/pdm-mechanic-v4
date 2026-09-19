@@ -100,6 +100,7 @@
       <a href="dashboard.html">Workshop</a>
       <a href="checkin.html">New Job</a>
       <a href="catalogue.html">Catalogue</a>
+      <a href="reports.html">Reports</a>
     </nav>
     <div style="display:flex; align-items:center; gap:16px;">
       <span class="who" id="whoami"></span>
@@ -191,6 +192,7 @@
     document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
   }
   document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
 
   const params = new URLSearchParams(location.search);
   const jobId = params.get('job');
@@ -333,6 +335,10 @@
       document.getElementById('jobSub').textContent = `${document.getElementById('jobSub').textContent.split(' · ').slice(0,2).join(' · ')} · ${jobStatusLabel('completed')}`;
       job.receipt_document_url = json.url;
       job.receipt_generated_at = new Date().toISOString();
+      logActivity({
+        actorId: session?.id, action: 'job_billed_completed', entityType: 'job', entityId: jobId,
+        summary: `${session?.employee_name || 'Someone'} billed and completed Job #${job.job_number}`
+      });
       renderShareBox();
     } catch (err) {
       alert(`Failed to generate receipt: ${err.message}`);

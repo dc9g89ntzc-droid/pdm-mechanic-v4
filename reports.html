@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Reports</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+
+  main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+  .card h2 { font-size: 14px; margin: 0 0 14px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 6px 8px; color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; border-bottom: 1px solid var(--panel-border); }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--panel-border); }
+  tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; }
+  .bar-cell { display: flex; align-items: center; gap: 8px; }
+  .bar-track { flex: 1; background: var(--bg); border-radius: 4px; height: 8px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--red); }
+  .low { color: var(--red); font-weight: 600; }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 20px; text-align: center; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .badge.used_on_job { background: rgba(216,31,39,0.15); color: #f0888c; }
+  .badge.crafted_in { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.purchased_in { background: rgba(56,189,248,0.15); color: #38bdf8; }
+  .badge.adjustment { background: rgba(240,165,44,0.15); color: var(--amber); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="dashboard.html">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="catalogue.html">Catalogue</a>
+      <a href="reports.html" class="active">Reports</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid-2">
+      <div class="card">
+        <h2>Low Stock</h2>
+        <div id="lowStockTable"></div>
+      </div>
+      <div class="card">
+        <h2>Most Used Items (used on jobs)</h2>
+        <div id="mostUsedTable"></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h2>Most Frequently Crafted</h2>
+        <div id="mostCraftedTable"></div>
+      </div>
+      <div class="card">
+        <h2>Recent Activity</h2>
+        <div id="activityTable"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Inventory Log</h2>
+      <div id="inventoryLogTable"></div>
+    </div>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/catalogue.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  if (!hasManagementAccess(session)) {
+    document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px;">This page is restricted to management roles.</div>';
+    throw new Error('Access restricted to management roles');
+  }
+
+  let staffById = {};
+
+  function staffName(id) {
+    if (!id) return 'Unknown';
+    return staffById[id] || 'Unknown';
+  }
+
+  async function loadStaff() {
+    const staff = await listAllStaff();
+    staffById = Object.fromEntries(staff.map((s) => [s.id, s.employee_name]));
+  }
+
+  function renderTable(container, rows, columns) {
+    if (rows.length === 0) {
+      container.innerHTML = '<div class="empty-msg">Nothing here yet.</div>';
+      return;
+    }
+    const html = `
+      <table>
+        <thead><tr>${columns.map((c) => `<th${c.num ? ' class="num"' : ''}>${c.label}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${rows.map((row) => `<tr>${columns.map((c) => `<td${c.num ? ' class="num"' : ''}>${c.render(row)}</td>`).join('')}</tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+    container.innerHTML = html;
+  }
+
+  async function loadLowStock() {
+    const items = await listLowStockItems();
+    renderTable(document.getElementById('lowStockTable'), items, [
+      { label: 'Item', render: (i) => i.name },
+      { label: 'Stock', num: true, render: (i) => `<span class="low">${i.stock_quantity}</span>` },
+      { label: 'Reorder At', num: true, render: (i) => i.reorder_threshold }
+    ]);
+  }
+
+  async function loadUsageReports() {
+    const txns = await listInventoryTransactions(300);
+
+    const usedTotals = {};
+    const craftedTotals = {};
+    txns.forEach((t) => {
+      const name = t.catalogue_items?.name || 'Unknown item';
+      if (t.transaction_type === 'used_on_job') {
+        usedTotals[name] = (usedTotals[name] || 0) + Math.abs(Number(t.quantity));
+      }
+      if (t.transaction_type === 'crafted_in') {
+        craftedTotals[name] = (craftedTotals[name] || 0) + 1;
+      }
+    });
+
+    const mostUsed = Object.entries(usedTotals).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const maxUsed = mostUsed.length ? mostUsed[0][1] : 1;
+    renderTable(document.getElementById('mostUsedTable'), mostUsed, [
+      { label: 'Item', render: ([name]) => `
+          <div class="bar-cell">
+            <span style="flex:0 0 auto; min-width:120px;">${name}</span>
+            <div class="bar-track"><div class="bar-fill" style="width:${(mostUsed.find(([n]) => n === name)[1] / maxUsed) * 100}%;"></div></div>
+          </div>` },
+      { label: 'Qty Used', num: true, render: ([, qty]) => qty }
+    ]);
+
+    const mostCrafted = Object.entries(craftedTotals).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    renderTable(document.getElementById('mostCraftedTable'), mostCrafted, [
+      { label: 'Item', render: ([name]) => name },
+      { label: 'Times Crafted', num: true, render: ([, count]) => count }
+    ]);
+
+    renderTable(document.getElementById('inventoryLogTable'), txns.slice(0, 50), [
+      { label: 'When', render: (t) => formatDateTime(t.created_at) },
+      { label: 'Item', render: (t) => t.catalogue_items?.name || 'Unknown item' },
+      { label: 'Type', render: (t) => `<span class="badge ${t.transaction_type}">${TRANSACTION_TYPES.find((x) => x.value === t.transaction_type)?.label || t.transaction_type}</span>` },
+      { label: 'Qty', num: true, render: (t) => t.quantity },
+      { label: 'By', render: (t) => staffName(t.performed_by) },
+      { label: 'Notes', render: (t) => t.notes || '' }
+    ]);
+  }
+
+  async function loadActivityLog() {
+    const log = await listActivityLog(50);
+    renderTable(document.getElementById('activityTable'), log, [
+      { label: 'When', render: (l) => formatDateTime(l.created_at) },
+      { label: 'Summary', render: (l) => l.summary }
+    ]);
+  }
+
+  loadStaff().then(() => Promise.all([loadLowStock(), loadUsageReports(), loadActivityLog()]));
+</script>
+</body>
+</html>

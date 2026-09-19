@@ -215,6 +215,7 @@
       <a href="dashboard.html">Workshop</a>
       <a href="checkin.html">New Job</a>
       <a href="catalogue.html">Catalogue</a>
+      <a href="reports.html">Reports</a>
     </nav>
     <button id="logoutBtn">Sign out</button>
   </header>
@@ -318,6 +319,7 @@
 <script>
   const session = requireSession();
   document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
 
   const errorBox = document.getElementById('errorBox');
   function showError(msg) { errorBox.textContent = msg; errorBox.style.display = 'block'; }
