@@ -97,13 +97,16 @@
       <label>Password</label>
       <input type="password" id="nPassword" />
       <label>Role</label>
-      <select id="nRole">
-        <option value="mechanic">Mechanic</option>
-        <option value="manager">Manager</option>
-        <option value="foreman">Foreman</option>
-        <option value="admin">Admin</option>
-      </select>
-      <p class="hint">Manager/Foreman/Admin get access to Catalogue, Reports, and Staff.</p>
+      <select id="nRole"></select>
+      <p class="hint">Foreman, Manager, and Boss get access to Catalogue, Reports, and Staff.</p>
+      <label>Citizen ID</label>
+      <input type="text" id="nCitizenId" />
+      <label>Phone number</label>
+      <input type="text" id="nPhoneNumber" />
+      <label>IBAN (bank code)</label>
+      <input type="text" id="nIban" />
+      <label>Discord ID</label>
+      <input type="text" id="nDiscordId" />
       <div class="actions">
         <button class="cancel" id="newCancelBtn">Cancel</button>
         <button class="save" id="newSaveBtn">Create</button>
@@ -116,16 +119,19 @@
     <div class="modal">
       <h2 id="editModalTitle">Edit staff member</h2>
       <label>Role</label>
-      <select id="eRole">
-        <option value="mechanic">Mechanic</option>
-        <option value="manager">Manager</option>
-        <option value="foreman">Foreman</option>
-        <option value="admin">Admin</option>
-      </select>
+      <select id="eRole"></select>
       <div class="checkbox-row">
         <input type="checkbox" id="eActive" />
         <label style="margin:0;">Active</label>
       </div>
+      <label>Citizen ID</label>
+      <input type="text" id="eCitizenId" />
+      <label>Phone number</label>
+      <input type="text" id="ePhoneNumber" />
+      <label>IBAN (bank code)</label>
+      <input type="text" id="eIban" />
+      <label>Discord ID</label>
+      <input type="text" id="eDiscordId" />
       <div class="actions">
         <button class="cancel" id="editCancelBtn">Cancel</button>
         <button class="save" id="editSaveBtn">Save</button>
@@ -160,8 +166,11 @@
   let staffList = [];
   let editingId = null;
 
+  document.getElementById('nRole').innerHTML = STAFF_ROLES.map((r) => `<option value="${r.value}">${r.label}</option>`).join('');
+  document.getElementById('eRole').innerHTML = STAFF_ROLES.map((r) => `<option value="${r.value}">${r.label}</option>`).join('');
+
   async function loadStaff() {
-    staffList = await listAllStaff();
+    staffList = await listAllStaffFull();
     const body = document.getElementById('staffBody');
     if (staffList.length === 0) {
       body.innerHTML = '<tr><td colspan="3"><div class="empty-msg">No staff yet.</div></td></tr>';
@@ -173,7 +182,7 @@
       if (!s.active) tr.className = 'inactive';
       tr.innerHTML = `
         <td>${s.employee_name}</td>
-        <td>${s.role}</td>
+        <td>${staffRoleLabel(s.role)}</td>
         <td><span class="badge ${s.active ? 'active' : 'inactive'}">${s.active ? 'Active' : 'Inactive'}</span></td>
       `;
       tr.addEventListener('click', () => openEditModal(s));
@@ -187,6 +196,10 @@
     document.getElementById('nName').value = '';
     document.getElementById('nPassword').value = '';
     document.getElementById('nRole').value = 'mechanic';
+    document.getElementById('nCitizenId').value = '';
+    document.getElementById('nPhoneNumber').value = '';
+    document.getElementById('nIban').value = '';
+    document.getElementById('nDiscordId').value = '';
     newModalBackdrop.classList.add('open');
   });
   document.getElementById('newCancelBtn').addEventListener('click', () => newModalBackdrop.classList.remove('open'));
@@ -196,12 +209,16 @@
     const employeeName = document.getElementById('nName').value.trim();
     const password = document.getElementById('nPassword').value;
     const role = document.getElementById('nRole').value;
+    const citizenId = document.getElementById('nCitizenId').value.trim();
+    const phoneNumber = document.getElementById('nPhoneNumber').value.trim();
+    const iban = document.getElementById('nIban').value.trim();
+    const discordId = document.getElementById('nDiscordId').value.trim();
     if (!employeeName || !password) { alert('Name and password are required.'); return; }
     try {
-      const created = await createStaff({ employeeName, password, role });
+      const created = await createStaff({ employeeName, password, role, citizenId, phoneNumber, iban, discordId });
       logActivity({
         actorId: session?.id, action: 'staff_created', entityType: 'mechanic_employee', entityId: created?.id,
-        summary: `${session?.employee_name || 'Someone'} created staff account "${employeeName}" (${role})`
+        summary: `${session?.employee_name || 'Someone'} created staff account "${employeeName}" (${staffRoleLabel(role)})`
       });
       newModalBackdrop.classList.remove('open');
       await loadStaff();
@@ -217,6 +234,10 @@
     document.getElementById('editModalTitle').textContent = s.employee_name;
     document.getElementById('eRole').value = s.role;
     document.getElementById('eActive').checked = s.active;
+    document.getElementById('eCitizenId').value = s.citizen_id || '';
+    document.getElementById('ePhoneNumber').value = s.phone_number || '';
+    document.getElementById('eIban').value = s.iban || '';
+    document.getElementById('eDiscordId').value = s.discord_id || '';
     document.getElementById('eNewPassword').value = '';
     editModalBackdrop.classList.add('open');
   }
@@ -227,12 +248,16 @@
     if (!editingId) return;
     const role = document.getElementById('eRole').value;
     const active = document.getElementById('eActive').checked;
+    const citizenId = document.getElementById('eCitizenId').value.trim();
+    const phoneNumber = document.getElementById('ePhoneNumber').value.trim();
+    const iban = document.getElementById('eIban').value.trim();
+    const discordId = document.getElementById('eDiscordId').value.trim();
     try {
-      await updateStaff({ id: editingId, role, active });
+      await updateStaff({ id: editingId, role, active, citizenId, phoneNumber, iban, discordId });
       const staffMember = staffList.find((s) => s.id === editingId);
       logActivity({
         actorId: session?.id, action: 'staff_updated', entityType: 'mechanic_employee', entityId: editingId,
-        summary: `${session?.employee_name || 'Someone'} updated "${staffMember?.employee_name || editingId}" -- role: ${role}, active: ${active}`
+        summary: `${session?.employee_name || 'Someone'} updated "${staffMember?.employee_name || editingId}" -- role: ${staffRoleLabel(role)}, active: ${active}`
       });
       editModalBackdrop.classList.remove('open');
       await loadStaff();

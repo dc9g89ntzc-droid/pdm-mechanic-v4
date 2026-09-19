@@ -19,14 +19,27 @@ const JOB_TYPES = [
   { value: 'engine_building', label: 'Engine Building' }
 ];
 
-// Role naming isn't standardised yet (live data has "manager"; earlier
-// test data used "foreman") -- check against a small set of elevated
-// names rather than one exact string. This is UI-level gating only, not
-// a real security boundary: every mechanic's browser uses the same anon
-// key regardless of who's logged in (no per-user Supabase Auth session),
-// so a technical user could bypass it. It's there to stop honest mistakes
-// (a mechanic wandering into the catalogue editor), not to stop misuse.
-const MANAGEMENT_ROLES = ['manager', 'foreman', 'admin', 'owner'];
+// The shop's real staff hierarchy, low to high.
+const STAFF_ROLES = [
+  { value: 'apprentice', label: 'Apprentice' },
+  { value: 'mechanic', label: 'Mechanic' },
+  { value: 'master_mechanic', label: 'Master Mechanic' },
+  { value: 'foreman', label: 'Foreman' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'boss', label: 'Boss (Admin)' }
+];
+
+function staffRoleLabel(value) {
+  return STAFF_ROLES.find((r) => r.value === value)?.label || value;
+}
+
+// Foreman and above run the shop; apprentice/mechanic/master_mechanic are
+// the tool-turning tiers. This is UI-level gating only, not a real
+// security boundary: every mechanic's browser uses the same anon key
+// regardless of who's logged in (no per-user Supabase Auth session), so a
+// technical user could bypass it. It's there to stop honest mistakes (a
+// mechanic wandering into the catalogue editor), not to stop misuse.
+const MANAGEMENT_ROLES = ['foreman', 'manager', 'boss'];
 
 function hasManagementAccess(session) {
   return !!session && MANAGEMENT_ROLES.includes((session.role || '').toLowerCase());
@@ -104,21 +117,37 @@ async function listAllStaff() {
   return data;
 }
 
-// mechanic_employees has zero anon policies (it holds password_hash), so
-// these go through security-definer RPCs (019_staff_management_rpcs.sql)
-// rather than direct table access -- same pattern as mechanic_verify_login.
-async function createStaff({ employeeName, password, role }) {
+// mechanic_employees has zero anon policies (it holds password_hash and,
+// as of 020, citizen_id/iban/discord_id -- more sensitive than
+// employee_name/role), so these go through security-definer RPCs rather
+// than direct table access -- same pattern as mechanic_verify_login.
+async function createStaff({ employeeName, password, role, citizenId, phoneNumber, iban, discordId }) {
   const { data, error } = await sb.rpc('mechanic_create_staff', {
-    p_employee_name: employeeName, p_password: password, p_role: role
+    p_employee_name: employeeName, p_password: password, p_role: role,
+    p_citizen_id: citizenId || null, p_phone_number: phoneNumber || null,
+    p_iban: iban || null, p_discord_id: discordId || null
   });
   if (error) throw new Error(error.message);
   return data?.[0];
 }
 
-async function updateStaff({ id, role, active }) {
-  const { data, error } = await sb.rpc('mechanic_update_staff', { p_id: id, p_role: role, p_active: active });
+async function updateStaff({ id, role, active, citizenId, phoneNumber, iban, discordId }) {
+  const { data, error } = await sb.rpc('mechanic_update_staff', {
+    p_id: id, p_role: role, p_active: active,
+    p_citizen_id: citizenId || null, p_phone_number: phoneNumber || null,
+    p_iban: iban || null, p_discord_id: discordId || null
+  });
   if (error) throw new Error(error.message);
   return data?.[0];
+}
+
+// Full record (citizen_id/phone/iban/discord included) for the Staff
+// management page only -- everywhere else keeps using listAllStaff /
+// listActiveMechanics, which stay on the safe staff_directory view.
+async function listAllStaffFull() {
+  const { data, error } = await sb.rpc('mechanic_list_staff_full');
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 async function resetStaffPassword(id, newPassword) {
