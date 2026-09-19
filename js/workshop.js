@@ -235,6 +235,20 @@ async function listShiftsForMechanic(mechanicId, from, to) {
   return data;
 }
 
+// Same shape, every mechanic -- for Payroll's one-row-per-employee table
+// (hours worked this period), rather than one mechanic's own dashboard.
+async function listShiftsForPeriod(from, to) {
+  let query = sb
+    .from('shift_log')
+    .select('id, mechanic_id, clock_in, clock_out')
+    .order('clock_in', { ascending: false });
+  if (from) query = query.gte('clock_in', from);
+  if (to) query = query.lt('clock_in', to);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 // Jobs billed (receipt generated) in a window -- the basis for Accounts'
 // revenue figures.
 async function listBilledJobs({ from, to, limit = 300 } = {}) {
