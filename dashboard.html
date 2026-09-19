@@ -225,6 +225,7 @@
       <a href="catalogue.html">Catalogue</a>
       <a href="reports.html">Reports</a>
       <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
     </nav>
     <div style="display:flex; align-items:center; gap:16px;">
       <span class="who" id="whoami"></span>
@@ -278,6 +279,7 @@
 <script src="js/supabaseClient.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -345,7 +347,7 @@
           ${job.short_description ? `<div class="desc">${job.short_description}</div>` : ''}
           <div class="badges" style="margin-bottom:8px;">${typeBadges}</div>
           <div class="meta-row">
-            <span class="${job.quoted_total === null ? 'total unknown' : 'total'}">${formatMoney(job.quoted_total)}</span>
+            <span class="${job.quoted_total === null ? 'total unknown' : 'total'}">${formatMoney(grandTotalFor(job.quoted_total))}</span>
           </div>
           <div class="meta-row" style="margin-top:6px;">
             <span>${mechanic}</span>

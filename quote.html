@@ -64,7 +64,8 @@
   #quoteSheet th { text-align: left; padding: 8px 6px; border-bottom: 2px solid #1a1a1a; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
   #quoteSheet td { padding: 8px 6px; border-bottom: 1px solid #ddd; }
   #quoteSheet td.num, #quoteSheet th.num { text-align: right; }
-  #quoteSheet .total-row td { border-bottom: none; border-top: 2px solid #1a1a1a; font-weight: 700; font-size: 15px; padding-top: 12px; }
+  #quoteSheet .subtotal-row td { border-bottom: none; color: #555; font-size: 12.5px; padding-top: 6px; padding-bottom: 2px; }
+  #quoteSheet .total-row td { border-bottom: none; border-top: 2px solid #1a1a1a; font-weight: 700; font-size: 15px; padding-top: 10px; }
   #quoteSheet .sheet-footer { font-size: 11px; color: #777; margin-top: 24px; border-top: 1px solid #ddd; padding-top: 12px; }
   #quoteSheet .empty-note { color: #777; font-style: italic; font-size: 13px; padding: 20px 0; }
 
@@ -96,6 +97,7 @@
       <a href="catalogue.html">Catalogue</a>
       <a href="reports.html">Reports</a>
       <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
     </nav>
     <div style="display:flex; align-items:center; gap:16px;">
       <span class="who" id="whoami"></span>
@@ -167,6 +169,8 @@
         </thead>
         <tbody id="sheetLines"></tbody>
         <tfoot>
+          <tr class="subtotal-row"><td colspan="3">Parts Subtotal</td><td class="num" id="sheetSubtotal">To confirm</td></tr>
+          <tr class="subtotal-row"><td colspan="3">Labour Fee (10%)</td><td class="num" id="sheetLabourFee">To confirm</td></tr>
           <tr class="total-row"><td colspan="3">Total</td><td class="num" id="sheetTotal">To confirm</td></tr>
         </tfoot>
       </table>
@@ -179,6 +183,7 @@
 <script src="js/supabaseClient.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
 <script src="js/catalogue.js"></script>
 <script src="js/inspection.js"></script>
 <script>
@@ -222,7 +227,9 @@
     document.getElementById('sheetDate').textContent = formatDateTimeEST();
     document.getElementById('sheetCustomer').textContent = job.customers?.customer_name || 'Unknown customer';
     document.getElementById('sheetVehicle').textContent = `${vehicle} — ${reg}`;
-    document.getElementById('sheetTotal').textContent = formatMoney(job.quoted_total);
+    document.getElementById('sheetSubtotal').textContent = formatMoney(job.quoted_total);
+    document.getElementById('sheetLabourFee').textContent = formatMoney(labourFeeFor(job.quoted_total));
+    document.getElementById('sheetTotal').textContent = formatMoney(grandTotalFor(job.quoted_total));
 
     // Assigned mechanic if the job has one; otherwise whoever's generating
     // this document right now, so the quote never shows a blank mechanic.

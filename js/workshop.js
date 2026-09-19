@@ -50,7 +50,7 @@ function hasManagementAccess(session) {
 // requireSession() on every page that has these links in its header.
 function applyRoleNav(session) {
   if (hasManagementAccess(session)) return;
-  document.querySelectorAll('nav a[href^="catalogue.html"], nav a[href^="reports.html"], nav a[href^="staff.html"]').forEach((el) => el.remove());
+  document.querySelectorAll('nav a[href^="catalogue.html"], nav a[href^="reports.html"], nav a[href^="staff.html"], nav a[href^="payroll.html"]').forEach((el) => el.remove());
 }
 
 async function searchCustomers(query) {
@@ -104,6 +104,72 @@ async function createVehicle({ registration, make, model, class: vClass, owner_i
     .single();
   if (error) throw new Error(error.message);
   return data;
+}
+
+// ---- Shift clock & payroll ----
+
+async function getOpenShift(mechanicId) {
+  const { data, error } = await sb
+    .from('shift_log')
+    .select('id, clock_in')
+    .eq('mechanic_id', mechanicId)
+    .is('clock_out', null)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function clockIn(mechanicId) {
+  const { data, error } = await sb
+    .from('shift_log')
+    .insert({ mechanic_id: mechanicId })
+    .select('id, clock_in')
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function clockOutShift(shiftId, reason) {
+  const { error } = await sb
+    .from('shift_log')
+    .update({ clock_out: new Date().toISOString(), clock_out_reason: reason })
+    .eq('id', shiftId);
+  if (error) throw new Error(error.message);
+}
+
+const SHIFT_PAY_RATE_PER_HOUR = 10000; // matches the server's general civ-job baseline
+
+async function recordShiftPay(mechanicId, shiftId, clockInAt, clockOutAt) {
+  const hours = (new Date(clockOutAt) - new Date(clockInAt)) / 3600000;
+  if (hours <= 0) return;
+  const amount = Math.round(hours * SHIFT_PAY_RATE_PER_HOUR * 100) / 100;
+  const { error } = await sb.from('payroll_ledger').insert({
+    mechanic_id: mechanicId, entry_type: 'shift_pay', amount, reference_id: shiftId,
+    notes: `${hours.toFixed(2)}h on shift`
+  });
+  if (error) throw new Error(error.message);
+}
+
+async function recordCommission(mechanicId, jobId, amount, notes) {
+  const { error } = await sb.from('payroll_ledger').insert({
+    mechanic_id: mechanicId, entry_type: 'commission', amount, reference_id: jobId, notes
+  });
+  if (error) throw new Error(error.message);
+}
+
+async function listPayrollLedger(limit = 300) {
+  const { data, error } = await sb
+    .from('payroll_ledger')
+    .select('id, mechanic_id, entry_type, amount, reference_id, notes, paid, paid_at, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function markPayrollEntryPaid(id) {
+  const { error } = await sb.from('payroll_ledger').update({ paid: true, paid_at: new Date().toISOString() }).eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 // ---- Vehicle & customer history ----
@@ -336,6 +402,23 @@ function jobTypeLabel(value) {
 function formatMoney(value) {
   if (value === null || value === undefined) return 'To confirm';
   return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Shop policy: a 10% labour fee on top of the parts subtotal, paid in full
+// to the job's assigned mechanic as commission. jobs.quoted_total (the DB
+// trigger-maintained sum of job_items) stays parts-only on purpose -- the
+// labour fee and grand total are always derived from it, never stored, so
+// they can't drift out of sync if quoted_total changes.
+const LABOUR_FEE_RATE = 0.10;
+
+function labourFeeFor(partsSubtotal) {
+  if (partsSubtotal === null || partsSubtotal === undefined) return null;
+  return Math.round(Number(partsSubtotal) * LABOUR_FEE_RATE * 100) / 100;
+}
+
+function grandTotalFor(partsSubtotal) {
+  if (partsSubtotal === null || partsSubtotal === undefined) return null;
+  return Math.round(Number(partsSubtotal) * (1 + LABOUR_FEE_RATE) * 100) / 100;
 }
 
 function formatDateTime(value) {
