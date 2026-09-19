@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Accounts</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+
+  main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+
+  .period-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .period-nav { display: flex; align-items: center; gap: 10px; }
+  .period-nav button { background: var(--panel); border: 1px solid var(--panel-border); color: var(--text); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  .period-nav button:hover { border-color: var(--red); }
+  .period-label { font-size: 14px; font-weight: 600; min-width: 260px; text-align: center; }
+  .this-week-btn { font-weight: 400; color: var(--text-dim); background: transparent; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 10px; }
+  .stat-card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; }
+  .stat-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin-bottom: 8px; }
+  .stat-card .value { font-size: 20px; font-weight: 700; }
+  .stat-card.revenue .value { color: var(--green); }
+  .stat-card.outflow .value { color: #f0888c; }
+  .stat-card.net .value { color: var(--amber); }
+
+  .caveat { font-size: 12px; color: var(--text-dim); margin: 8px 0 24px; padding: 12px 14px; border-left: 3px solid var(--panel-border); }
+
+  .card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 18px; }
+  .card h2 { font-size: 14px; margin: 0 0 14px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px; color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; border-bottom: 1px solid var(--panel-border); }
+  td { padding: 8px; border-bottom: 1px solid var(--panel-border); }
+  tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 20px; text-align: center; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="my-dashboard.html">Home</a>
+      <a href="dashboard.html">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="catalogue.html">Catalogue</a>
+      <a href="reports.html">Reports</a>
+      <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
+      <a href="accounts.html" class="active">Accounts</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="period-bar">
+      <div class="period-nav">
+        <button id="prevWeekBtn">&larr; Previous week</button>
+        <span class="period-label" id="periodLabel"></span>
+        <button id="nextWeekBtn">Next week &rarr;</button>
+      </div>
+      <button class="period-nav this-week-btn" id="thisWeekBtn">This week</button>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card revenue">
+        <div class="label">Revenue Billed</div>
+        <div class="value" id="statRevenue">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Parts Revenue</div>
+        <div class="value" id="statParts">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Labour Revenue</div>
+        <div class="value" id="statLabour">—</div>
+      </div>
+      <div class="stat-card outflow">
+        <div class="label">Payroll Paid Out</div>
+        <div class="value" id="statPaid">—</div>
+      </div>
+      <div class="stat-card outflow">
+        <div class="label">Payroll Outstanding</div>
+        <div class="value" id="statOutstanding">—</div>
+      </div>
+      <div class="stat-card net">
+        <div class="label">Net (Revenue − Payroll)</div>
+        <div class="value" id="statNet">—</div>
+      </div>
+    </div>
+    <div class="caveat">
+      Net is revenue minus total payroll (paid + outstanding) for the week. It doesn't subtract the
+      shop's own cost of parts sold, since catalogue prices can change after a sale and per-sale cost
+      isn't snapshotted the way the customer price is — so this is gross margin after labour, not a
+      full profit figure.
+    </div>
+
+    <div class="card">
+      <h2>Billed Jobs This Week</h2>
+      <div id="jobsTable"></div>
+    </div>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  if (!hasManagementAccess(session)) {
+    document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px;">This page is restricted to management roles.</div>';
+    throw new Error('Access restricted to management roles');
+  }
+
+  let periodStart = getPayPeriodStart(new Date());
+  let staffById = {};
+
+  async function loadStaff() {
+    const staff = await listAllStaff();
+    staffById = Object.fromEntries(staff.map((s) => [s.id, s.employee_name]));
+  }
+
+  function renderPeriodBar() {
+    document.getElementById('periodLabel').textContent = formatPayPeriodLabel(periodStart);
+    const isCurrent = periodStart.getTime() === getPayPeriodStart(new Date()).getTime();
+    document.getElementById('thisWeekBtn').style.visibility = isCurrent ? 'hidden' : 'visible';
+  }
+
+  function renderJobsTable(jobs) {
+    const container = document.getElementById('jobsTable');
+    if (jobs.length === 0) {
+      container.innerHTML = '<div class="empty-msg">No jobs billed this week.</div>';
+      return;
+    }
+    container.innerHTML = `
+      <table>
+        <thead><tr><th>Job</th><th>Customer</th><th>Mechanic</th><th>Billed</th><th class="num">Parts</th><th class="num">Labour</th><th class="num">Total</th></tr></thead>
+        <tbody>
+          ${jobs.map((j) => `
+            <tr>
+              <td>#${j.job_number}</td>
+              <td>${j.customers?.customer_name || 'Unknown'}</td>
+              <td>${staffById[j.assigned_staff_id] || 'Unassigned'}</td>
+              <td>${formatDateTime(j.receipt_generated_at)}</td>
+              <td class="num">${formatMoney(j.quoted_total)}</td>
+              <td class="num">${formatMoney(labourFeeFor(j.quoted_total))}</td>
+              <td class="num">${formatMoney(grandTotalFor(j.quoted_total))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  async function loadPeriod() {
+    renderPeriodBar();
+    const from = periodStart.toISOString();
+    const to = new Date(periodStart.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [jobs, ledger] = await Promise.all([
+      listBilledJobs({ from, to }),
+      listPayrollLedger({ from, to })
+    ]);
+
+    const partsRevenue = jobs.reduce((sum, j) => sum + (Number(j.quoted_total) || 0), 0);
+    const labourRevenue = jobs.reduce((sum, j) => sum + (labourFeeFor(j.quoted_total) || 0), 0);
+    const totalRevenue = partsRevenue + labourRevenue;
+    const paidOut = ledger.filter((e) => e.paid).reduce((sum, e) => sum + Number(e.amount), 0);
+    const outstanding = ledger.filter((e) => !e.paid).reduce((sum, e) => sum + Number(e.amount), 0);
+    const net = totalRevenue - (paidOut + outstanding);
+
+    document.getElementById('statRevenue').textContent = formatMoney(totalRevenue);
+    document.getElementById('statParts').textContent = formatMoney(partsRevenue);
+    document.getElementById('statLabour').textContent = formatMoney(labourRevenue);
+    document.getElementById('statPaid').textContent = formatMoney(paidOut);
+    document.getElementById('statOutstanding').textContent = formatMoney(outstanding);
+    document.getElementById('statNet').textContent = formatMoney(net);
+
+    renderJobsTable(jobs);
+  }
+
+  document.getElementById('prevWeekBtn').addEventListener('click', () => {
+    periodStart = new Date(periodStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    loadPeriod();
+  });
+  document.getElementById('nextWeekBtn').addEventListener('click', () => {
+    periodStart = new Date(periodStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+    loadPeriod();
+  });
+  document.getElementById('thisWeekBtn').addEventListener('click', () => {
+    periodStart = getPayPeriodStart(new Date());
+    loadPeriod();
+  });
+
+  loadStaff().then(loadPeriod);
+</script>
+</body>
+</html>

@@ -50,7 +50,7 @@ function hasManagementAccess(session) {
 // requireSession() on every page that has these links in its header.
 function applyRoleNav(session) {
   if (hasManagementAccess(session)) return;
-  document.querySelectorAll('nav a[href^="catalogue.html"], nav a[href^="reports.html"], nav a[href^="staff.html"], nav a[href^="payroll.html"]').forEach((el) => el.remove());
+  document.querySelectorAll('nav a[href^="catalogue.html"], nav a[href^="reports.html"], nav a[href^="staff.html"], nav a[href^="payroll.html"], nav a[href^="accounts.html"]').forEach((el) => el.remove());
 }
 
 async function searchCustomers(query) {
@@ -158,7 +158,7 @@ async function recordCommission(mechanicId, jobId, amount, notes) {
 }
 
 // from/to are ISO timestamps -- pass both to scope to one pay period.
-async function listPayrollLedger({ from, to, limit = 300 } = {}) {
+async function listPayrollLedger({ from, to, mechanicId, limit = 300 } = {}) {
   let query = sb
     .from('payroll_ledger')
     .select('id, mechanic_id, entry_type, amount, reference_id, notes, paid, paid_at, created_at')
@@ -166,6 +166,43 @@ async function listPayrollLedger({ from, to, limit = 300 } = {}) {
     .limit(limit);
   if (from) query = query.gte('created_at', from);
   if (to) query = query.lt('created_at', to);
+  if (mechanicId) query = query.eq('mechanic_id', mechanicId);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Closed shifts overlapping [from, to) plus, if the mechanic is currently
+// clocked in, their still-open shift -- callers add elapsed-so-far
+// themselves since "now" keeps moving.
+async function listShiftsForMechanic(mechanicId, from, to) {
+  let query = sb
+    .from('shift_log')
+    .select('id, clock_in, clock_out, clock_out_reason')
+    .eq('mechanic_id', mechanicId)
+    .order('clock_in', { ascending: false });
+  if (from) query = query.gte('clock_in', from);
+  if (to) query = query.lt('clock_in', to);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Jobs billed (receipt generated) in a window -- the basis for Accounts'
+// revenue figures.
+async function listBilledJobs({ from, to, limit = 300 } = {}) {
+  let query = sb
+    .from('jobs')
+    .select(`
+      id, job_number, quoted_total, assigned_staff_id, receipt_generated_at,
+      customers ( customer_name ),
+      owned_vehicles ( registration, make, model )
+    `)
+    .not('receipt_generated_at', 'is', null)
+    .order('receipt_generated_at', { ascending: false })
+    .limit(limit);
+  if (from) query = query.gte('receipt_generated_at', from);
+  if (to) query = query.lt('receipt_generated_at', to);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return data;
@@ -349,7 +386,7 @@ async function listJobs(filters = {}) {
     .select(`
       id, job_number, job_types, status, short_description, quoted_total,
       arrival_time, expected_completion, created_at, assigned_staff_id,
-      customer_id, owned_vehicle_id,
+      customer_id, owned_vehicle_id, quote_document_url, receipt_document_url,
       customers ( customer_name ),
       owned_vehicles ( registration, make, model )
     `)

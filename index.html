@@ -115,7 +115,7 @@
 <script src="js/auth.js"></script>
 <script>
   if (getSession()) {
-    window.location.href = 'dashboard.html';
+    window.location.href = 'my-dashboard.html';
   }
 
   const form = document.getElementById('loginForm');
@@ -133,7 +133,7 @@
         document.getElementById('employeeName').value.trim(),
         document.getElementById('password').value
       );
-      window.location.href = 'dashboard.html';
+      window.location.href = 'my-dashboard.html';
     } catch (err) {
       errorBox.textContent = err.message;
       errorBox.style.display = 'block';

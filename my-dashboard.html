@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Home</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary, .btn.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+
+  main { padding: 24px; max-width: 1000px; margin: 0 auto; }
+  .welcome { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .welcome-sub { color: var(--text-dim); font-size: 13px; margin-bottom: 24px; }
+
+  .quick-links { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat-card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; }
+  .stat-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin-bottom: 8px; }
+  .stat-card .value { font-size: 22px; font-weight: 700; }
+  .stat-card .value.money { color: var(--green); }
+
+  .section-title { font-size: 14px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 28px 0 12px; }
+  .card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden; }
+  .job-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--panel-border); gap: 12px; flex-wrap: wrap; }
+  .job-row:last-child { border-bottom: none; }
+  .job-row a { color: var(--text); text-decoration: none; }
+  .job-row .job-main { font-weight: 600; font-size: 13px; }
+  .job-row .job-sub { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  .job-row .job-right { text-align: right; font-size: 12px; color: var(--text-dim); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; background: rgba(216,31,39,0.15); color: #f0888c; }
+  .shift-list { font-size: 13px; }
+  .shift-list .shift-row { display: flex; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--panel-border); }
+  .shift-list .shift-row:last-child { border-bottom: none; }
+  .shift-list .shift-dim { color: var(--text-dim); font-size: 12px; }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 24px; text-align: center; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="my-dashboard.html" class="active">Home</a>
+      <a href="dashboard.html">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="catalogue.html">Catalogue</a>
+      <a href="reports.html">Reports</a>
+      <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
+      <a href="accounts.html">Accounts</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="welcome" id="welcomeText">Welcome back</div>
+    <div class="welcome-sub" id="periodLabel"></div>
+
+    <div class="quick-links">
+      <a href="checkin.html" class="btn">+ New Job</a>
+      <a href="dashboard.html" class="btn secondary">Workshop Board</a>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="label">Hours This Week</div>
+        <div class="value" id="statHours">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Shift Pay</div>
+        <div class="value money" id="statShiftPay">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Commission</div>
+        <div class="value money" id="statCommission">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total This Week</div>
+        <div class="value money" id="statTotal">—</div>
+      </div>
+    </div>
+
+    <div class="section-title">My Active Jobs</div>
+    <div class="card" id="activeJobsCard"></div>
+
+    <div class="section-title">This Week's Shifts</div>
+    <div class="card" id="shiftsCard"></div>
+
+    <div class="section-title">Recently Completed</div>
+    <div class="card" id="completedJobsCard"></div>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+    document.getElementById('welcomeText').textContent = `Welcome back, ${session.employee_name}`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  const periodStart = getPayPeriodStart(new Date());
+  const periodEnd = new Date(periodStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+  document.getElementById('periodLabel').textContent = `This week: ${formatPayPeriodLabel(periodStart)}`;
+
+  function renderJobRow(job, mode) {
+    const vehicle = job.owned_vehicles ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() : 'Unknown vehicle';
+    const reg = job.owned_vehicles?.registration || 'Unknown';
+    const href = mode === 'completed'
+      ? (job.receipt_document_url || `receipt.html?job=${job.id}`)
+      : `job-items.html?job=${job.id}`;
+    const target = mode === 'completed' && job.receipt_document_url ? ' target="_blank" rel="noopener"' : '';
+    return `
+      <a class="job-row" href="${href}"${target}>
+        <div>
+          <div class="job-main">Job #${job.job_number} — ${job.customers?.customer_name || 'Unknown'}</div>
+          <div class="job-sub">${vehicle} · ${reg}</div>
+        </div>
+        <div class="job-right">
+          <span class="badge">${jobStatusLabel(job.status)}</span><br/>
+          ${formatMoney(grandTotalFor(job.quoted_total))}
+        </div>
+      </a>
+    `;
+  }
+
+  async function loadJobs() {
+    const jobs = await listJobs({ mechanicId: session.id });
+    const active = jobs.filter((j) => j.status !== 'completed' && j.status !== 'cancelled');
+    const completed = jobs.filter((j) => j.status === 'completed').slice(0, 8);
+
+    const activeCard = document.getElementById('activeJobsCard');
+    activeCard.innerHTML = active.length
+      ? active.map((j) => renderJobRow(j, 'active')).join('')
+      : '<div class="empty-msg">No active jobs assigned to you right now.</div>';
+
+    const completedCard = document.getElementById('completedJobsCard');
+    completedCard.innerHTML = completed.length
+      ? completed.map((j) => renderJobRow(j, 'completed')).join('')
+      : '<div class="empty-msg">No completed jobs yet.</div>';
+  }
+
+  function formatHours(ms) {
+    return (ms / 3600000).toFixed(1);
+  }
+
+  async function loadShiftsAndPay() {
+    const shifts = await listShiftsForMechanic(session.id, periodStart.toISOString(), periodEnd.toISOString());
+    let totalMs = 0;
+    const shiftsCard = document.getElementById('shiftsCard');
+    if (shifts.length === 0) {
+      shiftsCard.innerHTML = '<div class="empty-msg">No shifts clocked this week yet.</div>';
+    } else {
+      shiftsCard.innerHTML = `<div class="shift-list">${shifts.map((s) => {
+        const start = new Date(s.clock_in);
+        const end = s.clock_out ? new Date(s.clock_out) : new Date();
+        const ms = end - start;
+        totalMs += ms;
+        const label = s.clock_out ? formatHours(ms) + 'h' : `${formatHours(ms)}h so far`;
+        return `<div class="shift-row"><span>${formatDateTime(s.clock_in)}</span><span class="shift-dim">${label}</span></div>`;
+      }).join('')}</div>`;
+    }
+    document.getElementById('statHours').textContent = formatHours(totalMs);
+
+    const ledger = await listPayrollLedger({ from: periodStart.toISOString(), to: periodEnd.toISOString(), mechanicId: session.id });
+    const shiftPay = ledger.filter((e) => e.entry_type === 'shift_pay').reduce((sum, e) => sum + Number(e.amount), 0);
+    const commission = ledger.filter((e) => e.entry_type === 'commission').reduce((sum, e) => sum + Number(e.amount), 0);
+    document.getElementById('statShiftPay').textContent = formatMoney(shiftPay);
+    document.getElementById('statCommission').textContent = formatMoney(commission);
+    document.getElementById('statTotal').textContent = formatMoney(shiftPay + commission);
+  }
+
+  loadJobs();
+  loadShiftsAndPay();
+</script>
+</body>
+</html>
