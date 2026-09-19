@@ -157,14 +157,36 @@ async function recordCommission(mechanicId, jobId, amount, notes) {
   if (error) throw new Error(error.message);
 }
 
-async function listPayrollLedger(limit = 300) {
-  const { data, error } = await sb
+// from/to are ISO timestamps -- pass both to scope to one pay period.
+async function listPayrollLedger({ from, to, limit = 300 } = {}) {
+  let query = sb
     .from('payroll_ledger')
     .select('id, mechanic_id, entry_type, amount, reference_id, notes, paid, paid_at, created_at')
     .order('created_at', { ascending: false })
     .limit(limit);
+  if (from) query = query.gte('created_at', from);
+  if (to) query = query.lt('created_at', to);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return data;
+}
+
+// The shop's pay periods run Monday 12:00 GMT to the following Monday
+// 12:00 GMT (i.e. up to 11:59:59 that morning) -- fixed weekly boundaries,
+// not the calendar week. "GMT" here is literal UTC+0 year-round, not
+// London local time, so this doesn't shift with British daylight saving.
+function getPayPeriodStart(date) {
+  const d = new Date(date);
+  const daysSinceMonday = (d.getUTCDay() + 6) % 7; // Mon=0 ... Sun=6
+  const candidate = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - daysSinceMonday, 12, 0, 0, 0));
+  if (candidate.getTime() > d.getTime()) candidate.setUTCDate(candidate.getUTCDate() - 7);
+  return candidate;
+}
+
+function formatPayPeriodLabel(start) {
+  const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const fmt = (d) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return `${fmt(start)} 12:00 GMT — ${fmt(end)} 12:00 GMT`;
 }
 
 async function markPayrollEntryPaid(id) {

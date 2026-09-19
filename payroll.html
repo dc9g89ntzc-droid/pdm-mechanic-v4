@@ -29,15 +29,27 @@
 
   main { padding: 24px; max-width: 1100px; margin: 0 auto; }
 
-  .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .period-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .period-nav { display: flex; align-items: center; gap: 10px; }
+  .period-nav button { background: var(--panel); border: 1px solid var(--panel-border); color: var(--text); border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  .period-nav button:hover { border-color: var(--red); }
+  .period-label { font-size: 14px; font-weight: 600; min-width: 260px; text-align: center; }
+  .period-nav .this-week-btn { font-weight: 400; color: var(--text-dim); }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin-bottom: 24px; }
   .summary-card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; }
-  .summary-card .name { font-weight: 600; font-size: 14px; margin-bottom: 8px; }
+  .summary-card .name { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+  .summary-card .iban { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-dim); margin-bottom: 8px; letter-spacing: 0.01em; }
   .summary-card .owed { font-size: 22px; font-weight: 700; color: var(--green); }
   .summary-card .owed.zero { color: var(--text-dim); font-weight: 400; font-size: 16px; }
   .summary-card .paid-total { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
 
   .card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 18px; }
-  .card h2 { font-size: 14px; margin: 0 0 14px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .card h2 { font-size: 14px; margin: 0; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+  .mark-all-btn { background: transparent; border: 1px solid var(--green); color: var(--green); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+  .mark-all-btn:hover { background: rgba(34,197,94,0.12); }
+  .mark-all-btn:disabled { opacity: 0.5; cursor: default; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; padding: 8px; color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; border-bottom: 1px solid var(--panel-border); }
@@ -71,10 +83,22 @@
   </header>
 
   <main>
+    <div class="period-bar">
+      <div class="period-nav">
+        <button id="prevWeekBtn">&larr; Previous week</button>
+        <span class="period-label" id="periodLabel"></span>
+        <button id="nextWeekBtn">Next week &rarr;</button>
+      </div>
+      <button class="period-nav this-week-btn" id="thisWeekBtn" style="background:transparent;">This week</button>
+    </div>
+
     <div class="summary-grid" id="summaryGrid"></div>
 
     <div class="card">
-      <h2>Ledger</h2>
+      <div class="card-head">
+        <h2>Ledger</h2>
+        <button class="mark-all-btn" id="markAllBtn">Mark all unpaid this week as paid</button>
+      </div>
       <div id="ledgerTable"></div>
     </div>
   </main>
@@ -99,14 +123,21 @@
 
   let staffById = {};
   let ledger = [];
+  let periodStart = getPayPeriodStart(new Date());
 
   function staffName(id) {
-    return staffById[id] || 'Unknown';
+    return staffById[id]?.name || 'Unknown';
   }
 
   async function loadStaff() {
-    const staff = await listAllStaff();
-    staffById = Object.fromEntries(staff.map((s) => [s.id, s.employee_name]));
+    const staff = await listAllStaffFull();
+    staffById = Object.fromEntries(staff.map((s) => [s.id, { name: s.employee_name, iban: s.iban }]));
+  }
+
+  function renderPeriodBar() {
+    document.getElementById('periodLabel').textContent = formatPayPeriodLabel(periodStart);
+    const isCurrent = periodStart.getTime() === getPayPeriodStart(new Date()).getTime();
+    document.getElementById('thisWeekBtn').style.visibility = isCurrent ? 'hidden' : 'visible';
   }
 
   function renderSummary() {
@@ -120,16 +151,18 @@
     const grid = document.getElementById('summaryGrid');
     const ids = Object.keys(byMechanic);
     if (ids.length === 0) {
-      grid.innerHTML = '<div class="empty-msg">No payroll activity yet.</div>';
+      grid.innerHTML = '<div class="empty-msg">No payroll activity this week.</div>';
       return;
     }
     grid.innerHTML = ids.map((id) => {
       const { owed, paidTotal } = byMechanic[id];
+      const iban = staffById[id]?.iban;
       return `
         <div class="summary-card">
           <div class="name">${staffName(id)}</div>
+          <div class="iban">${iban || 'No IBAN on file'}</div>
           <div class="owed ${owed === 0 ? 'zero' : ''}">${formatMoney(owed)}</div>
-          <div class="paid-total">${formatMoney(paidTotal)} paid to date</div>
+          <div class="paid-total">${formatMoney(paidTotal)} paid this week</div>
         </div>
       `;
     }).join('');
@@ -182,10 +215,48 @@
   }
 
   async function loadLedger() {
-    ledger = await listPayrollLedger();
+    renderPeriodBar();
+    const from = periodStart.toISOString();
+    const to = new Date(periodStart.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    ledger = await listPayrollLedger({ from, to });
     renderSummary();
     renderLedger();
   }
+
+  document.getElementById('prevWeekBtn').addEventListener('click', () => {
+    periodStart = new Date(periodStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    loadLedger();
+  });
+  document.getElementById('nextWeekBtn').addEventListener('click', () => {
+    periodStart = new Date(periodStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+    loadLedger();
+  });
+  document.getElementById('thisWeekBtn').addEventListener('click', () => {
+    periodStart = getPayPeriodStart(new Date());
+    loadLedger();
+  });
+
+  document.getElementById('markAllBtn').addEventListener('click', async () => {
+    const unpaid = ledger.filter((e) => !e.paid);
+    if (unpaid.length === 0) { alert('Nothing unpaid this week.'); return; }
+    if (!confirm(`Mark all ${unpaid.length} unpaid entries this week as paid?`)) return;
+    const btn = document.getElementById('markAllBtn');
+    btn.disabled = true;
+    try {
+      for (const entry of unpaid) {
+        await markPayrollEntryPaid(entry.id);
+      }
+      logActivity({
+        actorId: session?.id, action: 'payroll_marked_paid_bulk', entityType: 'payroll_ledger', entityId: null,
+        summary: `${session?.employee_name || 'Someone'} marked ${unpaid.length} payroll entries paid for the week of ${formatPayPeriodLabel(periodStart)}`
+      });
+      await loadLedger();
+    } catch (err) {
+      alert(`Failed to mark all paid: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   loadStaff().then(loadLedger);
 </script>
