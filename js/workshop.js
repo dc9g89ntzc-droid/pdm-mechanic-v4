@@ -6,6 +6,7 @@ const JOB_STATUSES = [
   { value: 'inspection_in_progress', label: 'Inspection in progress' },
   { value: 'quote_preparation', label: 'Quote preparation' },
   { value: 'approved', label: 'Approved' },
+  { value: 'waiting_for_parts', label: 'Waiting for Parts' },
   { value: 'work_in_progress', label: 'Work in progress' },
   { value: 'ready_to_bill', label: 'Ready to bill' },
   { value: 'completed', label: 'Completed' },
