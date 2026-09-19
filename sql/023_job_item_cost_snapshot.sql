@@ -1,0 +1,11 @@
+-- Run this once in the Supabase SQL editor for project ucvsnxexmvxpccyatmmk.
+-- Snapshots the shop's actual cost (craft_cost or purchase_cost, whichever
+-- applies) onto each job_items row at add-time -- same idea as unit_price
+-- already snapshotting the customer price, so a later catalogue price
+-- change can't retroactively change what a past sale's margin was. No new
+-- RLS/grants needed, job_items already has them (013_job_items.sql).
+--
+-- Only populated going forward -- job_items added before this ships have
+-- unit_cost = null, so true profit is only computable for jobs billed
+-- after this migration runs.
+alter table job_items add column if not exists unit_cost numeric(12,2);

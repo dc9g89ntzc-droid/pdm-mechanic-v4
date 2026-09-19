@@ -100,6 +100,10 @@
         <div class="value" id="statLabour">—</div>
       </div>
       <div class="stat-card outflow">
+        <div class="label">Cost of Parts</div>
+        <div class="value" id="statCogs">—</div>
+      </div>
+      <div class="stat-card outflow">
         <div class="label">Payroll Paid Out</div>
         <div class="value" id="statPaid">—</div>
       </div>
@@ -108,15 +112,12 @@
         <div class="value" id="statOutstanding">—</div>
       </div>
       <div class="stat-card net">
-        <div class="label">Net (Revenue − Payroll)</div>
+        <div class="label">Profit (Revenue − Cost − Payroll)</div>
         <div class="value" id="statNet">—</div>
       </div>
     </div>
-    <div class="caveat">
-      Net is revenue minus total payroll (paid + outstanding) for the week. It doesn't subtract the
-      shop's own cost of parts sold, since catalogue prices can change after a sale and per-sale cost
-      isn't snapshotted the way the customer price is — so this is gross margin after labour, not a
-      full profit figure.
+    <div class="caveat" id="caveatNote">
+      Profit is revenue minus cost of parts sold minus total payroll (paid + outstanding) for the week.
     </div>
 
     <div class="card">
@@ -129,6 +130,7 @@
 <script src="js/supabaseClient.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/workshop.js"></script>
+<script src="js/catalogue.js"></script>
 <script src="js/shift.js"></script>
 <script>
   const session = requireSession();
@@ -192,20 +194,30 @@
       listBilledJobs({ from, to }),
       listPayrollLedger({ from, to })
     ]);
+    const jobItems = await listJobItemsForJobs(jobs.map((j) => j.id));
 
     const partsRevenue = jobs.reduce((sum, j) => sum + (Number(j.quoted_total) || 0), 0);
     const labourRevenue = jobs.reduce((sum, j) => sum + (labourFeeFor(j.quoted_total) || 0), 0);
     const totalRevenue = partsRevenue + labourRevenue;
     const paidOut = ledger.filter((e) => e.paid).reduce((sum, e) => sum + Number(e.amount), 0);
     const outstanding = ledger.filter((e) => !e.paid).reduce((sum, e) => sum + Number(e.amount), 0);
-    const net = totalRevenue - (paidOut + outstanding);
+
+    const costedItems = jobItems.filter((i) => i.unit_cost !== null);
+    const uncostedCount = jobItems.length - costedItems.length;
+    const cogs = costedItems.reduce((sum, i) => sum + Number(i.unit_cost) * Number(i.quantity), 0);
+    const profit = totalRevenue - cogs - (paidOut + outstanding);
 
     document.getElementById('statRevenue').textContent = formatMoney(totalRevenue);
     document.getElementById('statParts').textContent = formatMoney(partsRevenue);
     document.getElementById('statLabour').textContent = formatMoney(labourRevenue);
+    document.getElementById('statCogs').textContent = formatMoney(cogs);
     document.getElementById('statPaid').textContent = formatMoney(paidOut);
     document.getElementById('statOutstanding').textContent = formatMoney(outstanding);
-    document.getElementById('statNet').textContent = formatMoney(net);
+    document.getElementById('statNet').textContent = formatMoney(profit);
+
+    document.getElementById('caveatNote').textContent = uncostedCount > 0
+      ? `Profit is revenue minus cost of parts sold minus total payroll for the week. ${uncostedCount} item${uncostedCount === 1 ? '' : 's'} this week ${uncostedCount === 1 ? 'has' : 'have'} no cost on file (added before cost tracking, or the catalogue item is missing a craft/purchase cost) and ${uncostedCount === 1 ? 'is' : 'are'} excluded from Cost of Parts, so profit may be slightly overstated.`
+      : 'Profit is revenue minus cost of parts sold minus total payroll (paid + outstanding) for the week.';
 
     renderJobsTable(jobs);
   }

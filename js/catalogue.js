@@ -201,13 +201,23 @@ async function listSubcategoriesForCategory(category) {
 async function listItemsForTile(category, subcategoryId) {
   const { data, error } = await sb
     .from('catalogue_items')
-    .select('id, name, description, sourcing, customer_price, image_url, usage_type, stock_quantity, reorder_threshold')
+    .select('id, name, description, sourcing, customer_price, craft_cost, purchase_cost, image_url, usage_type, stock_quantity, reorder_threshold')
     .contains('categories', [category])
     .eq('subcategory_id', subcategoryId)
     .eq('active', true)
     .order('name');
   if (error) throw new Error(error.message);
   return data;
+}
+
+// Which internal cost applies to a unit of this item, given how it's
+// actually being sourced this time (matters for sourcing='both' items,
+// where the mechanic picks crafted vs purchased per job).
+function effectiveUnitCost(catalogueItem, sourcingChoice) {
+  const sourcing = sourcingChoice || catalogueItem.sourcing;
+  if (sourcing === 'crafted') return catalogueItem.craft_cost;
+  if (sourcing === 'purchased') return catalogueItem.purchase_cost;
+  return null;
 }
 
 // ---- Job items (what's been added to a job's quote) ----
@@ -218,6 +228,19 @@ async function listJobItems(jobId) {
     .select('id, quantity, unit_price, sourcing_choice, catalogue_item_id, catalogue_items ( name, image_url ) ')
     .eq('job_id', jobId)
     .order('created_at');
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// For Accounts' cost-of-goods calculation -- unit_cost only exists on
+// items added after 023_job_item_cost_snapshot.sql shipped, so older rows
+// contribute null and get excluded (see accounts.html's caveat note).
+async function listJobItemsForJobs(jobIds) {
+  if (!jobIds || jobIds.length === 0) return [];
+  const { data, error } = await sb
+    .from('job_items')
+    .select('job_id, quantity, unit_cost')
+    .in('job_id', jobIds);
   if (error) throw new Error(error.message);
   return data;
 }
@@ -248,6 +271,7 @@ async function addJobItem({ jobId, catalogueItem, quantity, sourcingChoice, perf
       catalogue_item_id: catalogueItem.id,
       quantity,
       unit_price: catalogueItem.customer_price,
+      unit_cost: effectiveUnitCost(catalogueItem, sourcingChoice),
       sourcing_choice: sourcingChoice || null,
       added_by: performedBy || null
     });
