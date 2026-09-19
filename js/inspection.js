@@ -272,6 +272,60 @@ function bodyZoneLabel(key) {
 // and the read-only copy printed on the quote (no click handler passed).
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+// Quote-only: draws the same diagram onto a <canvas> instead of live SVG.
+// html2canvas can't reliably rasterize an <image> nested inside an SVG
+// with a non-zero viewBox origin (ours is "0 315 1080 620") -- it comes
+// out mispositioned/garbled in the exported PNG even though the zone
+// <path> overlays render fine, since those go through a different code
+// path. A canvas has no such issue: html2canvas just copies its pixels
+// directly. The quote diagram is read-only anyway (no click-to-tag), so
+// there's no interactivity lost by not using real SVG here.
+function renderBodyDiagramCanvas(canvas, findings) {
+  return new Promise((resolve, reject) => {
+    const ctx = canvas.getContext('2d');
+    canvas.width = 1080;
+    canvas.height = 620;
+
+    const img = new Image();
+    img.onload = () => {
+      ctx.save();
+      ctx.translate(0, -315); // matches the SVG viewBox's "0 315 1080 620" origin
+
+      ctx.fillStyle = '#f2f2f2';
+      ctx.fillRect(0, 315, 1080, 620);
+      ctx.drawImage(img, 0, 315, 1080, 620);
+
+      BODY_ZONES.forEach((zone) => {
+        if (zone.shape === 'external') return;
+        const finding = findings.find((f) => f.finding_type === 'body_area' && f.area === zone.key);
+        if (!finding) return;
+        const path = new Path2D(zone.d);
+        const color = severityColor(finding.severity);
+        ctx.globalAlpha = 0.65;
+        ctx.fillStyle = color;
+        ctx.fill(path);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke(path);
+      });
+
+      ctx.fillStyle = '#888';
+      ctx.font = '20px Georgia, "Times New Roman", serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Left Side', 155, 345);
+      ctx.fillText('Front', 840, 345);
+      ctx.fillText('Right Side', 155, 590);
+      ctx.fillText('Rear', 840, 590);
+
+      ctx.restore();
+      resolve();
+    };
+    img.onerror = reject;
+    img.src = 'images/vehicle-diagram.png';
+  });
+}
+
 function renderBodyZones(zonesGroupEl, findings, onZoneClick) {
   zonesGroupEl.innerHTML = '';
   BODY_ZONES.forEach((zone) => {

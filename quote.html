@@ -78,8 +78,6 @@
   #quoteSheet .no-inspection { color: #777; font-style: italic; font-size: 13px; }
 
   #quoteSheet #carDiagram { width: 100%; max-width: 700px; height: auto; background: #f2f2f2; border-radius: 6px; display: block; margin: 0 auto; }
-  #quoteSheet .diagram-label { font-size: 20px; fill: #888; }
-  #quoteSheet .zone { fill: transparent; stroke: none; }
 
   @media print {
     header, .job-bar, .actions-row, .share-box { display: none; }
@@ -157,14 +155,7 @@
 
       <div id="sheetDiagramSection" style="display:none;">
         <div class="section-title">Vehicle Condition</div>
-        <svg id="carDiagram" viewBox="0 315 1080 620" xmlns="http://www.w3.org/2000/svg">
-          <image href="images/vehicle-diagram.png" x="0" y="315" width="1080" height="620" />
-          <text class="diagram-label" x="155" y="345" text-anchor="middle">Left Side</text>
-          <text class="diagram-label" x="840" y="345" text-anchor="middle">Front</text>
-          <text class="diagram-label" x="155" y="590" text-anchor="middle">Right Side</text>
-          <text class="diagram-label" x="840" y="590" text-anchor="middle">Rear</text>
-          <g id="sheetZonesGroup"></g>
-        </svg>
+        <canvas id="carDiagram" width="1080" height="620"></canvas>
       </div>
 
       <div class="section-title">Quote — Parts &amp; Labour</div>
@@ -270,7 +261,7 @@
     const findings = await listFindings(inspection.id);
 
     document.getElementById('sheetDiagramSection').style.display = 'block';
-    renderBodyZones(document.getElementById('sheetZonesGroup'), findings);
+    await renderBodyDiagramCanvas(document.getElementById('carDiagram'), findings);
 
     const bodyFindings = findings.filter((f) => f.finding_type === 'body_area' && f.severity);
     const mechFindings = findings.filter((f) => f.finding_type === 'mechanical' && f.item_label);
