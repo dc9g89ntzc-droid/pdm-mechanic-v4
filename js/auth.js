@@ -52,6 +52,14 @@ async function login(employeeName, password) {
   return body.session;
 }
 
+async function changeOwnPassword(currentPassword, newPassword) {
+  const { error } = await sb.rpc('mechanic_change_own_password', {
+    p_current_password: currentPassword,
+    p_new_password: newPassword
+  });
+  if (error) throw new Error(error.message);
+}
+
 // Async so it can wait for shift.js's clock-out (if that script is present
 // and a shift is open) to actually finish before navigating away -- an
 // unawaited clock-out call would risk getting cancelled by the navigation.

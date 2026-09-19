@@ -55,6 +55,20 @@
   .shift-list .shift-row:last-child { border-bottom: none; }
   .shift-list .shift-dim { color: var(--text-dim); font-size: 12px; }
   .empty-msg { color: var(--text-dim); font-size: 13px; padding: 24px; text-align: center; }
+
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 10; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px; width: 100%; max-width: 360px; }
+  .modal h2 { font-size: 16px; margin: 0 0 4px; }
+  .modal p.sub { color: var(--text-dim); font-size: 13px; margin: 0 0 18px; }
+  .modal label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; margin-top: 14px; }
+  .modal label:first-of-type { margin-top: 0; }
+  .modal input { width: 100%; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); padding: 10px; border-radius: 8px; font-size: 14px; }
+  .modal .error { display: none; margin-top: 14px; padding: 10px 12px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #f0888c; border-radius: 8px; font-size: 13px; }
+  .modal .actions { display: flex; gap: 10px; margin-top: 22px; }
+  .modal .actions button { flex: 1; padding: 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .modal .actions .save { background: var(--red); border: none; color: white; font-weight: 600; }
+  .modal .actions .cancel { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
 </style>
 </head>
 <body>
@@ -84,6 +98,7 @@
     <div class="quick-links">
       <a href="checkin.html" class="btn">+ New Job</a>
       <a href="dashboard.html" class="btn secondary">Workshop Board</a>
+      <button class="btn secondary" id="changePasswordBtn">Change Password</button>
     </div>
 
     <div class="stat-grid">
@@ -114,6 +129,24 @@
     <div class="section-title">Recently Completed</div>
     <div class="card" id="completedJobsCard"></div>
   </main>
+
+  <div class="modal-backdrop" id="passwordModalBackdrop">
+    <div class="modal">
+      <h2>Change password</h2>
+      <p class="sub">Enter your current password and a new one.</p>
+      <label>Current password</label>
+      <input type="password" id="pCurrentPassword" autocomplete="current-password" />
+      <label>New password</label>
+      <input type="password" id="pNewPassword" autocomplete="new-password" />
+      <label>Confirm new password</label>
+      <input type="password" id="pConfirmPassword" autocomplete="new-password" />
+      <div class="error" id="passwordError"></div>
+      <div class="actions">
+        <button class="cancel" id="passwordCancelBtn">Cancel</button>
+        <button class="save" id="passwordSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="js/supabaseClient.js"></script>
@@ -202,6 +235,65 @@
 
   loadJobs();
   loadShiftsAndPay();
+
+  // ---- Change password ----
+  const passwordModalBackdrop = document.getElementById('passwordModalBackdrop');
+  const passwordError = document.getElementById('passwordError');
+
+  function closePasswordModal() {
+    passwordModalBackdrop.classList.remove('open');
+    document.getElementById('pCurrentPassword').value = '';
+    document.getElementById('pNewPassword').value = '';
+    document.getElementById('pConfirmPassword').value = '';
+    passwordError.style.display = 'none';
+  }
+
+  document.getElementById('changePasswordBtn').addEventListener('click', () => {
+    passwordModalBackdrop.classList.add('open');
+    document.getElementById('pCurrentPassword').focus();
+  });
+  document.getElementById('passwordCancelBtn').addEventListener('click', closePasswordModal);
+  passwordModalBackdrop.addEventListener('click', (e) => { if (e.target === passwordModalBackdrop) closePasswordModal(); });
+
+  document.getElementById('passwordSaveBtn').addEventListener('click', async () => {
+    const current = document.getElementById('pCurrentPassword').value;
+    const next = document.getElementById('pNewPassword').value;
+    const confirm = document.getElementById('pConfirmPassword').value;
+
+    passwordError.style.display = 'none';
+    if (!current || !next) {
+      passwordError.textContent = 'Enter your current and new password.';
+      passwordError.style.display = 'block';
+      return;
+    }
+    if (next.length < 6) {
+      passwordError.textContent = 'New password must be at least 6 characters.';
+      passwordError.style.display = 'block';
+      return;
+    }
+    if (next !== confirm) {
+      passwordError.textContent = 'New password and confirmation don’t match.';
+      passwordError.style.display = 'block';
+      return;
+    }
+
+    const btn = document.getElementById('passwordSaveBtn');
+    btn.disabled = true;
+    try {
+      await changeOwnPassword(current, next);
+      logActivity({
+        actorId: session?.id, action: 'staff_changed_own_password', entityType: 'mechanic_employee', entityId: session?.id,
+        summary: `${session?.employee_name || 'Someone'} changed their own password`
+      });
+      closePasswordModal();
+      alert('Password changed.');
+    } catch (err) {
+      passwordError.textContent = err.message;
+      passwordError.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+    }
+  });
 </script>
 </body>
 </html>
