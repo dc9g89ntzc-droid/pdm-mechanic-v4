@@ -168,5 +168,12 @@
 
   tickTimer = setInterval(renderWidget, 30000);
 
+  // Exposed so js/auth.js's logout() can end the shift (stopping the pay
+  // clock) before navigating away. logout() awaits this itself rather than
+  // this file racing it with a second click listener -- an in-flight
+  // clock-out request would otherwise risk getting cancelled by the page
+  // unloading before it finishes.
+  window.clockOutForLogout = () => (shiftId ? endShift('manual') : Promise.resolve());
+
   startShift();
 })();

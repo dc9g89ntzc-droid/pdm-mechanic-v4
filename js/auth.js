@@ -52,7 +52,17 @@ async function login(employeeName, password) {
   return body.session;
 }
 
-function logout() {
+// Async so it can wait for shift.js's clock-out (if that script is present
+// and a shift is open) to actually finish before navigating away -- an
+// unawaited clock-out call would risk getting cancelled by the navigation.
+async function logout() {
+  if (typeof window.clockOutForLogout === 'function') {
+    try {
+      await window.clockOutForLogout();
+    } catch (err) {
+      console.error('Failed to clock out on sign out:', err.message);
+    }
+  }
   clearSession();
   clearToken();
   window.location.href = 'index.html';
