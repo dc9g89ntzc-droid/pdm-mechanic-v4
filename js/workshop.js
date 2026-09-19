@@ -86,6 +86,18 @@ async function listActiveMechanics() {
   return data;
 }
 
+// Not filtered to active=true -- a job assigned to a mechanic who's since
+// gone inactive should still show their name on historical documents.
+async function getStaffMember(id) {
+  const { data, error } = await sb
+    .from('staff_directory')
+    .select('id, employee_name, role')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 async function createJob(job) {
   const { data, error } = await sb
     .from('jobs')
@@ -126,7 +138,7 @@ async function getJobSummary(jobId) {
   const { data, error } = await sb
     .from('jobs')
     .select(`
-      id, job_number, status, job_types, quoted_total,
+      id, job_number, status, job_types, quoted_total, assigned_staff_id,
       quote_document_url, quote_generated_at,
       customers ( customer_name ),
       owned_vehicles ( registration, make, model )
@@ -174,5 +186,18 @@ function formatDateTime(value) {
   if (!value) return 'Unknown';
   return new Date(value).toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+// For customer-facing documents (quotes/receipts) -- the server runs on
+// US Eastern time regardless of the mechanic's own timezone, so these are
+// always shown in America/New_York rather than the browser's local zone.
+// timeZoneName 'short' prints the correct EST/EDT label for the actual date.
+function formatDateTimeEST(value) {
+  const date = value ? new Date(value) : new Date();
+  return date.toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
   });
 }

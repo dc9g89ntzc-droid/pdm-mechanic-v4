@@ -369,37 +369,12 @@
   }
 
   // --- Diagram ---
-  const svgNS = 'http://www.w3.org/2000/svg';
-
   function renderDiagram() {
     // The car silhouette (body/cabin/wheels/mirrors) is static markup in
     // the page -- only the zones (which change colour as findings are
     // tagged) get redrawn, so the silhouette is never at risk of being
     // wiped by an innerHTML reset.
-    const zonesGroup = document.getElementById('zonesGroup');
-    zonesGroup.innerHTML = '';
-
-    BODY_ZONES.forEach((zone) => {
-      if (zone.shape === 'external') return;
-      const finding = findings.find((f) => f.finding_type === 'body_area' && f.area === zone.key);
-
-      const el = document.createElementNS(svgNS, 'path');
-      el.setAttribute('d', zone.d);
-      el.setAttribute('class', finding ? 'zone tagged' : 'zone');
-      if (finding) {
-        // Inline style (not setAttribute) so this wins over the .zone CSS
-        // class rule -- SVG presentation attributes rank below stylesheet
-        // rules in the cascade and would otherwise be silently overridden.
-        const color = severityColor(finding.severity);
-        el.style.fill = color;
-        el.style.fillOpacity = '0.65';
-        el.style.stroke = color;
-        el.style.strokeWidth = '1.5';
-      }
-      el.dataset.zone = zone.key;
-      el.addEventListener('click', () => openZonePanel(zone));
-      zonesGroup.appendChild(el);
-    });
+    renderBodyZones(document.getElementById('zonesGroup'), findings, openZonePanel);
   }
 
   document.getElementById('bodyOverallBtn').addEventListener('click', () => {

@@ -58,7 +58,7 @@
   #quoteSheet .shop-tag { font-size: 12px; color: #555; margin-top: 2px; }
   #quoteSheet .quote-meta { text-align: right; font-size: 12px; color: #333; }
   #quoteSheet .quote-meta .quote-label { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
-  #quoteSheet .parties { display: flex; justify-content: space-between; margin-bottom: 24px; font-size: 13px; }
+  #quoteSheet .parties { display: flex; gap: 36px; margin-bottom: 24px; font-size: 13px; }
   #quoteSheet .parties .block-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #777; margin-bottom: 4px; }
   #quoteSheet table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }
   #quoteSheet th { text-align: left; padding: 8px 6px; border-bottom: 2px solid #1a1a1a; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
@@ -69,13 +69,17 @@
   #quoteSheet .empty-note { color: #777; font-style: italic; font-size: 13px; padding: 20px 0; }
 
   #quoteSheet .section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 26px 0 10px; border-bottom: 1px solid #1a1a1a; padding-bottom: 4px; }
-  #quoteSheet .section-title:first-of-type { margin-top: 0; }
+  #quoteSheet .section-title.first { margin-top: 0; }
   #quoteSheet .inspection-category { font-size: 12px; font-weight: 700; margin: 12px 0 4px; color: #333; }
   #quoteSheet .inspection-cols { columns: 2; column-gap: 24px; font-size: 12px; }
   #quoteSheet .inspection-row { break-inside: avoid; padding: 2px 0; }
   #quoteSheet .inspection-row .cond-advisory { color: #a15c00; font-weight: 600; }
   #quoteSheet .inspection-row .cond-fail { color: #b3261e; font-weight: 600; }
   #quoteSheet .no-inspection { color: #777; font-style: italic; font-size: 13px; }
+
+  #quoteSheet #carDiagram { width: 100%; max-width: 700px; height: auto; background: #f2f2f2; border-radius: 6px; display: block; margin: 0 auto; }
+  #quoteSheet .diagram-label { font-size: 20px; fill: #888; }
+  #quoteSheet .zone { fill: transparent; stroke: none; }
 
   @media print {
     header, .job-bar, .actions-row, .share-box { display: none; }
@@ -143,9 +147,25 @@
           <div class="block-label">Vehicle</div>
           <div id="sheetVehicle"></div>
         </div>
+        <div>
+          <div class="block-label">Mechanic</div>
+          <div id="sheetMechanic"></div>
+        </div>
       </div>
-      <div class="section-title">Inspection Results</div>
+      <div class="section-title first">Inspection Results</div>
       <div id="sheetInspection"><div class="no-inspection">No inspection recorded yet.</div></div>
+
+      <div id="sheetDiagramSection" style="display:none;">
+        <div class="section-title">Vehicle Condition</div>
+        <svg id="carDiagram" viewBox="0 315 1080 620" xmlns="http://www.w3.org/2000/svg">
+          <image href="images/vehicle-diagram.png" x="0" y="315" width="1080" height="620" />
+          <text class="diagram-label" x="155" y="345" text-anchor="middle">Left Side</text>
+          <text class="diagram-label" x="840" y="345" text-anchor="middle">Front</text>
+          <text class="diagram-label" x="155" y="590" text-anchor="middle">Right Side</text>
+          <text class="diagram-label" x="840" y="590" text-anchor="middle">Rear</text>
+          <g id="sheetZonesGroup"></g>
+        </svg>
+      </div>
 
       <div class="section-title">Quote — Parts &amp; Labour</div>
       <table>
@@ -205,10 +225,23 @@
     document.getElementById('jobSub').textContent = `${vehicle} · ${reg} · ${jobStatusLabel(job.status)}`;
 
     document.getElementById('sheetJobNumber').textContent = `Job #${job.job_number}`;
-    document.getElementById('sheetDate').textContent = new Date().toLocaleDateString();
+    document.getElementById('sheetDate').textContent = formatDateTimeEST();
     document.getElementById('sheetCustomer').textContent = job.customers?.customer_name || 'Unknown customer';
     document.getElementById('sheetVehicle').textContent = `${vehicle} — ${reg}`;
     document.getElementById('sheetTotal').textContent = formatMoney(job.quoted_total);
+
+    // Assigned mechanic if the job has one; otherwise whoever's generating
+    // this document right now, so the quote never shows a blank mechanic.
+    let mechanicName = session?.employee_name || 'Unknown';
+    if (job.assigned_staff_id) {
+      try {
+        const staff = await getStaffMember(job.assigned_staff_id);
+        if (staff) mechanicName = staff.employee_name;
+      } catch (err) {
+        // fall back to session mechanic if the lookup fails
+      }
+    }
+    document.getElementById('sheetMechanic').textContent = mechanicName;
 
     renderShareBox();
   }
@@ -235,6 +268,9 @@
       return;
     }
     const findings = await listFindings(inspection.id);
+
+    document.getElementById('sheetDiagramSection').style.display = 'block';
+    renderBodyZones(document.getElementById('sheetZonesGroup'), findings);
 
     const bodyFindings = findings.filter((f) => f.finding_type === 'body_area' && f.severity);
     const mechFindings = findings.filter((f) => f.finding_type === 'mechanical' && f.item_label);

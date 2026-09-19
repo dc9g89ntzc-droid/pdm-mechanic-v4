@@ -268,6 +268,35 @@ function bodyZoneLabel(key) {
   return BODY_ZONES.find((z) => z.key === key)?.label || key;
 }
 
+// Shared by the interactive diagram (inspection.html, with click-to-tag)
+// and the read-only copy printed on the quote (no click handler passed).
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function renderBodyZones(zonesGroupEl, findings, onZoneClick) {
+  zonesGroupEl.innerHTML = '';
+  BODY_ZONES.forEach((zone) => {
+    if (zone.shape === 'external') return;
+    const finding = findings.find((f) => f.finding_type === 'body_area' && f.area === zone.key);
+
+    const el = document.createElementNS(SVG_NS, 'path');
+    el.setAttribute('d', zone.d);
+    el.setAttribute('class', finding ? 'zone tagged' : 'zone');
+    if (finding) {
+      // Inline style (not setAttribute) so this wins over the .zone CSS
+      // class rule -- SVG presentation attributes rank below stylesheet
+      // rules in the cascade and would otherwise be silently overridden.
+      const color = severityColor(finding.severity);
+      el.style.fill = color;
+      el.style.fillOpacity = '0.65';
+      el.style.stroke = color;
+      el.style.strokeWidth = '1.5';
+    }
+    el.dataset.zone = zone.key;
+    if (onZoneClick) el.addEventListener('click', () => onZoneClick(zone));
+    zonesGroupEl.appendChild(el);
+  });
+}
+
 async function listFindings(inspectionId) {
   const { data, error } = await sb
     .from('inspection_findings')
