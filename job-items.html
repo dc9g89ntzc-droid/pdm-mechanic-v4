@@ -85,7 +85,7 @@
     <h1>PDM Mechanic Shop</h1>
     <nav>
       <a href="my-dashboard.html">Home</a>
-      <a href="dashboard.html">Workshop</a>
+      <a href="dashboard.html?area=repair">Workshop</a>
       <a href="checkin.html">New Job</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html">Purchasing</a>
@@ -107,7 +107,7 @@
     </div>
     <div style="display:flex; gap:10px;">
       <a id="quoteLink" href="#" class="btn">View / generate quote</a>
-      <a href="dashboard.html" class="btn secondary">&larr; Back to Workshop</a>
+      <a href="dashboard.html?area=repair" class="btn secondary">&larr; Back to Workshop</a>
     </div>
   </div>
 
@@ -142,6 +142,7 @@
   const breadcrumb = document.getElementById('breadcrumb');
 
   let job = null;
+  let jobType = params.get('type');
   let level = 'categories'; // categories | subcategories | items
   let currentCategory = null;
   let currentSubcategory = null; // { id, name }
@@ -151,14 +152,24 @@
     throw new Error('No job id in URL');
   }
 
+  // A link from before per-leg items existed (or from outside the board)
+  // won't carry &type= -- fall back to whichever leg is currently active,
+  // same leg the board itself would be showing this job under.
+  async function resolveJobType() {
+    if (jobType) return;
+    const legs = await listJobLegs(jobId);
+    const active = activeLegForJob(legs);
+    jobType = active ? active.job_type : null;
+  }
+
   async function loadJobBar() {
     job = await getJobSummary(jobId);
     const vehicle = job.owned_vehicles ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() || 'Unknown vehicle' : 'Unknown vehicle';
     const reg = job.owned_vehicles?.registration || 'Unknown';
-    document.getElementById('jobTitle').textContent = `Job #${job.job_number} — ${job.customers?.customer_name || 'Unknown customer'}`;
+    document.getElementById('jobTitle').textContent = `Job #${job.job_number} — ${job.customers?.customer_name || 'Unknown customer'}${jobType ? ` — ${jobTypeLabel(jobType)}` : ''}`;
     document.getElementById('jobSub').textContent = `${vehicle} · ${reg} · ${jobStatusLabel(job.status)}`;
     document.getElementById('quoteTotal').textContent = formatMoney(grandTotalFor(job.quoted_total));
-    document.getElementById('quoteLink').href = `quote.html?job=${jobId}`;
+    document.getElementById('quoteLink').href = `quote.html?job=${jobId}&type=${jobType || ''}`;
   }
 
   function renderBreadcrumb() {
@@ -254,7 +265,7 @@
           const srcEl = card.querySelector('.src-select');
           const sourcingChoice = srcEl ? srcEl.value : null;
           try {
-            await addJobItem({ jobId, catalogueItem: item, quantity: qty, sourcingChoice, performedBy: session?.id });
+            await addJobItem({ jobId, catalogueItem: item, quantity: qty, sourcingChoice, performedBy: session?.id, jobType });
             await refreshQuote();
           } catch (err) {
             alert(`Failed to add item: ${err.message}`);
@@ -272,7 +283,7 @@
   async function refreshQuote() {
     const linesEl = document.getElementById('quoteLines');
     try {
-      const lines = await listJobItems(jobId);
+      const lines = await listJobItems(jobId, jobType);
       if (lines.length === 0) {
         linesEl.innerHTML = '<div class="quote-empty">No items added yet.</div>';
       } else {
@@ -355,7 +366,7 @@
     }
   }
 
-  loadJobBar().then(showCategories).then(refreshQuote);
+  resolveJobType().then(loadJobBar).then(showCategories).then(refreshQuote);
 </script>
 </body>
 </html>

@@ -141,6 +141,12 @@
   .new-form.open { display: block; }
   .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
   .checkbox-row input { width: auto; }
+  .type-checkboxes { display: flex; flex-direction: column; gap: 8px; }
+  .type-checkboxes label {
+    display: flex; align-items: center; gap: 8px;
+    margin: 0; font-size: 13px; color: var(--text); cursor: pointer;
+  }
+  .type-checkboxes input { width: auto; }
   .submit-row { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
   .submit-row button {
     background: var(--red);
@@ -180,7 +186,7 @@
     <h1>PDM Mechanic Shop</h1>
     <nav>
       <a href="my-dashboard.html">Home</a>
-      <a href="dashboard.html">Workshop</a>
+      <a href="dashboard.html?area=repair">Workshop</a>
       <a href="checkin.html" class="active">New Job</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html">Purchasing</a>
@@ -265,10 +271,20 @@
       </div>
     </div>
 
+    <!-- Work type -->
+    <div class="section">
+      <h2>Work type</h2>
+      <p style="color:var(--text-dim); font-size:12px; margin:0 0 12px;">Any combination — the job moves through whichever areas are selected, one at a time, and more can be added any time before billing.</p>
+      <div class="type-checkboxes" id="typeCheckboxes">
+        <label><input type="checkbox" value="repair" /> Repair and Service</label>
+        <label><input type="checkbox" value="customisation" /> Customisation</label>
+        <label><input type="checkbox" value="performance" /> Performance</label>
+      </div>
+    </div>
+
     <!-- Check-in details -->
     <div class="section">
       <h2>Check-in details</h2>
-      <p style="color:var(--text-dim); font-size:12px; margin:0 0 4px;">Work type isn't chosen here — it's tagged on the job during inspection, and more can be added any time before completion.</p>
 
       <div class="row">
         <div>
@@ -339,9 +355,16 @@
   let selectedVehicle = null;
   let customerAutoFilled = false;
 
-  function updateSubmitState() {
-    document.getElementById('submitJobBtn').disabled = !(selectedCustomer && selectedVehicle);
+  const typeCheckboxes = document.getElementById('typeCheckboxes');
+  function selectedJobTypes() {
+    return Array.from(typeCheckboxes.querySelectorAll('input:checked')).map((cb) => cb.value);
   }
+
+  function updateSubmitState() {
+    document.getElementById('submitJobBtn').disabled =
+      !(selectedCustomer && selectedVehicle && selectedJobTypes().length > 0);
+  }
+  typeCheckboxes.addEventListener('change', updateSubmitState);
 
   // --- Customer search / select / create ---
   document.getElementById('customerSearchBtn').addEventListener('click', async () => {
@@ -517,7 +540,8 @@
   // --- Submit ---
   document.getElementById('submitJobBtn').addEventListener('click', async () => {
     clearError();
-    if (!selectedCustomer || !selectedVehicle) return;
+    const jobTypes = selectedJobTypes();
+    if (!selectedCustomer || !selectedVehicle || jobTypes.length === 0) return;
 
     const btn = document.getElementById('submitJobBtn');
     btn.disabled = true;
@@ -528,6 +552,7 @@
         customer_id: selectedCustomer.customer_id,
         owned_vehicle_id: selectedVehicle.owned_vehicle_id,
         status: 'awaiting_inspection',
+        job_types: jobTypes,
         assigned_staff_id: document.getElementById('assignedMechanic').value || null,
         short_description: document.getElementById('shortDescription').value.trim() || null,
         reported_issue: document.getElementById('reportedIssue').value.trim() || null,
@@ -538,10 +563,12 @@
         internal_notes: document.getElementById('internalNotes').value.trim() || null,
         created_by: session ? session.id : null
       });
+      await syncJobLegs(job.id, jobTypes);
 
+      const firstArea = LEG_ORDER.find((t) => jobTypes.includes(t));
       successBox.textContent = `Job #${job.job_number} created and added to the Workshop board.`;
       successBox.style.display = 'block';
-      setTimeout(() => { window.location.href = 'dashboard.html'; }, 1200);
+      setTimeout(() => { window.location.href = `dashboard.html?area=${firstArea}`; }, 1200);
     } catch (err) {
       showError(err.message);
       btn.disabled = false;

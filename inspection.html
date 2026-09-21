@@ -213,7 +213,7 @@
     <h1>PDM Mechanic Shop</h1>
     <nav>
       <a href="my-dashboard.html">Home</a>
-      <a href="dashboard.html">Workshop</a>
+      <a href="dashboard.html?area=repair">Workshop</a>
       <a href="checkin.html">New Job</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html">Purchasing</a>
@@ -372,7 +372,7 @@
         <div class="title">Job #${job.job_number} — ${job.customers?.customer_name || 'Unknown customer'}</div>
         <div class="sub">${vehicle} &middot; ${job.owned_vehicles?.registration || 'Unknown reg'} &middot; ${job.mileage_at_checkin ? job.mileage_at_checkin + ' mi' : 'Mileage unknown'}</div>
       </div>
-      <span class="status-pill">${jobStatusLabel(job.status)}</span>
+      <span class="status-pill">${jobStatusLabel(job.legStatus)}</span>
     `;
   }
 
@@ -606,7 +606,7 @@
     clearError();
     try {
       await completeInspection(inspection.id, jobId);
-      window.location.href = 'dashboard.html';
+      window.location.href = 'dashboard.html?area=repair';
     } catch (err) {
       showError(err.message);
     }

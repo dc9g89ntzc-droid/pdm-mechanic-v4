@@ -20,6 +20,22 @@ const JOB_TYPES = [
   { value: 'engine_building', label: 'Engine Building' }
 ];
 
+// The fixed sequence a job's selected legs run in -- a job with more than
+// one type doesn't work them at once, it finishes one fully before the next
+// starts (sql/031_job_legs.sql). Engine Building is intentionally excluded
+// here -- no checkbox, no leg -- until it gets its own later slice.
+const LEG_ORDER = ['repair', 'customisation', 'performance'];
+
+// Coarse job-level state (sql/031) -- what Billing and the history/reports
+// pages actually need. Distinct from JOB_STATUSES/job_legs.status, which
+// track per-leg progress.
+const JOB_STAGES = [
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'ready_to_bill', label: 'Ready to bill' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' }
+];
+
 // The shop's real staff hierarchy, low to high.
 const STAFF_ROLES = [
   { value: 'apprentice', label: 'Apprentice' },
@@ -341,7 +357,7 @@ async function listJobsForVehicle(vehicleId) {
   const { data, error } = await sb
     .from('jobs')
     .select(`
-      id, job_number, status, job_types, quoted_total, arrival_time, created_at,
+      id, job_number, status, stage, job_types, quoted_total, arrival_time, created_at,
       quote_document_url, receipt_document_url,
       customers ( customer_name ),
       owned_vehicles ( registration, make, model )
@@ -356,7 +372,7 @@ async function listJobsForCustomer(customerId) {
   const { data, error } = await sb
     .from('jobs')
     .select(`
-      id, job_number, status, job_types, quoted_total, arrival_time, created_at,
+      id, job_number, status, stage, job_types, quoted_total, arrival_time, created_at,
       quote_document_url, receipt_document_url,
       customers ( customer_name ),
       owned_vehicles ( registration, make, model )
@@ -458,7 +474,7 @@ async function listJobs(filters = {}) {
   let query = sb
     .from('jobs')
     .select(`
-      id, job_number, job_types, status, short_description, quoted_total,
+      id, job_number, job_types, status, stage, short_description, quoted_total,
       arrival_time, expected_completion, created_at, assigned_staff_id,
       customer_id, owned_vehicle_id, quote_document_url, receipt_document_url,
       customers ( customer_name ),
@@ -481,7 +497,7 @@ async function getJobSummary(jobId) {
   const { data, error } = await sb
     .from('jobs')
     .select(`
-      id, job_number, status, job_types, quoted_total, assigned_staff_id,
+      id, job_number, status, stage, job_types, quoted_total, assigned_staff_id,
       quote_document_url, quote_generated_at,
       receipt_document_url, receipt_generated_at,
       customers ( customer_name ),
@@ -507,7 +523,10 @@ async function updateJobQuoteDocument(jobId, url) {
 async function updateJobReceiptDocument(jobId, url) {
   const { error } = await sb
     .from('jobs')
-    .update({ receipt_document_url: url, receipt_generated_at: new Date().toISOString(), status: 'completed' })
+    .update({
+      receipt_document_url: url, receipt_generated_at: new Date().toISOString(),
+      status: 'completed', stage: 'completed'
+    })
     .eq('id', jobId);
   if (error) throw new Error(error.message);
 }
@@ -517,15 +536,139 @@ async function updateJobStatus(jobId, status) {
   if (error) throw new Error(error.message);
 }
 
-// Work types are discovered during inspection and can keep growing until
-// the job is completed -- not a one-time choice made at check-in.
+// Work type can be changed any time before completion -- e.g. the customer
+// adds a customisation request after the repair's already under way, or a
+// leg gets dropped because they've changed their mind (see syncJobLegs).
 async function updateJobTypes(jobId, jobTypes) {
   const { error } = await sb.from('jobs').update({ job_types: jobTypes }).eq('id', jobId);
   if (error) throw new Error(error.message);
 }
 
+// ---- Job legs (sql/031) -- per-work-type progress, run one at a time in
+// LEG_ORDER. A job's "active" leg is the first non-finished one in that
+// fixed order; the job falls into Billing once none remain. ----
+
+// Repair legs start with an inspection; customisation/performance skip
+// straight to item-selection (quote_preparation already covers "pick items
+// then generate a quote", see job-items.html/quote.html).
+function initialLegStatus(jobType) {
+  return jobType === 'repair' ? 'awaiting_inspection' : 'quote_preparation';
+}
+
+async function listJobLegs(jobId) {
+  const { data, error } = await sb
+    .from('job_legs')
+    .select('id, job_type, status, approved_at, work_started_at, completed_at, cancelled_at')
+    .eq('job_id', jobId);
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// First leg (in LEG_ORDER) that isn't completed/cancelled, or null if every
+// selected leg is finished -- that's what puts a job on a given area board,
+// and null is what moves it to Billing.
+function activeLegForJob(legs) {
+  for (const type of LEG_ORDER) {
+    const leg = legs.find((l) => l.job_type === type);
+    if (leg && leg.status !== 'completed' && leg.status !== 'cancelled') return leg;
+  }
+  return null;
+}
+
+// Keeps job_legs in sync with jobs.job_types -- called at check-in and
+// whenever the type-checkbox editor is saved. Adds a leg (at its correct
+// starting status) for any newly-selected type; a deselected type's leg is
+// cancelled, not deleted, so it stays as history rather than vanishing.
+async function syncJobLegs(jobId, jobTypes) {
+  const existing = await listJobLegs(jobId);
+  const existingTypes = new Set(existing.map((l) => l.job_type));
+
+  const toInsert = jobTypes
+    .filter((t) => !existingTypes.has(t))
+    .map((t) => ({ job_id: jobId, job_type: t, status: initialLegStatus(t) }));
+  if (toInsert.length > 0) {
+    const { error } = await sb.from('job_legs').insert(toInsert);
+    if (error) throw new Error(error.message);
+  }
+
+  const toCancel = existing.filter(
+    (l) => !jobTypes.includes(l.job_type) && l.status !== 'cancelled' && l.status !== 'completed'
+  );
+  for (const leg of toCancel) {
+    const { error } = await sb
+      .from('job_legs')
+      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+      .eq('id', leg.id);
+    if (error) throw new Error(error.message);
+  }
+}
+
+const LEG_STATUS_TIMESTAMP_COLUMN = {
+  approved: 'approved_at',
+  work_in_progress: 'work_started_at',
+  completed: 'completed_at',
+  cancelled: 'cancelled_at'
+};
+
+// After moving a leg to its new status, checks whether every selected leg
+// is now finished -- if so the job itself flips to ready_to_bill, which is
+// what puts it on the Billing tab.
+async function updateLegStatus(jobId, jobType, status) {
+  const update = { status };
+  const tsCol = LEG_STATUS_TIMESTAMP_COLUMN[status];
+  if (tsCol) update[tsCol] = new Date().toISOString();
+
+  const { error } = await sb.from('job_legs').update(update).eq('job_id', jobId).eq('job_type', jobType);
+  if (error) throw new Error(error.message);
+
+  const legs = await listJobLegs(jobId);
+  if (!activeLegForJob(legs) && legs.some((l) => l.status === 'completed')) {
+    const { error: stageError } = await sb.from('jobs').update({ stage: 'ready_to_bill' }).eq('id', jobId);
+    if (stageError) throw new Error(stageError.message);
+  }
+}
+
+// What each area tab on the board renders: every job whose ACTIVE leg
+// (per activeLegForJob) is this jobType. Fetches every non-terminal leg
+// once, groups by job client-side -- a job with a completed repair leg and
+// an open customisation leg should only ever show on the Customisation tab.
+async function listJobsForArea(jobType, filters = {}) {
+  const { data: allLegs, error } = await sb
+    .from('job_legs')
+    .select('id, job_id, job_type, status');
+  if (error) throw new Error(error.message);
+
+  const legsByJob = {};
+  allLegs
+    .filter((leg) => leg.status !== 'completed' && leg.status !== 'cancelled')
+    .forEach((leg) => {
+      (legsByJob[leg.job_id] = legsByJob[leg.job_id] || []).push(leg);
+    });
+
+  const matchingJobIds = Object.keys(legsByJob).filter((jobId) => {
+    const active = activeLegForJob(legsByJob[jobId]);
+    return active && active.job_type === jobType;
+  });
+  if (matchingJobIds.length === 0) return [];
+
+  const jobs = await listJobs(filters);
+  return jobs
+    .filter((j) => matchingJobIds.includes(j.id))
+    .map((j) => ({ ...j, legStatus: activeLegForJob(legsByJob[j.id]).status }));
+}
+
+// What the Billing tab renders -- jobs where every selected leg is done.
+async function listJobsReadyToBill(filters = {}) {
+  const jobs = await listJobs(filters);
+  return jobs.filter((j) => j.stage === 'ready_to_bill');
+}
+
 function jobStatusLabel(value) {
   return JOB_STATUSES.find((s) => s.value === value)?.label || value;
+}
+
+function jobStageLabel(value) {
+  return JOB_STAGES.find((s) => s.value === value)?.label || value;
 }
 
 function jobTypeLabel(value) {
@@ -535,21 +678,19 @@ function jobTypeLabel(value) {
 // "Overdue" is judged against jobs.created_at (no separate status-change
 // timestamp exists) -- different job shapes get different grace periods
 // since a fast repair sitting for 3 hours means something different than
-// an engine build or a job genuinely blocked on parts.
+// an engine build.
 const OVERDUE_THRESHOLD_MS = {
-  waiting_for_parts: 24 * 60 * 60 * 1000,
   engine_building: 12 * 60 * 60 * 1000,
   default: 3 * 60 * 60 * 1000
 };
 
 function overdueThresholdFor(job) {
-  if (job.status === 'waiting_for_parts') return OVERDUE_THRESHOLD_MS.waiting_for_parts;
   if ((job.job_types || []).includes('engine_building')) return OVERDUE_THRESHOLD_MS.engine_building;
   return OVERDUE_THRESHOLD_MS.default;
 }
 
 function isJobOverdue(job) {
-  if (job.status === 'completed' || job.status === 'cancelled') return false;
+  if (job.stage === 'completed' || job.stage === 'cancelled') return false;
   return (Date.now() - new Date(job.created_at).getTime()) > overdueThresholdFor(job);
 }
 

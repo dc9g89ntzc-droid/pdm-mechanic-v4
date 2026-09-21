@@ -236,12 +236,24 @@ async function getJobContext(jobId) {
     .eq('id', jobId)
     .single();
   if (error) throw new Error(error.message);
+
+  // The status pill shows the repair leg's own progress (sql/031), not the
+  // vestigial flat jobs.status -- this page is only ever reached while
+  // that leg is awaiting/undergoing inspection.
+  const { data: repairLeg, error: legError } = await sb
+    .from('job_legs')
+    .select('status')
+    .eq('job_id', jobId)
+    .eq('job_type', 'repair')
+    .maybeSingle();
+  if (legError) throw new Error(legError.message);
+  data.legStatus = repairLeg ? repairLeg.status : data.status;
   return data;
 }
 
 // Reuses an existing open inspection for this job if one exists, otherwise
-// creates one and (if the job is still awaiting_inspection) advances the
-// job to inspection_in_progress.
+// creates one and (if the repair leg is still awaiting_inspection) advances
+// that leg to inspection_in_progress.
 async function getOrCreateInspection(jobId, staffId) {
   const { data: existing, error: existingError } = await sb
     .from('inspections')
@@ -260,12 +272,13 @@ async function getOrCreateInspection(jobId, staffId) {
     .single();
   if (createError) throw new Error(createError.message);
 
-  const { error: statusError } = await sb
-    .from('jobs')
+  const { error: legError } = await sb
+    .from('job_legs')
     .update({ status: 'inspection_in_progress' })
-    .eq('id', jobId)
+    .eq('job_id', jobId)
+    .eq('job_type', 'repair')
     .eq('status', 'awaiting_inspection');
-  if (statusError) throw new Error(statusError.message);
+  if (legError) throw new Error(legError.message);
 
   return created;
 }
@@ -470,11 +483,9 @@ async function completeInspection(inspectionId, jobId) {
     .eq('id', inspectionId);
   if (inspectionError) throw new Error(inspectionError.message);
 
-  const { error: jobError } = await sb
-    .from('jobs')
-    .update({ status: 'quote_preparation' })
-    .eq('id', jobId);
-  if (jobError) throw new Error(jobError.message);
+  // Inspection only ever belongs to the repair leg (sql/031) -- customisation
+  // and performance legs never go through this page.
+  await updateLegStatus(jobId, 'repair', 'quote_preparation');
 }
 
 function severityColor(value) {

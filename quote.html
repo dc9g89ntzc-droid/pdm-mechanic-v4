@@ -93,7 +93,7 @@
     <h1>PDM Mechanic Shop</h1>
     <nav>
       <a href="my-dashboard.html">Home</a>
-      <a href="dashboard.html">Workshop</a>
+      <a href="dashboard.html?area=repair">Workshop</a>
       <a href="checkin.html">New Job</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html">Purchasing</a>
@@ -157,15 +157,17 @@
           <div id="sheetMechanic"></div>
         </div>
       </div>
-      <div class="section-title first">Inspection Results</div>
-      <div id="sheetInspection"><div class="no-inspection">No inspection recorded yet.</div></div>
+      <div id="inspectionSection">
+        <div class="section-title first">Inspection Results</div>
+        <div id="sheetInspection"><div class="no-inspection">No inspection recorded yet.</div></div>
 
-      <div id="sheetDiagramSection" style="display:none;">
-        <div class="section-title">Vehicle Condition</div>
-        <canvas id="carDiagram" width="1080" height="620"></canvas>
+        <div id="sheetDiagramSection" style="display:none;">
+          <div class="section-title">Vehicle Condition</div>
+          <canvas id="carDiagram" width="1080" height="620"></canvas>
+        </div>
       </div>
 
-      <div class="section-title">Quote — Parts &amp; Labour</div>
+      <div class="section-title" id="quoteSectionTitle">Quote — Parts &amp; Labour</div>
       <table>
         <thead>
           <tr><th>Item</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Total</th></tr>
@@ -203,7 +205,16 @@
     document.querySelector('main').innerHTML = '<div class="empty-msg">No job specified.</div>';
     throw new Error('No job id in URL');
   }
-  document.getElementById('backLink').href = `job-items.html?job=${jobId}`;
+  let jobType = params.get('type');
+
+  // A link from before per-leg items existed won't carry &type= -- fall
+  // back to whichever leg is currently active, same as job-items.html.
+  async function resolveJobType() {
+    if (jobType) return;
+    const legs = await listJobLegs(jobId);
+    const active = activeLegForJob(legs);
+    jobType = active ? active.job_type : null;
+  }
 
   let job = null;
 
@@ -230,9 +241,6 @@
     document.getElementById('sheetDate').textContent = formatDateTimeEST();
     document.getElementById('sheetCustomer').textContent = job.customers?.customer_name || 'Unknown customer';
     document.getElementById('sheetVehicle').textContent = `${vehicle} — ${reg}`;
-    document.getElementById('sheetSubtotal').textContent = formatMoney(job.quoted_total);
-    document.getElementById('sheetLabourFee').textContent = formatMoney(labourFeeFor(job.quoted_total));
-    document.getElementById('sheetTotal').textContent = formatMoney(grandTotalFor(job.quoted_total));
 
     // Assigned mechanic if the job has one; otherwise whoever's generating
     // this document right now, so the quote never shows a blank mechanic.
@@ -250,18 +258,28 @@
     renderShareBox();
   }
 
+  // Subtotal/labour/total are computed from THIS leg's items only, not
+  // jobs.quoted_total (which stays a whole-job figure used elsewhere, e.g.
+  // the board card) -- a customisation quote shouldn't include repair parts.
   async function loadLines() {
-    const lines = await listJobItems(jobId);
+    const lines = await listJobItems(jobId, jobType);
     const tbody = document.getElementById('sheetLines');
     if (lines.length === 0) {
       tbody.innerHTML = '<tr><td colspan="4" class="empty-note">No items added to this job yet.</td></tr>';
-      return;
+    } else {
+      tbody.innerHTML = lines.map((line) => {
+        const lineTotal = line.unit_price !== null ? formatMoney(Number(line.unit_price) * Number(line.quantity)) : 'To confirm';
+        const unit = line.unit_price !== null ? formatMoney(line.unit_price) : 'To confirm';
+        return `<tr><td>${line.catalogue_items?.name || 'Unknown item'}</td><td class="num">${line.quantity}</td><td class="num">${unit}</td><td class="num">${lineTotal}</td></tr>`;
+      }).join('');
     }
-    tbody.innerHTML = lines.map((line) => {
-      const lineTotal = line.unit_price !== null ? formatMoney(Number(line.unit_price) * Number(line.quantity)) : 'To confirm';
-      const unit = line.unit_price !== null ? formatMoney(line.unit_price) : 'To confirm';
-      return `<tr><td>${line.catalogue_items?.name || 'Unknown item'}</td><td class="num">${line.quantity}</td><td class="num">${unit}</td><td class="num">${lineTotal}</td></tr>`;
-    }).join('');
+
+    const subtotal = lines.some((l) => l.unit_price === null)
+      ? null
+      : lines.reduce((sum, l) => sum + Number(l.unit_price) * Number(l.quantity), 0);
+    document.getElementById('sheetSubtotal').textContent = formatMoney(subtotal);
+    document.getElementById('sheetLabourFee').textContent = formatMoney(labourFeeFor(subtotal));
+    document.getElementById('sheetTotal').textContent = formatMoney(grandTotalFor(subtotal));
   }
 
   async function loadInspectionResults() {
@@ -357,7 +375,18 @@
     navigator.clipboard?.writeText(input.value).catch(() => {});
   });
 
-  loadJob().then(() => Promise.all([loadLines(), loadInspectionResults()]));
+  resolveJobType().then(() => {
+    document.getElementById('backLink').href = `job-items.html?job=${jobId}&type=${jobType || ''}`;
+    // Customisation/performance legs never go through inspection.html.
+    if (jobType !== 'repair') {
+      document.getElementById('inspectionSection').style.display = 'none';
+      document.getElementById('quoteSectionTitle').classList.add('first');
+    }
+    return loadJob().then(() => Promise.all([
+      loadLines(),
+      jobType === 'repair' ? loadInspectionResults() : Promise.resolve()
+    ]));
+  });
 </script>
 </body>
 </html>

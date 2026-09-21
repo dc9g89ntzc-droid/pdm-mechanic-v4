@@ -68,6 +68,25 @@
   }
   header button:hover, .btn:hover { background: var(--red-dim); }
 
+  .tabs {
+    display: flex;
+    gap: 6px;
+    padding: 14px 24px 0;
+    background: var(--panel);
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .tabs a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 16px;
+    border-radius: 8px 8px 0 0;
+    border-bottom: 2px solid transparent;
+  }
+  .tabs a:hover { color: var(--text); }
+  .tabs a.active { color: var(--text); border-bottom-color: var(--red); }
+
   .filters {
     display: flex;
     flex-wrap: wrap;
@@ -223,7 +242,7 @@
     <h1>PDM Mechanic Shop</h1>
     <nav>
       <a href="my-dashboard.html">Home</a>
-      <a href="dashboard.html" class="active">Workshop</a>
+      <a href="dashboard.html?area=repair" class="active">Workshop</a>
       <a href="checkin.html">New Job</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html">Purchasing</a>
@@ -238,15 +257,15 @@
     </div>
   </header>
 
+  <div class="tabs" id="tabs">
+    <a href="dashboard.html?area=repair" data-area="repair">Repair and Service</a>
+    <a href="dashboard.html?area=customisation" data-area="customisation">Customisation</a>
+    <a href="dashboard.html?area=performance" data-area="performance">Performance</a>
+    <a href="dashboard.html?area=billing" data-area="billing">Billing</a>
+  </div>
+
   <div class="filters">
     <select id="filterMechanic"><option value="">All mechanics</option></select>
-    <select id="filterJobType">
-      <option value="">All job types</option>
-      <option value="repair">Repair and Service</option>
-      <option value="customisation">Customisation</option>
-      <option value="performance">Performance</option>
-      <option value="engine_building">Engine Building</option>
-    </select>
     <input type="date" id="filterFrom" title="From date" />
     <input type="date" id="filterTo" title="To date" />
     <label style="display:flex; align-items:center; gap:6px; color:var(--text-dim); font-size:13px;">
@@ -264,17 +283,17 @@
     <div class="modal">
       <h2 id="statusModalTitle">Job details</h2>
       <p class="sub" id="statusModalSub"></p>
-      <label>Work type (any combination — add more any time before completion)</label>
+      <label>Work type (any combination — add more any time before billing)</label>
       <div class="type-checkboxes" id="typeCheckboxes"></div>
-      <label for="statusSelect">Status</label>
+      <label for="statusSelect" id="statusSelectLabel">Status</label>
       <select id="statusSelect"></select>
       <div class="quick-actions">
-        <button type="button" class="quick-action-btn" id="approveQuickBtn">Customer approved →</button>
+        <button type="button" class="quick-action-btn" id="approveQuickBtn">Quote accepted →</button>
         <button type="button" class="quick-action-btn" id="startWorkQuickBtn">Start work →</button>
+        <button type="button" class="quick-action-btn" id="completeQuickBtn">Work complete →</button>
       </div>
       <a href="#" id="editItemsLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:10px;">Add / edit items</a>
       <a href="#" id="viewQuoteLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:10px;">View / generate quote</a>
-      <a href="#" id="billCompleteLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:10px;">Bill &amp; complete</a>
       <a href="#" id="vehicleHistoryModalLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:18px;">Vehicle history</a>
       <div class="actions">
         <button class="cancel" id="statusCancelBtn">Cancel</button>
@@ -296,9 +315,28 @@
   document.getElementById('logoutBtn').addEventListener('click', logout);
   applyRoleNav(session);
 
+  const params = new URLSearchParams(location.search);
+  let area = params.get('area');
+  if (!['repair', 'customisation', 'performance', 'billing'].includes(area)) area = 'repair';
+  document.querySelectorAll('#tabs a').forEach((el) => {
+    if (el.dataset.area === area) el.classList.add('active');
+  });
+
+  // Repair keeps its inspection columns; customisation/performance never
+  // have an inspection, so they start straight at quote_preparation.
+  const AREA_COLUMNS = {
+    repair: ['awaiting_inspection', 'inspection_in_progress', 'quote_preparation', 'approved', 'work_in_progress'],
+    customisation: ['quote_preparation', 'approved', 'work_in_progress'],
+    performance: ['quote_preparation', 'approved', 'work_in_progress']
+  };
+  const LEG_STATUS_OPTIONS = {
+    repair: [...AREA_COLUMNS.repair, 'completed', 'cancelled'],
+    customisation: [...AREA_COLUMNS.customisation, 'completed', 'cancelled'],
+    performance: [...AREA_COLUMNS.performance, 'completed', 'cancelled']
+  };
+
   const boardEl = document.getElementById('board');
   const mechanicFilter = document.getElementById('filterMechanic');
-  const jobTypeFilter = document.getElementById('filterJobType');
   const fromFilter = document.getElementById('filterFrom');
   const toFilter = document.getElementById('filterTo');
 
@@ -310,61 +348,61 @@
   function currentFilters() {
     return {
       mechanicId: mechanicFilter.value || null,
-      jobType: jobTypeFilter.value || null,
       fromDate: fromFilter.value || null,
       toDate: toFilter.value || null
     };
   }
 
-  function renderBoard(jobs) {
-    boardEl.innerHTML = '';
+  function buildCard(job) {
+    const vehicle = job.owned_vehicles
+      ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() || 'Unknown vehicle'
+      : 'Unknown vehicle';
+    const reg = job.owned_vehicles?.registration || 'Unknown';
+    const mechanic = job.assigned_staff_id
+      ? (mechanicsById[job.assigned_staff_id] || 'Unknown')
+      : 'Unassigned';
+    const typeBadges = (job.job_types && job.job_types.length > 0)
+      ? job.job_types.map((t) => `<span class="badge type-${t}">${jobTypeLabel(t)}</span>`).join('')
+      : `<span class="badge type-unclassified">To confirm</span>`;
+    const overdue = isJobOverdue(job);
+    const card = document.createElement('div');
+    card.className = overdue ? 'card overdue' : 'card';
+    card.innerHTML = `
+      <div class="job-number">Job #${job.job_number}</div>
+      <div class="customer">${job.customers?.customer_name || 'Unknown customer'}</div>
+      <div class="vehicle">${vehicle} &middot; ${reg}</div>
+      ${job.short_description ? `<div class="desc">${job.short_description}</div>` : ''}
+      <div class="badges" style="margin-bottom:8px;">${typeBadges}${overdue ? `<span class="badge overdue">Overdue &middot; ${jobAgeLabel(job)}</span>` : ''}</div>
+      <div class="meta-row">
+        <span class="${job.quoted_total === null ? 'total unknown' : 'total'}">${formatMoney(grandTotalFor(job.quoted_total))}</span>
+      </div>
+      <div class="meta-row" style="margin-top:6px;">
+        <span>${mechanic}</span>
+        <span>${formatDateTime(job.arrival_time)}</span>
+      </div>
+    `;
+    return card;
+  }
 
+  function renderAreaBoard(jobs) {
     if (jobs.length === 0) {
-      boardEl.innerHTML = '<div class="empty-msg">No jobs match the current filters.</div>';
+      boardEl.innerHTML = '<div class="empty-msg">No jobs on this board right now.</div>';
       return;
     }
-
-    JOB_STATUSES.forEach((statusDef) => {
-      const jobsInColumn = jobs.filter((j) => j.status === statusDef.value);
+    AREA_COLUMNS[area].forEach((statusValue) => {
+      const jobsInColumn = jobs.filter((j) => j.legStatus === statusValue);
       const column = document.createElement('div');
       column.className = 'column';
       column.innerHTML = `
         <div class="column-header">
-          <span>${statusDef.label}</span>
+          <span>${jobStatusLabel(statusValue)}</span>
           <span class="count">${jobsInColumn.length}</span>
         </div>
       `;
-
       jobsInColumn.forEach((job) => {
-        const vehicle = job.owned_vehicles
-          ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() || 'Unknown vehicle'
-          : 'Unknown vehicle';
-        const reg = job.owned_vehicles?.registration || 'Unknown';
-        const mechanic = job.assigned_staff_id
-          ? (mechanicsById[job.assigned_staff_id] || 'Unknown')
-          : 'Unassigned';
-        const typeBadges = (job.job_types && job.job_types.length > 0)
-          ? job.job_types.map((t) => `<span class="badge type-${t}">${jobTypeLabel(t)}</span>`).join('')
-          : `<span class="badge type-unclassified">To confirm</span>`;
-        const overdue = isJobOverdue(job);
-        const card = document.createElement('div');
-        card.className = overdue ? 'card overdue' : 'card';
-        card.innerHTML = `
-          <div class="job-number">Job #${job.job_number}</div>
-          <div class="customer">${job.customers?.customer_name || 'Unknown customer'}</div>
-          <div class="vehicle">${vehicle} &middot; ${reg}</div>
-          ${job.short_description ? `<div class="desc">${job.short_description}</div>` : ''}
-          <div class="badges" style="margin-bottom:8px;">${typeBadges}${overdue ? `<span class="badge overdue">Overdue &middot; ${jobAgeLabel(job)}</span>` : ''}</div>
-          <div class="meta-row">
-            <span class="${job.quoted_total === null ? 'total unknown' : 'total'}">${formatMoney(grandTotalFor(job.quoted_total))}</span>
-          </div>
-          <div class="meta-row" style="margin-top:6px;">
-            <span>${mechanic}</span>
-            <span>${formatDateTime(job.arrival_time)}</span>
-          </div>
-        `;
+        const card = buildCard(job);
         card.addEventListener('click', () => {
-          if (job.status === 'awaiting_inspection' || job.status === 'inspection_in_progress') {
+          if (area === 'repair' && (job.legStatus === 'awaiting_inspection' || job.legStatus === 'inspection_in_progress')) {
             window.location.href = `inspection.html?job=${job.id}`;
           } else {
             openStatusModal(job);
@@ -372,18 +410,47 @@
         });
         column.appendChild(card);
       });
-
       boardEl.appendChild(column);
     });
   }
 
+  function renderBillingBoard(jobs) {
+    if (jobs.length === 0) {
+      boardEl.innerHTML = '<div class="empty-msg">No jobs ready to bill right now.</div>';
+      return;
+    }
+    const column = document.createElement('div');
+    column.className = 'column';
+    column.innerHTML = `
+      <div class="column-header">
+        <span>Ready to bill</span>
+        <span class="count">${jobs.length}</span>
+      </div>
+    `;
+    jobs.forEach((job) => {
+      const card = buildCard(job);
+      card.addEventListener('click', () => { window.location.href = `receipt.html?job=${job.id}`; });
+      column.appendChild(card);
+    });
+    boardEl.appendChild(column);
+  }
+
   async function loadBoard() {
+    boardEl.innerHTML = '<div class="empty-msg">Loading…</div>';
     try {
-      let jobs = await listJobs(currentFilters());
+      const filters = currentFilters();
+      let jobs = area === 'billing'
+        ? await listJobsReadyToBill(filters)
+        : await listJobsForArea(area, filters);
       if (document.getElementById('filterOverdue').checked) {
         jobs = jobs.filter(isJobOverdue);
       }
-      renderBoard(jobs);
+      boardEl.innerHTML = '';
+      if (area === 'billing') {
+        renderBillingBoard(jobs);
+      } else {
+        renderAreaBoard(jobs);
+      }
     } catch (err) {
       boardEl.innerHTML = `<div class="empty-msg">Failed to load jobs: ${err.message}</div>`;
     }
@@ -404,45 +471,44 @@
     }
   }
 
-  [mechanicFilter, jobTypeFilter, fromFilter, toFilter].forEach((el) => {
+  [mechanicFilter, fromFilter, toFilter].forEach((el) => {
     el.addEventListener('change', loadBoard);
   });
   document.getElementById('filterOverdue').addEventListener('change', loadBoard);
 
   document.getElementById('clearFilters').addEventListener('click', () => {
     mechanicFilter.value = '';
-    jobTypeFilter.value = '';
     fromFilter.value = '';
     toFilter.value = '';
     document.getElementById('filterOverdue').checked = false;
     loadBoard();
   });
 
-  // Status change modal
+  // Status change modal -- not used on the Billing tab (its cards go
+  // straight to receipt.html).
   const modalBackdrop = document.getElementById('statusModalBackdrop');
   const statusSelect = document.getElementById('statusSelect');
-
   const typeCheckboxes = document.getElementById('typeCheckboxes');
 
   function openStatusModal(job) {
     activeJobId = job.id;
     activeJobNumber = job.job_number;
-    activeJobPrevStatus = job.status;
+    activeJobPrevStatus = job.legStatus;
     document.getElementById('statusModalTitle').textContent = `Job #${job.job_number}`;
     document.getElementById('statusModalSub').textContent =
-      `${job.customers?.customer_name || 'Unknown customer'} — ${job.owned_vehicles?.registration || 'Unknown reg'}`;
-    document.getElementById('editItemsLink').href = `job-items.html?job=${job.id}`;
-    document.getElementById('viewQuoteLink').href = `quote.html?job=${job.id}`;
-    document.getElementById('billCompleteLink').href = `receipt.html?job=${job.id}`;
+      `${job.customers?.customer_name || 'Unknown customer'} — ${job.owned_vehicles?.registration || 'Unknown reg'} — ${jobTypeLabel(area)}`;
+    document.getElementById('editItemsLink').href = `job-items.html?job=${job.id}&type=${area}`;
+    document.getElementById('viewQuoteLink').href = `quote.html?job=${job.id}&type=${area}`;
     document.getElementById('vehicleHistoryModalLink').href = `history.html?vehicle=${job.owned_vehicle_id}`;
 
     const currentTypes = job.job_types || [];
-    typeCheckboxes.innerHTML = JOB_TYPES.map(
-      (t) => `<label><input type="checkbox" value="${t.value}" ${currentTypes.includes(t.value) ? 'checked' : ''} /> ${t.label}</label>`
+    typeCheckboxes.innerHTML = LEG_ORDER.map(
+      (t) => `<label><input type="checkbox" value="${t}" ${currentTypes.includes(t) ? 'checked' : ''} /> ${jobTypeLabel(t)}</label>`
     ).join('');
 
-    statusSelect.innerHTML = JOB_STATUSES.map(
-      (s) => `<option value="${s.value}" ${s.value === job.status ? 'selected' : ''}>${s.label}</option>`
+    document.getElementById('statusSelectLabel').textContent = `${jobTypeLabel(area)} status`;
+    statusSelect.innerHTML = LEG_STATUS_OPTIONS[area].map(
+      (s) => `<option value="${s}" ${s === job.legStatus ? 'selected' : ''}>${jobStatusLabel(s)}</option>`
     ).join('');
     modalBackdrop.classList.add('open');
   }
@@ -457,13 +523,13 @@
     if (e.target === modalBackdrop) closeStatusModal();
   });
 
-  async function quickSetStatus(status) {
+  async function quickSetLegStatus(status) {
     if (!activeJobId) return;
     try {
-      await updateJobStatus(activeJobId, status);
+      await updateLegStatus(activeJobId, area, status);
       logActivity({
-        actorId: session?.id, action: 'job_status_changed', entityType: 'job', entityId: activeJobId,
-        summary: `${session?.employee_name || 'Someone'} moved Job #${activeJobNumber} from ${jobStatusLabel(activeJobPrevStatus)} to ${jobStatusLabel(status)}`
+        actorId: session?.id, action: 'job_leg_status_changed', entityType: 'job', entityId: activeJobId,
+        summary: `${session?.employee_name || 'Someone'} moved Job #${activeJobNumber}'s ${jobTypeLabel(area)} leg from ${jobStatusLabel(activeJobPrevStatus)} to ${jobStatusLabel(status)}`
       });
       closeStatusModal();
       loadBoard();
@@ -471,19 +537,20 @@
       alert(`Failed to update job: ${err.message}`);
     }
   }
-  document.getElementById('approveQuickBtn').addEventListener('click', () => quickSetStatus('approved'));
-  document.getElementById('startWorkQuickBtn').addEventListener('click', () => quickSetStatus('work_in_progress'));
+  document.getElementById('approveQuickBtn').addEventListener('click', () => quickSetLegStatus('approved'));
+  document.getElementById('startWorkQuickBtn').addEventListener('click', () => quickSetLegStatus('work_in_progress'));
+  document.getElementById('completeQuickBtn').addEventListener('click', () => quickSetLegStatus('completed'));
 
   document.getElementById('statusSaveBtn').addEventListener('click', async () => {
     if (!activeJobId) return;
     const selectedTypes = Array.from(typeCheckboxes.querySelectorAll('input:checked')).map((cb) => cb.value);
     try {
-      await updateJobStatus(activeJobId, statusSelect.value);
-      await updateJobTypes(activeJobId, selectedTypes);
+      await updateLegStatus(activeJobId, area, statusSelect.value);
+      await syncJobLegs(activeJobId, selectedTypes);
       if (statusSelect.value !== activeJobPrevStatus) {
         logActivity({
-          actorId: session?.id, action: 'job_status_changed', entityType: 'job', entityId: activeJobId,
-          summary: `${session?.employee_name || 'Someone'} moved Job #${activeJobNumber} from ${jobStatusLabel(activeJobPrevStatus)} to ${jobStatusLabel(statusSelect.value)}`
+          actorId: session?.id, action: 'job_leg_status_changed', entityType: 'job', entityId: activeJobId,
+          summary: `${session?.employee_name || 'Someone'} moved Job #${activeJobNumber}'s ${jobTypeLabel(area)} leg from ${jobStatusLabel(activeJobPrevStatus)} to ${jobStatusLabel(statusSelect.value)}`
         });
       }
       closeStatusModal();

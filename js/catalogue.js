@@ -250,12 +250,17 @@ function effectiveUnitCost(catalogueItem, sourcingChoice) {
 
 // ---- Job items (what's been added to a job's quote) ----
 
-async function listJobItems(jobId) {
-  const { data, error } = await sb
+// jobType, when passed, scopes to one leg (sql/031) -- job-items.html and
+// quote.html only want the items picked for the leg currently open;
+// receipt.html omits it deliberately to sum every leg into one final bill.
+async function listJobItems(jobId, jobType) {
+  let query = sb
     .from('job_items')
-    .select('id, quantity, unit_price, sourcing_choice, catalogue_item_id, catalogue_items ( name, image_url ) ')
+    .select('id, quantity, unit_price, sourcing_choice, catalogue_item_id, job_type, catalogue_items ( name, image_url ) ')
     .eq('job_id', jobId)
     .order('created_at');
+  if (jobType) query = query.eq('job_type', jobType);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return data;
 }
@@ -277,14 +282,18 @@ async function listJobItemsForJobs(jobIds) {
 // quantity on the existing row instead of creating a duplicate, and logs
 // the matching stock movement so inventory_transactions stays the source
 // of truth for "what got used on this job."
-async function addJobItem({ jobId, catalogueItem, quantity, sourcingChoice, performedBy }) {
-  const existing = await sb
+async function addJobItem({ jobId, catalogueItem, quantity, sourcingChoice, performedBy, jobType }) {
+  let existingQuery = sb
     .from('job_items')
     .select('id, quantity')
     .eq('job_id', jobId)
     .eq('catalogue_item_id', catalogueItem.id)
-    .is('sourcing_choice', sourcingChoice || null)
-    .maybeSingle();
+    .is('sourcing_choice', sourcingChoice || null);
+  // Same catalogue item picked for two different legs on one job (e.g. the
+  // customisation leg and the performance leg both want a set of tyres) has
+  // to stay two separate rows, not merge quantities across legs.
+  existingQuery = jobType ? existingQuery.eq('job_type', jobType) : existingQuery.is('job_type', null);
+  const existing = await existingQuery.maybeSingle();
   if (existing.error) throw new Error(existing.error.message);
 
   if (existing.data) {
@@ -301,6 +310,7 @@ async function addJobItem({ jobId, catalogueItem, quantity, sourcingChoice, perf
       unit_price: catalogueItem.customer_price,
       unit_cost: effectiveUnitCost(catalogueItem, sourcingChoice),
       sourcing_choice: sourcingChoice || null,
+      job_type: jobType || null,
       added_by: performedBy || null
     });
     if (error) throw new Error(error.message);

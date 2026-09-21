@@ -76,7 +76,7 @@
     <h1>PDM Mechanic Shop</h1>
     <nav>
       <a href="my-dashboard.html" class="active">Home</a>
-      <a href="dashboard.html">Workshop</a>
+      <a href="dashboard.html?area=repair">Workshop</a>
       <a href="checkin.html">New Job</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html">Purchasing</a>
@@ -97,7 +97,7 @@
 
     <div class="quick-links">
       <a href="checkin.html" class="btn">+ New Job</a>
-      <a href="dashboard.html" class="btn secondary">Workshop Board</a>
+      <a href="dashboard.html?area=repair" class="btn secondary">Workshop Board</a>
       <button class="btn secondary" id="changePasswordBtn">Change Password</button>
     </div>
 
@@ -180,7 +180,7 @@
           <div class="job-sub">${vehicle} · ${reg}</div>
         </div>
         <div class="job-right">
-          <span class="badge">${jobStatusLabel(job.status)}</span>${mode === 'active' && isJobOverdue(job) ? `<span class="badge overdue">Overdue</span>` : ''}<br/>
+          <span class="badge">${jobStageLabel(job.stage)}</span>${mode === 'active' && isJobOverdue(job) ? `<span class="badge overdue">Overdue</span>` : ''}<br/>
           ${formatMoney(grandTotalFor(job.quoted_total))}
         </div>
       </a>
@@ -189,8 +189,8 @@
 
   async function loadJobs() {
     const jobs = await listJobs({ mechanicId: session.id });
-    const active = jobs.filter((j) => j.status !== 'completed' && j.status !== 'cancelled');
-    const completed = jobs.filter((j) => j.status === 'completed').slice(0, 8);
+    const active = jobs.filter((j) => j.stage !== 'completed' && j.stage !== 'cancelled');
+    const completed = jobs.filter((j) => j.stage === 'completed').slice(0, 8);
 
     const activeCard = document.getElementById('activeJobsCard');
     activeCard.innerHTML = active.length

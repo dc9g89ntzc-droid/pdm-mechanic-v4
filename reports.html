@@ -57,7 +57,7 @@
     <h1>PDM Mechanic Shop</h1>
     <nav>
       <a href="my-dashboard.html">Home</a>
-      <a href="dashboard.html">Workshop</a>
+      <a href="dashboard.html?area=repair">Workshop</a>
       <a href="checkin.html">New Job</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html">Purchasing</a>
@@ -155,7 +155,7 @@
       { label: 'Job', render: (j) => `<a href="job-items.html?job=${j.id}" style="color:var(--text);">#${j.job_number}</a>` },
       { label: 'Customer', render: (j) => j.customers?.customer_name || 'Unknown' },
       { label: 'Mechanic', render: (j) => staffName(j.assigned_staff_id) },
-      { label: 'Status', render: (j) => `<span class="badge overdue">${jobStatusLabel(j.status)}</span>` },
+      { label: 'Status', render: (j) => `<span class="badge overdue">${jobStageLabel(j.stage)}</span>` },
       { label: 'Open', num: true, render: (j) => jobAgeLabel(j) }
     ]);
   }
