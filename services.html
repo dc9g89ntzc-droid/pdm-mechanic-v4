@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Services</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--panel-border);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 8px 14px;
+    border-radius: 8px;
+  }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn {
+    background: var(--red);
+    border: none;
+    color: white;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-block;
+  }
+  header button.secondary, .btn.secondary {
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    font-weight: 400;
+  }
+  header button:hover, .btn:hover { background: var(--red-dim); }
+
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 16px 24px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--panel-border);
+    align-items: center;
+  }
+  .filters select, .filters input {
+    background: var(--bg);
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .filters label.checkbox { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); }
+  .filters button { background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+
+  main { padding: 20px 24px 60px; }
+
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden; font-size: 13px; }
+  thead th { text-align: left; padding: 10px 12px; color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--panel-border); }
+  tbody td { padding: 10px 12px; border-bottom: 1px solid var(--panel-border); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.03); cursor: pointer; }
+  tbody tr.inactive { opacity: 0.5; }
+  .item-name { font-weight: 600; }
+  .item-desc { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 40px; text-align: center; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .badge.type-repair { background: rgba(216,31,39,0.15); color: #f0888c; }
+  .badge.type-customisation { background: rgba(240,165,44,0.15); color: var(--amber); }
+  .badge.type-performance { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.type-engine_building { background: rgba(124,58,237,0.15); color: #a78bfa; }
+
+  /* Modal */
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); align-items: flex-start; justify-content: center; z-index: 10; overflow-y: auto; padding: 40px 16px; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px; width: 100%; max-width: 640px; }
+  .modal h2 { font-size: 16px; margin: 0 0 18px; }
+  .modal h3 { font-size: 13px; margin: 22px 0 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; border-top: 1px solid var(--panel-border); padding-top: 16px; }
+  .modal label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+  .modal input, .modal select, .modal textarea {
+    width: 100%; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text);
+    padding: 9px 10px; border-radius: 8px; font-size: 13px; font-family: inherit;
+  }
+  .modal textarea { resize: vertical; min-height: 50px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  .field { margin-bottom: 4px; }
+  .modal .actions { display: flex; gap: 10px; margin-top: 22px; }
+  .modal .actions button { flex: 1; padding: 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .modal .actions .save { background: var(--red); border: none; color: white; font-weight: 600; }
+  .modal .actions .cancel { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; }
+  .checkbox-row input { width: auto; }
+  .hint { color: var(--text-dim); font-size: 12px; margin: 0 0 18px; }
+
+  .material-row, .subcat-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .material-row select { flex: 2; }
+  .material-row input { flex: 1; }
+  .material-row button, .subcat-row button { flex: 0 0 auto; background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); border-radius: 6px; padding: 8px 10px; cursor: pointer; }
+  .disabled-note { color: var(--text-dim); font-size: 12px; font-style: italic; }
+  .materials-summary { display: flex; justify-content: space-between; font-size: 13px; padding: 10px 0; border-top: 1px solid var(--panel-border); margin-top: 8px; }
+  .materials-summary.total { font-weight: 700; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="my-dashboard.html">Home</a>
+      <a href="dashboard.html">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="configure.html" class="active">Configure</a>
+      <a href="purchasing.html">Purchasing</a>
+      <a href="reports.html">Reports</a>
+      <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
+      <a href="accounts.html">Accounts</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <div class="filters">
+    <select id="filterJobType"><option value="">All job types</option></select>
+    <select id="filterSubcategory"><option value="">All subcategories</option></select>
+    <input type="text" id="filterSearch" placeholder="Search services…" />
+    <label class="checkbox"><input type="checkbox" id="filterActiveOnly" checked /> Active only</label>
+    <button id="clearFilters">Clear filters</button>
+    <button class="btn secondary" id="manageSubcatsBtn" style="margin-left:auto;">Subcategories</button>
+    <button class="btn" id="newServiceBtn">+ New Service</button>
+  </div>
+
+  <main>
+    <table>
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Job Type</th>
+          <th>Subcategory</th>
+          <th>Labour Fee</th>
+          <th>Materials</th>
+        </tr>
+      </thead>
+      <tbody id="servicesBody"></tbody>
+    </table>
+  </main>
+
+  <!-- Service modal -->
+  <div class="modal-backdrop" id="serviceModalBackdrop">
+    <div class="modal">
+      <h2 id="serviceModalTitle">New service</h2>
+
+      <div class="form-grid">
+        <div class="field full">
+          <label>Name</label>
+          <input type="text" id="fName" />
+        </div>
+        <div class="field full">
+          <label>Description</label>
+          <textarea id="fDescription"></textarea>
+        </div>
+        <div class="field">
+          <label>Job type</label>
+          <select id="fJobType"></select>
+        </div>
+        <div class="field">
+          <label>Subcategory</label>
+          <select id="fSubcategory"><option value="">— None —</option></select>
+        </div>
+        <div class="field">
+          <label>Labour fee</label>
+          <input type="number" id="fLabourFee" min="0" step="0.01" placeholder="To confirm" />
+        </div>
+        <div class="field full checkbox-row">
+          <input type="checkbox" id="fActive" checked />
+          <label style="margin:0;">Active (visible for selection)</label>
+        </div>
+        <div class="field full">
+          <label>Notes</label>
+          <textarea id="fNotes"></textarea>
+        </div>
+      </div>
+
+      <!-- Materials -->
+      <h3>Materials</h3>
+      <div id="materialsSection">
+        <p class="disabled-note" id="materialsDisabledNote">Save the service first to add materials.</p>
+        <div id="materialsList"></div>
+        <div class="material-row" id="addMaterialRow" style="display:none;">
+          <select id="fMaterialPicker"></select>
+          <input type="number" id="fMaterialQty" min="0.01" step="0.01" value="1" placeholder="Qty" />
+          <button id="addMaterialBtn">Add</button>
+        </div>
+        <div id="materialsSummary" style="display:none;">
+          <div class="materials-summary"><span>Materials subtotal</span><span id="materialsSubtotal">$0.00</span></div>
+          <div class="materials-summary"><span>Labour fee</span><span id="materialsLabourFee">To confirm</span></div>
+          <div class="materials-summary total"><span>Total</span><span id="materialsTotal">$0.00</span></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="cancel" id="serviceCancelBtn">Close</button>
+        <button class="save" id="serviceSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Subcategories modal -->
+  <div class="modal-backdrop" id="subcatModalBackdrop">
+    <div class="modal" style="max-width:420px;">
+      <h2>Subcategories</h2>
+      <p class="hint">Shared across job types — e.g. "Turbo Kits" can hold both Performance and Engine Building services.</p>
+      <div id="subcatList"></div>
+      <div class="subcat-row">
+        <input type="text" id="fNewSubcat" placeholder="New subcategory name" />
+        <button id="addSubcatBtn">Add</button>
+      </div>
+      <div class="actions">
+        <button class="cancel" id="subcatCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
+<script src="js/catalogue.js"></script>
+<script src="js/services.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  const servicesBody = document.getElementById('servicesBody');
+  const filterJobType = document.getElementById('filterJobType');
+  const filterSubcategory = document.getElementById('filterSubcategory');
+  const filterSearch = document.getElementById('filterSearch');
+  const filterActiveOnly = document.getElementById('filterActiveOnly');
+
+  let subcategories = [];
+  let editingServiceId = null;
+
+  filterJobType.innerHTML = '<option value="">All job types</option>' + JOB_TYPES.map((t) => `<option value="${t.value}">${t.label}</option>`).join('');
+  document.getElementById('fJobType').innerHTML = JOB_TYPES.map((t) => `<option value="${t.value}">${t.label}</option>`).join('');
+
+  function currentFilters() {
+    return {
+      jobTypeCategory: filterJobType.value || null,
+      subcategoryId: filterSubcategory.value || null,
+      search: filterSearch.value || null,
+      activeOnly: filterActiveOnly.checked
+    };
+  }
+
+  function renderSubcategoryOptions(selectEl, includeBlank) {
+    selectEl.innerHTML = (includeBlank ? '<option value="">— None —</option>' : '<option value="">All subcategories</option>')
+      + subcategories.map((s) => `<option value="${s.id}">${s.name}</option>`).join('');
+  }
+
+  async function loadSubcategories() {
+    subcategories = await listServiceSubcategories();
+    renderSubcategoryOptions(filterSubcategory, false);
+    renderSubcategoryOptions(document.getElementById('fSubcategory'), true);
+  }
+
+  async function renderServices(services) {
+    servicesBody.innerHTML = '';
+    if (services.length === 0) {
+      servicesBody.innerHTML = '<tr><td colspan="5"><div class="empty-msg">No services match the current filters.</div></td></tr>';
+      return;
+    }
+    const counts = await listServiceMaterialCounts();
+    services.forEach((service) => {
+      const tr = document.createElement('tr');
+      if (!service.active) tr.className = 'inactive';
+      const materialCount = counts[service.id] || 0;
+      tr.innerHTML = `
+        <td>
+          <div class="item-name">${service.name}</div>
+          ${service.description ? `<div class="item-desc">${service.description}</div>` : ''}
+        </td>
+        <td><span class="badge type-${service.job_type_category}">${jobTypeLabel(service.job_type_category)}</span></td>
+        <td>${service.service_subcategories?.name || '—'}</td>
+        <td>${service.labour_fee !== null ? formatMoney(service.labour_fee) : 'To confirm'}</td>
+        <td>${materialCount} material${materialCount === 1 ? '' : 's'}</td>
+      `;
+      tr.addEventListener('click', () => openServiceModal(service.id));
+      servicesBody.appendChild(tr);
+    });
+  }
+
+  async function loadServices() {
+    try {
+      const services = await listServices(currentFilters());
+      await renderServices(services);
+    } catch (err) {
+      servicesBody.innerHTML = `<tr><td colspan="5"><div class="empty-msg">Failed to load services: ${err.message}</div></td></tr>`;
+    }
+  }
+
+  [filterJobType, filterSubcategory, filterActiveOnly].forEach((el) => el.addEventListener('change', loadServices));
+  filterSearch.addEventListener('input', () => {
+    clearTimeout(filterSearch._t);
+    filterSearch._t = setTimeout(loadServices, 250);
+  });
+  document.getElementById('clearFilters').addEventListener('click', () => {
+    filterJobType.value = '';
+    filterSubcategory.value = '';
+    filterSearch.value = '';
+    filterActiveOnly.checked = true;
+    loadServices();
+  });
+
+  // ---- Service modal ----
+  const serviceModalBackdrop = document.getElementById('serviceModalBackdrop');
+  const materialPicker = document.getElementById('fMaterialPicker');
+
+  function clearServiceForm() {
+    document.getElementById('fName').value = '';
+    document.getElementById('fDescription').value = '';
+    document.getElementById('fJobType').value = 'repair';
+    document.getElementById('fSubcategory').value = '';
+    document.getElementById('fLabourFee').value = '';
+    document.getElementById('fActive').checked = true;
+    document.getElementById('fNotes').value = '';
+  }
+
+  function numOrNull(value) {
+    return value === '' || value === null || value === undefined ? null : Number(value);
+  }
+
+  function readServiceForm() {
+    return {
+      name: document.getElementById('fName').value.trim(),
+      description: document.getElementById('fDescription').value.trim() || null,
+      job_type_category: document.getElementById('fJobType').value,
+      subcategory_id: document.getElementById('fSubcategory').value || null,
+      labour_fee: numOrNull(document.getElementById('fLabourFee').value),
+      active: document.getElementById('fActive').checked,
+      notes: document.getElementById('fNotes').value.trim() || null
+    };
+  }
+
+  function fillServiceForm(service) {
+    document.getElementById('fName').value = service.name || '';
+    document.getElementById('fDescription').value = service.description || '';
+    document.getElementById('fJobType').value = service.job_type_category;
+    document.getElementById('fSubcategory').value = service.subcategory_id || '';
+    document.getElementById('fLabourFee').value = service.labour_fee ?? '';
+    document.getElementById('fActive').checked = service.active;
+    document.getElementById('fNotes').value = service.notes || '';
+  }
+
+  async function openServiceModal(serviceId) {
+    editingServiceId = serviceId || null;
+    clearServiceForm();
+
+    document.getElementById('serviceModalTitle').textContent = editingServiceId ? 'Edit service' : 'New service';
+    document.getElementById('materialsDisabledNote').style.display = editingServiceId ? 'none' : 'block';
+    document.getElementById('addMaterialRow').style.display = editingServiceId ? 'flex' : 'none';
+    document.getElementById('materialsSummary').style.display = editingServiceId ? 'block' : 'none';
+    document.getElementById('materialsList').innerHTML = '';
+
+    if (editingServiceId) {
+      const service = await getService(editingServiceId);
+      fillServiceForm(service);
+      await loadMaterialPicker();
+      await loadMaterialsList();
+    }
+
+    serviceModalBackdrop.classList.add('open');
+  }
+
+  function closeServiceModal() {
+    serviceModalBackdrop.classList.remove('open');
+    editingServiceId = null;
+  }
+
+  document.getElementById('newServiceBtn').addEventListener('click', () => openServiceModal(null));
+  document.getElementById('serviceCancelBtn').addEventListener('click', closeServiceModal);
+  serviceModalBackdrop.addEventListener('click', (e) => { if (e.target === serviceModalBackdrop) closeServiceModal(); });
+
+  document.getElementById('serviceSaveBtn').addEventListener('click', async () => {
+    const form = readServiceForm();
+    if (!form.name) { alert('Name is required.'); return; }
+    try {
+      if (editingServiceId) {
+        await updateService(editingServiceId, form);
+        logActivity({
+          actorId: session?.id, action: 'service_updated', entityType: 'service', entityId: editingServiceId,
+          summary: `${session?.employee_name || 'Someone'} updated service "${form.name}"`
+        });
+      } else {
+        const { id } = await createService(form);
+        editingServiceId = id;
+        logActivity({
+          actorId: session?.id, action: 'service_created', entityType: 'service', entityId: id,
+          summary: `${session?.employee_name || 'Someone'} created service "${form.name}"`
+        });
+      }
+      await loadServices();
+      // Reopen in edit mode so materials can be added straight away.
+      await openServiceModal(editingServiceId);
+    } catch (err) {
+      alert(`Failed to save service: ${err.message}`);
+    }
+  });
+
+  // ---- Materials ----
+  async function loadMaterialPicker() {
+    const all = await listAllItemsForPicker();
+    materialPicker.innerHTML = all.map((i) => `<option value="${i.id}">${i.name}</option>`).join('');
+  }
+
+  function updateMaterialsSummary(materials) {
+    const subtotal = materials.reduce((sum, row) => {
+      const price = row.catalogue_items?.customer_price;
+      return sum + (price !== null && price !== undefined ? Number(price) * Number(row.quantity) : 0);
+    }, 0);
+    const labourFee = numOrNull(document.getElementById('fLabourFee').value);
+    document.getElementById('materialsSubtotal').textContent = formatMoney(subtotal);
+    document.getElementById('materialsLabourFee').textContent = labourFee !== null ? formatMoney(labourFee) : 'To confirm';
+    document.getElementById('materialsTotal').textContent = formatMoney(subtotal + (labourFee || 0));
+  }
+
+  async function loadMaterialsList() {
+    const list = await listServiceMaterials(editingServiceId);
+    const container = document.getElementById('materialsList');
+    if (list.length === 0) {
+      container.innerHTML = '<p class="disabled-note">No materials added yet.</p>';
+    } else {
+      container.innerHTML = '';
+      list.forEach((row) => {
+        const div = document.createElement('div');
+        div.className = 'material-row';
+        const materialName = row.catalogue_items ? row.catalogue_items.name : 'Unknown item';
+        const price = row.catalogue_items?.customer_price;
+        const priceLabel = price !== null && price !== undefined ? formatMoney(price) : 'To confirm';
+        div.innerHTML = `
+          <span style="flex:2;">${materialName}</span>
+          <span style="flex:1;">× ${row.quantity}</span>
+          <span style="flex:1;">${priceLabel}</span>
+          <button data-id="${row.id}">Remove</button>
+        `;
+        div.querySelector('button').addEventListener('click', async () => {
+          await removeServiceMaterial(row.id);
+          logActivity({
+            actorId: session?.id, action: 'service_material_removed', entityType: 'service', entityId: editingServiceId,
+            summary: `${session?.employee_name || 'Someone'} removed material "${materialName}" from a service`
+          });
+          await loadMaterialsList();
+          await loadServices();
+        });
+        container.appendChild(div);
+      });
+    }
+    updateMaterialsSummary(list);
+  }
+
+  document.getElementById('fLabourFee').addEventListener('input', async () => {
+    if (!editingServiceId) return;
+    const list = await listServiceMaterials(editingServiceId);
+    updateMaterialsSummary(list);
+  });
+
+  document.getElementById('addMaterialBtn').addEventListener('click', async () => {
+    if (!editingServiceId) return;
+    const catalogueItemId = materialPicker.value;
+    const qty = Number(document.getElementById('fMaterialQty').value || 1);
+    if (!catalogueItemId) return;
+    try {
+      await addServiceMaterial(editingServiceId, catalogueItemId, qty);
+      await loadMaterialsList();
+      await loadServices();
+    } catch (err) {
+      alert(`Failed to add material: ${err.message}`);
+    }
+  });
+
+  // ---- Subcategories modal ----
+  const subcatModalBackdrop = document.getElementById('subcatModalBackdrop');
+
+  async function renderSubcatList() {
+    const container = document.getElementById('subcatList');
+    container.innerHTML = '';
+    subcategories.forEach((s) => {
+      const div = document.createElement('div');
+      div.className = 'subcat-row';
+      div.innerHTML = `<span style="flex:1;">${s.name}</span><button data-id="${s.id}">Remove</button>`;
+      div.querySelector('button').addEventListener('click', async () => {
+        try {
+          await deleteServiceSubcategory(s.id);
+          logActivity({
+            actorId: session?.id, action: 'service_subcategory_deleted', entityType: 'service_subcategory', entityId: s.id,
+            summary: `${session?.employee_name || 'Someone'} deleted service subcategory "${s.name}"`
+          });
+          await loadSubcategories();
+          await renderSubcatList();
+          await loadServices();
+        } catch (err) {
+          alert(`Can't remove "${s.name}" — it's probably still used by a service.`);
+        }
+      });
+      container.appendChild(div);
+    });
+  }
+
+  document.getElementById('manageSubcatsBtn').addEventListener('click', async () => {
+    await renderSubcatList();
+    subcatModalBackdrop.classList.add('open');
+  });
+  document.getElementById('subcatCloseBtn').addEventListener('click', () => {
+    subcatModalBackdrop.classList.remove('open');
+  });
+  subcatModalBackdrop.addEventListener('click', (e) => { if (e.target === subcatModalBackdrop) subcatModalBackdrop.classList.remove('open'); });
+
+  document.getElementById('addSubcatBtn').addEventListener('click', async () => {
+    const input = document.getElementById('fNewSubcat');
+    if (!input.value.trim()) return;
+    try {
+      await createServiceSubcategory(input.value);
+      input.value = '';
+      await loadSubcategories();
+      await renderSubcatList();
+    } catch (err) {
+      alert(`Failed to add subcategory: ${err.message}`);
+    }
+  });
+
+  // hasAreaAccess is DB-backed (role_permissions, sql/027/029) -- real
+  // enforcement is RLS, this just decides what to render.
+  (async () => {
+    if (!(await hasAreaAccess(session, 'services'))) {
+      document.querySelector('.filters').remove();
+      document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px; text-align:center;">This page is restricted to your role.</div>';
+      return;
+    }
+    loadSubcategories().then(loadServices);
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Configure</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+
+  main { padding: 40px 24px; max-width: 800px; margin: 0 auto; }
+  .page-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .page-sub { color: var(--text-dim); font-size: 13px; margin-bottom: 28px; }
+
+  .tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .tile { background: var(--panel); border: 1px solid var(--panel-border); border-left: 3px solid var(--red); border-radius: 12px; padding: 24px; text-decoration: none; color: var(--text); display: block; transition: border-color 0.15s; }
+  .tile:hover { border-color: var(--red); background: rgba(216,31,39,0.06); }
+  .tile .tile-name { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+  .tile .tile-desc { color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 60px; text-align: center; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="my-dashboard.html">Home</a>
+      <a href="dashboard.html">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="configure.html" class="active">Configure</a>
+      <a href="purchasing.html">Purchasing</a>
+      <a href="reports.html">Reports</a>
+      <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
+      <a href="accounts.html">Accounts</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="page-title">Configure</div>
+    <div class="page-sub">Set up what the shop sells and what it's built from.</div>
+    <div class="tile-grid" id="tileGrid"></div>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  const TILES = [
+    { area: 'catalogue', href: 'catalogue.html', name: 'Catalogue', desc: 'Parts and materials: pricing, sourcing, recipes, and stock.' },
+    { area: 'services', href: 'services.html', name: 'Services', desc: 'Named services offered to customers and the materials each one uses.' }
+  ];
+
+  (async () => {
+    const allowed = [];
+    for (const tile of TILES) {
+      if (await hasAreaAccess(session, tile.area)) allowed.push(tile);
+    }
+
+    const grid = document.getElementById('tileGrid');
+    if (allowed.length === 0) {
+      document.querySelector('main').innerHTML = '<div class="empty-msg">This page is restricted to your role.</div>';
+      return;
+    }
+    grid.innerHTML = allowed.map((tile) => `
+      <a class="tile" href="${tile.href}">
+        <div class="tile-name">${tile.name}</div>
+        <div class="tile-desc">${tile.desc}</div>
+      </a>
+    `).join('');
+  })();
+</script>
+</body>
+</html>

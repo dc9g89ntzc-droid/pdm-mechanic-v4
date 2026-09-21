@@ -40,6 +40,7 @@ function staffRoleLabel(value) {
 // are just the fixed list of areas that exist, not who can reach them.
 const PERMISSION_AREAS = [
   { value: 'catalogue', label: 'Catalogue' },
+  { value: 'services', label: 'Services' },
   { value: 'purchasing', label: 'Purchasing' },
   { value: 'reports', label: 'Reports' },
   { value: 'staff', label: 'Staff' },
@@ -47,8 +48,11 @@ const PERMISSION_AREAS = [
   { value: 'accounts', label: 'Accounts' }
 ];
 
+// catalogue/services aren't here -- both sit behind the shared "Configure"
+// nav link (configure.html), handled as a special case in applyRoleNav()
+// below rather than the generic one-area-to-one-link loop.
 const AREA_NAV_HREF = {
-  catalogue: 'catalogue.html', purchasing: 'purchasing.html', reports: 'reports.html',
+  purchasing: 'purchasing.html', reports: 'reports.html',
   staff: 'staff.html', payroll: 'payroll.html', accounts: 'accounts.html'
 };
 
@@ -84,8 +88,17 @@ async function hasAreaAccess(session, area) {
 async function applyRoleNav(session) {
   if (!session) return;
   const map = await loadPermissionMap();
-  PERMISSION_AREAS.forEach(({ value: area }) => {
-    if (!map[session.role]?.[area]) {
+  const allowed = (area) => !!map[session.role]?.[area];
+
+  // Configure fronts two areas -- only hide it if the role can reach
+  // neither. Whichever page it lands on (configure.html, catalogue.html,
+  // services.html) does its own hasAreaAccess check for the specific area.
+  if (!allowed('catalogue') && !allowed('services')) {
+    document.querySelectorAll('nav a[href^="configure.html"]').forEach((el) => el.remove());
+  }
+
+  Object.keys(AREA_NAV_HREF).forEach((area) => {
+    if (!allowed(area)) {
       document.querySelectorAll(`nav a[href^="${AREA_NAV_HREF[area]}"]`).forEach((el) => el.remove());
     }
   });
