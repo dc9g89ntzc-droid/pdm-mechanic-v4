@@ -249,14 +249,15 @@ const CHECKLIST_ITEM_SERVICE = {
 // always a defect (there's no "pristine" finding, only the absence of
 // one), so every tagged zone is a candidate; severity decides suggest vs.
 // auto-add the same way pass_status does for the checklist (see
-// bodyZoneTierFromSeverity below). Left deliberately unmapped rather than
-// guessed, per this project's "flag, don't guess" convention:
-//   rear_left_door / rear_right_door -- no "Rear Door" service exists at
-//     all (the service list only has Front Left/Right Door).
-//   left_rear_window / right_rear_window / rear_windshield -- all three
-//     could plausibly be the single "Rear Window" service; ambiguous
-//     which one it's actually meant to cover.
-//   front_bumper / rear_bumper -- no bumper service exists.
+// bodyZoneTierFromSeverity below). "Rear Window" is the existing service
+// for the rear windshield specifically (sql/030 links it to the same
+// 'Windshield' catalogue item as the front "Windshield" service) -- the
+// two rear side windows get their own new services instead (sql/034),
+// mirroring Front Left/Right Window rather than reusing the ambiguous
+// "Rear Window" name for them. Two zones are still left deliberately
+// unmapped, per this project's "flag, don't guess" convention -- neither
+// has a real service or catalogue item to point at:
+//   front_bumper / rear_bumper -- no bumper service/catalogue item exists.
 //   left_front_wheel / left_rear_wheel / right_front_wheel /
 //     right_rear_wheel -- diagram wheel damage isn't the same thing as a
 //     tire-wear service.
@@ -264,11 +265,16 @@ const BODY_ZONE_SERVICE = {
   body_overall: 'Body Repair',
   front_left_door: 'Front Left Door',
   front_right_door: 'Front Right Door',
+  rear_left_door: 'Rear Left Door',
+  rear_right_door: 'Rear Right Door',
   hood: 'Hood',
   trunk: 'Trunk',
   left_front_window: 'Front Left Window',
   right_front_window: 'Front Right Window',
+  left_rear_window: 'Rear Left Window',
+  right_rear_window: 'Rear Right Window',
   front_windshield: 'Windshield',
+  rear_windshield: 'Rear Window',
   left_headlight: 'Light Repair',
   right_headlight: 'Light Repair',
   left_taillight: 'Light Repair',

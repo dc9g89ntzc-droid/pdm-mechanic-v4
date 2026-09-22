@@ -79,7 +79,7 @@ async function updateService(id, service) {
 async function listServiceMaterials(serviceId) {
   const { data, error } = await sb
     .from('service_materials')
-    .select('id, quantity, catalogue_item_id, catalogue_items ( name, customer_price )')
+    .select('id, quantity, catalogue_item_id, catalogue_items ( name, customer_price, stock_quantity, reorder_threshold )')
     .eq('service_id', serviceId);
   if (error) throw new Error(error.message);
   return data;

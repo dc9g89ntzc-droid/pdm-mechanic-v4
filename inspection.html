@@ -702,10 +702,27 @@
     }
   }
 
+  // Suggestions never check stock before suggesting or auto-adding (this
+  // app doesn't block adding an out-of-stock item to a job anywhere else
+  // either) -- this just flags it so the mechanic knows to order more,
+  // same "never show as blocking, just warn" spirit as the rest of the app.
+  function stockNote(catalogueItem) {
+    const stock = catalogueItem?.stock_quantity;
+    if (stock === null || stock === undefined) return '';
+    if (stock <= 0) return ` <span style="color:var(--red);">(out of stock)</span>`;
+    const threshold = catalogueItem?.reorder_threshold;
+    if (threshold !== null && threshold !== undefined && stock <= threshold) {
+      return ` <span style="color:var(--amber);">(low stock: ${stock} left)</span>`;
+    }
+    return '';
+  }
+
   function renderSuggestedPartsRows(rows) {
     const list = document.getElementById('suggestedPartsList');
     list.innerHTML = rows.map((row) => {
-      const materialsText = row.materials.map((m) => `${m.quantity}x ${m.catalogue_items?.name || 'Item'}`).join(', ');
+      const materialsText = row.materials
+        .map((m) => `${m.quantity}x ${m.catalogue_items?.name || 'Item'}${stockNote(m.catalogue_items)}`)
+        .join(', ');
       const isFail = row.tier === 'fail';
       const tierLabel = isFail ? 'Required' : 'Suggested';
       const tierColor = isFail ? 'var(--red)' : 'var(--amber)';
