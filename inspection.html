@@ -511,6 +511,7 @@
           findings = await listFindings(inspection.id);
           renderDiagram();
           renderBodyFindings();
+          renderSuggestedParts();
           openZonePanel(zone);
         } catch (err) {
           showError(err.message);
@@ -527,6 +528,7 @@
           findings = await listFindings(inspection.id);
           renderDiagram();
           renderBodyFindings();
+          renderSuggestedParts();
           openZonePanel(zone);
         } catch (err) {
           showError(err.message);
@@ -634,16 +636,25 @@
     const list = document.getElementById('suggestedPartsList');
 
     const candidates = [];
-    findings
-      .filter((f) => f.finding_type === 'mechanical' && f.item_label && (f.pass_status === 'advisory' || f.pass_status === 'fail'))
-      .forEach((f) => {
+    findings.forEach((f) => {
+      if (f.finding_type === 'mechanical' && f.item_label && (f.pass_status === 'advisory' || f.pass_status === 'fail')) {
         const items = INSPECTION_CHECKLIST[f.area];
         const item = items && items.find((i) => i.label === f.item_label);
         const serviceName = item && CHECKLIST_ITEM_SERVICE[item.key];
-        if (item && serviceName) candidates.push({ finding: f, item, serviceName });
-      });
+        if (item && serviceName) {
+          candidates.push({ key: item.key, label: item.label, conditionText: f.condition, tier: f.pass_status, serviceName });
+        }
+      } else if (f.finding_type === 'body_area') {
+        const serviceName = BODY_ZONE_SERVICE[f.area];
+        if (serviceName) {
+          candidates.push({
+            key: f.area, label: bodyZoneLabel(f.area), conditionText: severityLabel(f.severity),
+            tier: bodyZoneTierFromSeverity(f.severity), serviceName
+          });
+        }
+      }
+    });
 
-    console.log('[suggestedParts] findings below ok:', findings.filter((f) => f.finding_type === 'mechanical' && (f.pass_status === 'advisory' || f.pass_status === 'fail')));
     console.log('[suggestedParts] mapped candidates:', candidates);
 
     if (candidates.length === 0) {
@@ -663,7 +674,7 @@
         console.log('[suggestedParts]', c.serviceName, '->', materials.length, 'material(s)');
         if (materials.length === 0) continue; // labour-only or unlinked service -- nothing to suggest
 
-        if (c.finding.pass_status === 'fail') {
+        if (c.tier === 'fail') {
           for (const m of materials) {
             if (hasJobItem(m.catalogue_item_id)) continue;
             const full = await getCatalogueItem(m.catalogue_item_id);
@@ -695,17 +706,17 @@
     const list = document.getElementById('suggestedPartsList');
     list.innerHTML = rows.map((row) => {
       const materialsText = row.materials.map((m) => `${m.quantity}x ${m.catalogue_items?.name || 'Item'}`).join(', ');
-      const isFail = row.finding.pass_status === 'fail';
+      const isFail = row.tier === 'fail';
       const tierLabel = isFail ? 'Required' : 'Suggested';
       const tierColor = isFail ? 'var(--red)' : 'var(--amber)';
       const status = row.present
         ? `<span class="detail" style="color:var(--green);">&#10003; ${isFail ? 'Auto-added to job' : 'On job'}</span>`
-        : `<button type="button" class="deselect-btn add-suggestion-btn" data-key="${row.item.key}">+ Add to job</button>`;
+        : `<button type="button" class="deselect-btn add-suggestion-btn" data-key="${row.key}">+ Add to job</button>`;
       return `
         <div class="finding-row">
           <div class="main">
             <span class="severity-tag" style="background:${tierColor}22; color:${tierColor};">${tierLabel}</span>
-            <span class="area">${row.item.label}: ${row.finding.condition}</span>
+            <span class="area">${row.label}: ${row.conditionText}</span>
             <div class="detail">${materialsText}</div>
           </div>
           ${status}
@@ -716,7 +727,7 @@
     list.querySelectorAll('.add-suggestion-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
         clearError();
-        const row = rows.find((r) => r.item.key === btn.dataset.key);
+        const row = rows.find((r) => r.key === btn.dataset.key);
         if (!row) return;
         try {
           for (const m of row.materials) {

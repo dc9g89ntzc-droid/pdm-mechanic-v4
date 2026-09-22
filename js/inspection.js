@@ -245,6 +245,42 @@ const CHECKLIST_ITEM_SERVICE = {
   rear_differential: 'Rear Differential Rebuild'
 };
 
+// Same idea for the vehicle diagram (BODY_ZONES) -- a tagged zone is
+// always a defect (there's no "pristine" finding, only the absence of
+// one), so every tagged zone is a candidate; severity decides suggest vs.
+// auto-add the same way pass_status does for the checklist (see
+// bodyZoneTierFromSeverity below). Left deliberately unmapped rather than
+// guessed, per this project's "flag, don't guess" convention:
+//   rear_left_door / rear_right_door -- no "Rear Door" service exists at
+//     all (the service list only has Front Left/Right Door).
+//   left_rear_window / right_rear_window / rear_windshield -- all three
+//     could plausibly be the single "Rear Window" service; ambiguous
+//     which one it's actually meant to cover.
+//   front_bumper / rear_bumper -- no bumper service exists.
+//   left_front_wheel / left_rear_wheel / right_front_wheel /
+//     right_rear_wheel -- diagram wheel damage isn't the same thing as a
+//     tire-wear service.
+const BODY_ZONE_SERVICE = {
+  body_overall: 'Body Repair',
+  front_left_door: 'Front Left Door',
+  front_right_door: 'Front Right Door',
+  hood: 'Hood',
+  trunk: 'Trunk',
+  left_front_window: 'Front Left Window',
+  right_front_window: 'Front Right Window',
+  front_windshield: 'Windshield',
+  left_headlight: 'Light Repair',
+  right_headlight: 'Light Repair',
+  left_taillight: 'Light Repair',
+  right_taillight: 'Light Repair'
+};
+
+// minor/moderate -> suggest (one-click add); severe/replacement_required
+// -> auto-add, matching the checklist's advisory/fail split.
+function bodyZoneTierFromSeverity(severity) {
+  return (severity === 'severe' || severity === 'replacement_required') ? 'fail' : 'advisory';
+}
+
 // Cached per service name for the life of the page -- the mapping above is
 // static, so there's no reason to re-fetch a service's materials every
 // time a second checklist item happens to point at the same service (e.g.
