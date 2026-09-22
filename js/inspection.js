@@ -206,6 +206,59 @@ const INSPECTION_CHECKLIST = {
 const TIER_COLORS = { ok: 'var(--green)', advisory: 'var(--amber)', fail: 'var(--red)' };
 const TIER_TO_PASS_STATUS = { ok: 'pass', advisory: 'advisory', fail: 'fail' };
 
+// Links a checklist item to the real service (sql/030_services_seed.sql)
+// whose service_materials cover fixing it, so a below-'ok' finding can
+// suggest (advisory) or auto-add (fail) the right parts to the job's
+// basket. Only items that actually have an advisory/fail option are worth
+// mapping -- transmission/gears/drive/hardware are descriptive, not
+// condition checks, so they're left out on purpose. 'alignment' is also
+// left out: Wheel Alignment is labour-only with no service_materials rows,
+// so there'd be nothing to suggest. 'timing_belt' points at "Timing Chain
+// Replacement" -- the closest real service, even though the checklist
+// label says belt and the service says chain.
+const CHECKLIST_ITEM_SERVICE = {
+  oil_level: 'Oil Change',
+  oil_condition: 'Oil Change',
+  brake_fluid: 'Brake Fluid Flush',
+  coolant: 'Coolant Flush',
+  accessory_belt: 'Accessory Belt Replacement',
+  timing_belt: 'Timing Chain Replacement',
+  water_pump: 'Water Pump Replacement',
+  spark_plugs: 'Spark Plug Service',
+  air_filter: 'Air Filter Replacement',
+  oil_filter: 'Oil Change',
+  fuel_filter: 'Fuel Filter Replacement',
+  chassis: 'Chassis Rebuild',
+  brake_pads_front: 'Brake Pads (install set)',
+  brake_pads_rear: 'Brake Pads (install set)',
+  rotors_front: 'Brake Rotors (install set)',
+  rotors_rear: 'Brake Rotors (install set)',
+  shocks: 'Shock Absorber Replacement',
+  springs: 'Spring Replacement',
+  brake_lines: 'Brake Line Replacement',
+  sway_bars: 'Sway Bar Replacement',
+  bushings: 'Bushing Replacement',
+  torque_converter: 'Torque Converter Replacement',
+  gear_train: 'Transmission Rebuild',
+  center_differential: 'Center Differential Rebuild',
+  front_differential: 'Front Differential Rebuild',
+  rear_differential: 'Rear Differential Rebuild'
+};
+
+// Cached per service name for the life of the page -- the mapping above is
+// static, so there's no reason to re-fetch a service's materials every
+// time a second checklist item happens to point at the same service (e.g.
+// oil_level and oil_filter both -> Oil Change).
+const _serviceMaterialsCache = {};
+async function getServiceMaterialsByName(serviceName) {
+  if (_serviceMaterialsCache[serviceName]) return _serviceMaterialsCache[serviceName];
+  const services = await listServices({ search: serviceName, activeOnly: true });
+  const service = services.find((s) => s.name.toLowerCase() === serviceName.toLowerCase());
+  const materials = service ? await listServiceMaterials(service.id) : [];
+  _serviceMaterialsCache[serviceName] = materials;
+  return materials;
+}
+
 // Kept for the "+ Add custom finding" fallback, which covers anything not
 // on the standard checklist.
 const MECHANICAL_CATEGORIES = [

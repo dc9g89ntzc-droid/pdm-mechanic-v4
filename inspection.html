@@ -379,6 +379,12 @@
       <div class="findings-list" id="customFindingsList"></div>
     </div>
 
+    <div class="section" id="suggestedPartsSection" style="display:none;">
+      <h2>Suggested parts</h2>
+      <p style="margin:0 0 14px; color:var(--text-dim); font-size:13px;">Anything the checklist marked below its best condition. Fail-tier items are added to the job automatically; advisory items are one click away.</p>
+      <div id="suggestedPartsList"></div>
+    </div>
+
     <div class="complete-bar">
       <button id="completeBtn">Complete inspection → Quote preparation</button>
     </div>
@@ -392,6 +398,8 @@
 <script src="js/workshop.js"></script>
 <script src="js/jobflow.js"></script>
 <script src="js/shift.js"></script>
+<script src="js/catalogue.js"></script>
+<script src="js/services.js"></script>
 <script src="js/inspection.js"></script>
 <script>
   const session = requireSession();
@@ -446,6 +454,7 @@
       renderBodyFindings();
       renderChecklist();
       renderCustomFindings();
+      renderSuggestedParts();
     } catch (err) {
       showError(err.message);
     }
@@ -561,6 +570,7 @@
           await deselectChecklistCategory(inspection.id, category);
           findings = await listFindings(inspection.id);
           renderChecklist();
+          renderSuggestedParts();
         } catch (err) {
           showError(err.message);
         }
@@ -600,6 +610,7 @@
             await upsertChecklistFinding(inspection.id, existing ? existing.id : null, category, item.label, value, tier);
             findings = await listFindings(inspection.id);
             renderChecklist();
+            renderSuggestedParts();
           } catch (err) {
             showError(err.message);
           }
@@ -609,6 +620,107 @@
       });
 
       container.appendChild(grid);
+    });
+  }
+
+  // --- Suggested parts (checklist findings below 'ok' -> service_materials) ---
+  let jobItemsForLeg = [];
+  function hasJobItem(catalogueItemId) {
+    return jobItemsForLeg.some((ji) => ji.catalogue_item_id === catalogueItemId);
+  }
+
+  async function renderSuggestedParts() {
+    const section = document.getElementById('suggestedPartsSection');
+    const list = document.getElementById('suggestedPartsList');
+
+    const candidates = [];
+    findings
+      .filter((f) => f.finding_type === 'mechanical' && f.item_label && (f.pass_status === 'advisory' || f.pass_status === 'fail'))
+      .forEach((f) => {
+        const items = INSPECTION_CHECKLIST[f.area];
+        const item = items && items.find((i) => i.label === f.item_label);
+        const serviceName = item && CHECKLIST_ITEM_SERVICE[item.key];
+        if (item && serviceName) candidates.push({ finding: f, item, serviceName });
+      });
+
+    if (candidates.length === 0) {
+      section.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+    section.style.display = 'block';
+
+    jobItemsForLeg = await listJobItems(jobId, 'repair');
+
+    const rows = [];
+    for (const c of candidates) {
+      const materials = await getServiceMaterialsByName(c.serviceName);
+      if (materials.length === 0) continue; // labour-only or unlinked service -- nothing to suggest
+
+      if (c.finding.pass_status === 'fail') {
+        for (const m of materials) {
+          if (hasJobItem(m.catalogue_item_id)) continue;
+          try {
+            const full = await getCatalogueItem(m.catalogue_item_id);
+            await addJobItem({
+              jobId, catalogueItem: full, quantity: Number(m.quantity),
+              sourcingChoice: null, performedBy: session ? session.id : null, jobType: 'repair'
+            });
+          } catch (err) {
+            showError(err.message);
+          }
+        }
+        jobItemsForLeg = await listJobItems(jobId, 'repair');
+      }
+
+      rows.push({ ...c, materials, present: materials.every((m) => hasJobItem(m.catalogue_item_id)) });
+    }
+
+    if (rows.length === 0) {
+      section.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+
+    list.innerHTML = rows.map((row) => {
+      const materialsText = row.materials.map((m) => `${m.quantity}x ${m.catalogue_items?.name || 'Item'}`).join(', ');
+      const isFail = row.finding.pass_status === 'fail';
+      const tierLabel = isFail ? 'Required' : 'Suggested';
+      const tierColor = isFail ? 'var(--red)' : 'var(--amber)';
+      const status = row.present
+        ? `<span class="detail" style="color:var(--green);">&#10003; ${isFail ? 'Auto-added to job' : 'On job'}</span>`
+        : `<button type="button" class="deselect-btn add-suggestion-btn" data-key="${row.item.key}">+ Add to job</button>`;
+      return `
+        <div class="finding-row">
+          <div class="main">
+            <span class="severity-tag" style="background:${tierColor}22; color:${tierColor};">${tierLabel}</span>
+            <span class="area">${row.item.label}: ${row.finding.condition}</span>
+            <div class="detail">${materialsText}</div>
+          </div>
+          ${status}
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('.add-suggestion-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        clearError();
+        const row = rows.find((r) => r.item.key === btn.dataset.key);
+        if (!row) return;
+        try {
+          for (const m of row.materials) {
+            if (hasJobItem(m.catalogue_item_id)) continue;
+            const full = await getCatalogueItem(m.catalogue_item_id);
+            await addJobItem({
+              jobId, catalogueItem: full, quantity: Number(m.quantity),
+              sourcingChoice: null, performedBy: session ? session.id : null, jobType: 'repair'
+            });
+          }
+          await renderSuggestedParts();
+        } catch (err) {
+          showError(err.message);
+        }
+      });
     });
   }
 
