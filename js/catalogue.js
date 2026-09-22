@@ -183,14 +183,32 @@ async function recordPurchase({ itemId, quantity, unitCost, sourceType, performe
 
 // ---- Reporting (foreman) ----
 
-async function listInventoryTransactions(limit = 300) {
-  const { data, error } = await sb
+// filters: { limit, fromDate, toDate, includeVoided }
+async function listInventoryTransactions(filters = {}) {
+  let query = sb
     .from('inventory_transactions')
-    .select('id, item_id, transaction_type, quantity, unit_cost, source_type, job_id, performed_by, notes, created_at, catalogue_items ( name )')
+    .select(`
+      id, item_id, transaction_type, quantity, unit_cost, source_type, job_id,
+      performed_by, notes, created_at, voided_at, voided_by, void_reason, reversal_of,
+      catalogue_items ( name )
+    `)
     .order('created_at', { ascending: false })
-    .limit(limit);
+    .limit(filters.limit || 300);
+  if (filters.fromDate) query = query.gte('created_at', filters.fromDate);
+  if (filters.toDate) query = query.lte('created_at', filters.toDate);
+  if (!filters.includeVoided) query = query.is('voided_at', null);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return data;
+}
+
+// Management-only (enforced server-side by is_management_mechanic() inside
+// the RPC) -- marks the transaction voided AND inserts a real reversing
+// entry, so stock_quantity actually moves back the same way a manual
+// 'adjustment' correction already does today (sql/032_logs_admin.sql).
+async function voidInventoryTransaction(id, reason) {
+  const { error } = await sb.rpc('void_inventory_transaction', { p_id: id, p_reason: reason || null });
+  if (error) throw new Error(error.message);
 }
 
 // PostgREST can't compare two columns of the same row in a filter

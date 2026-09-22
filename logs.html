@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Logs</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+
+  .filters {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    padding: 16px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border);
+  }
+  .filters input[type="date"] { background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+  .filters label { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 13px; }
+  .filters button { background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+
+  main { padding: 24px; max-width: 1300px; margin: 0 auto; }
+  .card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+  .card h2 { font-size: 14px; margin: 0 0 14px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 6px 8px; color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; border-bottom: 1px solid var(--panel-border); white-space: nowrap; }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--panel-border); }
+  tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; }
+  tr.voided td { opacity: 0.55; }
+  tr.voided .summary-text, tr.voided .item-text { text-decoration: line-through; }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 20px; text-align: center; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .badge.used_on_job { background: rgba(216,31,39,0.15); color: #f0888c; }
+  .badge.crafted_in { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.purchased_in { background: rgba(56,189,248,0.15); color: #38bdf8; }
+  .badge.adjustment { background: rgba(240,165,44,0.15); color: var(--amber); }
+  .badge.active-state { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.voided-state { background: rgba(216,31,39,0.15); color: #f0888c; cursor: help; }
+
+  .void-btn {
+    background: transparent; border: 1px solid var(--red); color: var(--red);
+    padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer;
+  }
+  .void-btn:hover { background: rgba(216,31,39,0.1); }
+
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    align-items: center; justify-content: center; z-index: 10;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px; width: 100%; max-width: 420px; }
+  .modal h2 { font-size: 16px; margin: 0 0 4px; }
+  .modal p.sub { color: var(--text-dim); font-size: 13px; margin: 0 0 16px; }
+  .modal label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+  .modal textarea {
+    width: 100%; min-height: 70px; background: var(--bg); border: 1px solid var(--panel-border);
+    color: var(--text); padding: 10px; border-radius: 8px; font-size: 13px; font-family: inherit; resize: vertical; margin-bottom: 18px;
+  }
+  .modal .actions { display: flex; gap: 10px; }
+  .modal .actions button { flex: 1; padding: 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .modal .actions .confirm { background: var(--red); border: none; color: white; font-weight: 600; }
+  .modal .actions .cancel { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="my-dashboard.html">Home</a>
+      <a href="dashboard.html?area=repair">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="configure.html">Configure</a>
+      <a href="purchasing.html">Purchasing</a>
+      <a href="reports.html">Reports</a>
+      <a href="logs.html" class="active">Logs</a>
+      <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
+      <a href="accounts.html">Accounts</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <div class="filters">
+    <input type="date" id="filterFrom" title="From date" />
+    <input type="date" id="filterTo" title="To date" />
+    <label><input type="checkbox" id="filterVoided" style="width:auto;" /> Show voided</label>
+    <button id="clearFilters">Clear filters</button>
+  </div>
+
+  <main>
+    <div class="card">
+      <h2>Inventory Transactions</h2>
+      <div id="inventoryTable"></div>
+    </div>
+
+    <div class="card">
+      <h2>Activity Log</h2>
+      <div id="activityTable"></div>
+    </div>
+  </main>
+
+  <div class="modal-backdrop" id="voidModalBackdrop">
+    <div class="modal">
+      <h2>Void this entry?</h2>
+      <p class="sub" id="voidModalSub"></p>
+      <label for="voidReason">Reason (optional)</label>
+      <textarea id="voidReason" placeholder="Why this entry is being voided"></textarea>
+      <div class="actions">
+        <button class="cancel" id="voidCancelBtn">Cancel</button>
+        <button class="confirm" id="voidConfirmBtn">Void</button>
+      </div>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
+<script src="js/catalogue.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  let staffById = {};
+  function staffName(id) {
+    if (!id) return 'Unknown';
+    return staffById[id] || 'Unknown';
+  }
+  async function loadStaff() {
+    const staff = await listAllStaff();
+    staffById = Object.fromEntries(staff.map((s) => [s.id, s.employee_name]));
+  }
+
+  function renderTable(container, rows, columns, rowClass) {
+    if (rows.length === 0) {
+      container.innerHTML = '<div class="empty-msg">Nothing here yet.</div>';
+      return;
+    }
+    container.innerHTML = `
+      <table>
+        <thead><tr>${columns.map((c) => `<th${c.num ? ' class="num"' : ''}>${c.label}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${rows.map((row) => `<tr${rowClass ? ` class="${rowClass(row)}"` : ''}>${columns.map((c) => `<td${c.num ? ' class="num"' : ''}>${c.render(row)}</td>`).join('')}</tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function currentFilters() {
+    const from = document.getElementById('filterFrom').value;
+    const to = document.getElementById('filterTo').value;
+    return {
+      fromDate: from ? new Date(from).toISOString() : null,
+      // Add a day so "To" is inclusive of the whole selected date.
+      toDate: to ? new Date(new Date(to).getTime() + 24 * 60 * 60 * 1000).toISOString() : null,
+      includeVoided: document.getElementById('filterVoided').checked
+    };
+  }
+
+  function statusBadge(row) {
+    if (!row.voided_at) return '<span class="badge active-state">Active</span>';
+    const reason = row.void_reason ? row.void_reason.replace(/"/g, '&quot;') : 'No reason given';
+    return `<span class="badge voided-state" title="Voided by ${staffName(row.voided_by)}: ${reason}">Voided</span>`;
+  }
+
+  let activeVoidTarget = null; // { kind: 'inventory' | 'activity', id }
+
+  function openVoidModal(kind, id, label) {
+    activeVoidTarget = { kind, id };
+    document.getElementById('voidModalSub').textContent = label;
+    document.getElementById('voidReason').value = '';
+    document.getElementById('voidModalBackdrop').classList.add('open');
+  }
+  function closeVoidModal() {
+    document.getElementById('voidModalBackdrop').classList.remove('open');
+    activeVoidTarget = null;
+  }
+  document.getElementById('voidCancelBtn').addEventListener('click', closeVoidModal);
+  document.getElementById('voidModalBackdrop').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('voidModalBackdrop')) closeVoidModal();
+  });
+  document.getElementById('voidConfirmBtn').addEventListener('click', async () => {
+    if (!activeVoidTarget) return;
+    const reason = document.getElementById('voidReason').value.trim();
+    const btn = document.getElementById('voidConfirmBtn');
+    btn.disabled = true;
+    try {
+      if (activeVoidTarget.kind === 'inventory') {
+        await voidInventoryTransaction(activeVoidTarget.id, reason || null);
+      } else {
+        await voidActivityLogEntry(activeVoidTarget.id, reason || null);
+      }
+      closeVoidModal();
+      await loadAll();
+    } catch (err) {
+      alert(`Failed to void: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  async function loadInventoryLog() {
+    const txns = await listInventoryTransactions({ limit: 300, ...currentFilters() });
+    renderTable(document.getElementById('inventoryTable'), txns, [
+      { label: 'When', render: (t) => formatDateTime(t.created_at) },
+      { label: 'Item', render: (t) => `<span class="item-text">${t.catalogue_items?.name || 'Unknown item'}</span>` },
+      { label: 'Type', render: (t) => `<span class="badge ${t.transaction_type}">${TRANSACTION_TYPES.find((x) => x.value === t.transaction_type)?.label || t.transaction_type}</span>` },
+      { label: 'Qty', num: true, render: (t) => t.quantity },
+      { label: 'Source', render: (t) => t.source_type ? purchaseSourceLabel(t.source_type) : '' },
+      { label: 'Cost', num: true, render: (t) => t.unit_cost !== null ? formatMoney(t.unit_cost) : '' },
+      { label: 'By', render: (t) => staffName(t.performed_by) },
+      { label: 'Notes', render: (t) => t.reversal_of ? `Reversal of a voided transaction${t.notes ? ` — ${t.notes}` : ''}` : (t.notes || '') },
+      { label: 'Status', render: statusBadge },
+      { label: '', render: (t) => t.voided_at ? '' : `<button type="button" class="void-btn" data-id="${t.id}">Void</button>` }
+    ], (t) => t.voided_at ? 'voided' : '');
+
+    document.querySelectorAll('#inventoryTable .void-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const t = txns.find((x) => x.id === btn.dataset.id);
+        openVoidModal('inventory', t.id, `${TRANSACTION_TYPES.find((x) => x.value === t.transaction_type)?.label || t.transaction_type} — ${t.catalogue_items?.name || 'Unknown item'} (${t.quantity}) on ${formatDateTime(t.created_at)}. This also reverses the stock change.`);
+      });
+    });
+  }
+
+  async function loadActivityLog() {
+    const log = await listActivityLog({ limit: 300, ...currentFilters() });
+    renderTable(document.getElementById('activityTable'), log, [
+      { label: 'When', render: (l) => formatDateTime(l.created_at) },
+      { label: 'By', render: (l) => staffName(l.actor_id) },
+      { label: 'Summary', render: (l) => `<span class="summary-text">${l.summary}</span>` },
+      { label: 'Status', render: statusBadge },
+      { label: '', render: (l) => l.voided_at ? '' : `<button type="button" class="void-btn" data-id="${l.id}">Void</button>` }
+    ], (l) => l.voided_at ? 'voided' : '');
+
+    document.querySelectorAll('#activityTable .void-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const l = log.find((x) => x.id === btn.dataset.id);
+        openVoidModal('activity', l.id, l.summary);
+      });
+    });
+  }
+
+  function loadAll() {
+    return Promise.all([loadInventoryLog(), loadActivityLog()]);
+  }
+
+  [document.getElementById('filterFrom'), document.getElementById('filterTo'), document.getElementById('filterVoided')].forEach((el) => {
+    el.addEventListener('change', loadAll);
+  });
+  document.getElementById('clearFilters').addEventListener('click', () => {
+    document.getElementById('filterFrom').value = '';
+    document.getElementById('filterTo').value = '';
+    document.getElementById('filterVoided').checked = false;
+    loadAll();
+  });
+
+  // hasAreaAccess is DB-backed (role_permissions, sql/032) -- real
+  // enforcement is RLS/the void RPCs, this just decides what to render.
+  (async () => {
+    if (!(await hasAreaAccess(session, 'logs'))) {
+      document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px;">This page is restricted to your role.</div>';
+      return;
+    }
+    loadStaff().then(loadAll);
+  })();
+</script>
+</body>
+</html>

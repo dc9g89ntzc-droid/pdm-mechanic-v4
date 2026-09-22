@@ -59,6 +59,7 @@ const PERMISSION_AREAS = [
   { value: 'services', label: 'Services' },
   { value: 'purchasing', label: 'Purchasing' },
   { value: 'reports', label: 'Reports' },
+  { value: 'logs', label: 'Logs' },
   { value: 'staff', label: 'Staff' },
   { value: 'payroll', label: 'Payroll' },
   { value: 'accounts', label: 'Accounts' }
@@ -68,7 +69,7 @@ const PERMISSION_AREAS = [
 // nav link (configure.html), handled as a special case in applyRoleNav()
 // below rather than the generic one-area-to-one-link loop.
 const AREA_NAV_HREF = {
-  purchasing: 'purchasing.html', reports: 'reports.html',
+  purchasing: 'purchasing.html', reports: 'reports.html', logs: 'logs.html',
   staff: 'staff.html', payroll: 'payroll.html', accounts: 'accounts.html'
 };
 
@@ -798,12 +799,26 @@ async function logActivity({ actorId, action, entityType, entityId, summary, det
 // that base table (see 002_workshop_checkin.sql -- password_hash lives
 // there), so PostgREST can't auto-embed it. Resolve names client-side via
 // staff_directory instead, same workaround as listJobs' mechanicName.
-async function listActivityLog(limit = 100) {
-  const { data, error } = await sb
+// filters: { limit, fromDate, toDate, includeVoided }
+async function listActivityLog(filters = {}) {
+  let query = sb
     .from('activity_log')
-    .select('id, actor_id, action, entity_type, summary, detail, created_at')
+    .select('id, actor_id, action, entity_type, entity_id, summary, detail, created_at, voided_at, voided_by, void_reason')
     .order('created_at', { ascending: false })
-    .limit(limit);
+    .limit(filters.limit || 100);
+  if (filters.fromDate) query = query.gte('created_at', filters.fromDate);
+  if (filters.toDate) query = query.lte('created_at', filters.toDate);
+  if (!filters.includeVoided) query = query.is('voided_at', null);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return data;
+}
+
+// Management-only (enforced server-side by is_management_mechanic() inside
+// the RPC) -- marks the entry voided. No reversal: unlike a stock
+// transaction, a status-change/quote-generated action has no generic
+// mechanical inverse, so this is a pure "mark this record invalid" action.
+async function voidActivityLogEntry(id, reason) {
+  const { error } = await sb.rpc('void_activity_log_entry', { p_id: id, p_reason: reason || null });
+  if (error) throw new Error(error.message);
 }
