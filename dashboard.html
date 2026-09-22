@@ -235,6 +235,11 @@
     padding: 9px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
   }
   .quick-action-btn:hover { background: rgba(34,197,94,0.2); }
+  .card-edit-btn {
+    background: transparent; border: none; color: var(--text-dim);
+    font-size: 11px; cursor: pointer; padding: 2px 4px; text-decoration: underline dotted;
+  }
+  .card-edit-btn:hover { color: var(--text); }
 </style>
 </head>
 <body>
@@ -353,7 +358,7 @@
     };
   }
 
-  function buildCard(job) {
+  function buildCard(job, withEditLink) {
     const vehicle = job.owned_vehicles
       ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() || 'Unknown vehicle'
       : 'Unknown vehicle';
@@ -381,6 +386,16 @@
         <span>${formatDateTime(job.arrival_time)}</span>
       </div>
     `;
+    if (withEditLink) {
+      const editRow = document.createElement('div');
+      editRow.style.cssText = 'margin-top:8px; text-align:right;';
+      editRow.innerHTML = '<button type="button" class="card-edit-btn">Edit status</button>';
+      editRow.querySelector('.card-edit-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openStatusModal(job);
+      });
+      card.appendChild(editRow);
+    }
     return card;
   }
 
@@ -400,13 +415,13 @@
         </div>
       `;
       jobsInColumn.forEach((job) => {
-        const card = buildCard(job);
+        // Primary click resumes the ticket exactly where it's at (same
+        // rule check-in and My Dashboard use) -- the status modal is now a
+        // secondary "Edit status" action for manual overrides, not the
+        // main way of opening a card.
+        const card = buildCard(job, true);
         card.addEventListener('click', () => {
-          if (area === 'repair' && (job.legStatus === 'awaiting_inspection' || job.legStatus === 'inspection_in_progress')) {
-            window.location.href = `inspection.html?job=${job.id}`;
-          } else {
-            openStatusModal(job);
-          }
+          window.location.href = jobFlowUrlFor(job.id, job.legs);
         });
         column.appendChild(card);
       });

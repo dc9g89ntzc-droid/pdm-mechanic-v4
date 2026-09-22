@@ -564,11 +564,11 @@
         created_by: session ? session.id : null
       });
       await syncJobLegs(job.id, jobTypes);
+      const legs = await listJobLegs(job.id);
 
-      const firstArea = LEG_ORDER.find((t) => jobTypes.includes(t));
-      successBox.textContent = `Job #${job.job_number} created and added to the Workshop board.`;
+      successBox.textContent = `Job #${job.job_number} created — taking you to it now.`;
       successBox.style.display = 'block';
-      setTimeout(() => { window.location.href = `dashboard.html?area=${firstArea}`; }, 1200);
+      setTimeout(() => { window.location.href = jobFlowUrlFor(job.id, legs); }, 800);
     } catch (err) {
       showError(err.message);
       btn.disabled = false;

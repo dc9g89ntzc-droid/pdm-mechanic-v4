@@ -498,7 +498,7 @@ async function getJobSummary(jobId) {
     .from('jobs')
     .select(`
       id, job_number, status, stage, job_types, quoted_total, assigned_staff_id,
-      quote_document_url, quote_generated_at,
+      internal_notes, quote_document_url, quote_generated_at,
       receipt_document_url, receipt_generated_at,
       customers ( customer_name ),
       owned_vehicles ( registration, make, model )
@@ -654,13 +654,28 @@ async function listJobsForArea(jobType, filters = {}) {
   const jobs = await listJobs(filters);
   return jobs
     .filter((j) => matchingJobIds.includes(j.id))
-    .map((j) => ({ ...j, legStatus: activeLegForJob(legsByJob[j.id]).status }));
+    .map((j) => ({ ...j, legStatus: activeLegForJob(legsByJob[j.id]).status, legs: legsByJob[j.id] }));
 }
 
 // What the Billing tab renders -- jobs where every selected leg is done.
 async function listJobsReadyToBill(filters = {}) {
   const jobs = await listJobs(filters);
   return jobs.filter((j) => j.stage === 'ready_to_bill');
+}
+
+// Where a mechanic should land to keep working this job -- one shared rule
+// used by check-in's redirect, the board's card click, and My Dashboard's
+// active-jobs list, so "come back to this ticket" always means the same
+// page everywhere. job-items.html itself decides add-materials vs
+// materials-required framing from the leg's own status, so this only ever
+// needs to choose between inspection, items, and billing.
+function jobFlowUrlFor(jobId, legs) {
+  const active = activeLegForJob(legs);
+  if (!active) return `receipt.html?job=${jobId}`;
+  if (active.job_type === 'repair' && ['awaiting_inspection', 'inspection_in_progress'].includes(active.status)) {
+    return `inspection.html?job=${jobId}`;
+  }
+  return `job-items.html?job=${jobId}&type=${active.job_type}`;
 }
 
 function jobStatusLabel(value) {

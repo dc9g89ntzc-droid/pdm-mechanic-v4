@@ -87,10 +87,74 @@
   #quoteSheet #carDiagram { width: 100%; max-width: 700px; height: auto; background: #f2f2f2; border-radius: 6px; display: block; margin: 0 auto; }
 
   @media print {
-    header, .job-bar, .actions-row, .share-box { display: none; }
+    header, .job-bar, .actions-row, .share-box, .flow-sidebar, .flow-summary { display: none; }
     body { background: white; }
     main { max-width: none; padding: 0; }
     #quoteSheet { border-radius: 0; }
+  }
+
+  /* Shared "job flow" chrome (sidebar stepper + summary panel) -- same
+     block copy-pasted onto every per-job page (inspection/job-items/
+     quote/receipt), matching this project's per-page-styles convention. */
+  .flow-layout { display: flex; gap: 20px; align-items: flex-start; padding: 24px; }
+  .flow-layout main { flex: 1 1 480px; min-width: 0; margin: 0; padding: 0; max-width: none; }
+  .flow-sidebar, .flow-summary {
+    flex: 0 0 240px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 18px;
+    position: sticky;
+    top: 16px;
+  }
+  .flow-title, .summary-title {
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; margin-bottom: 16px;
+  }
+  .flow-title { color: var(--red); }
+  .summary-title { color: var(--text-dim); }
+  .flow-steps { display: flex; flex-direction: column; }
+  .flow-step { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; position: relative; }
+  .flow-step:not(:last-child)::before {
+    content: ''; position: absolute; left: 9px; top: 28px; bottom: -8px; width: 2px;
+    background: var(--panel-border);
+  }
+  .flow-dot {
+    flex: 0 0 20px; height: 20px; width: 20px; border-radius: 50%;
+    border: 2px solid var(--panel-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: var(--text-dim); background: var(--bg); z-index: 1;
+  }
+  .flow-step.done .flow-dot { background: var(--green); border-color: var(--green); color: white; }
+  .flow-step.current .flow-dot { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+  .flow-label { font-size: 13px; font-weight: 600; }
+  .flow-step.pending .flow-label { color: var(--text-dim); font-weight: 400; }
+  .flow-state { font-size: 11px; color: var(--text-dim); }
+  .flow-step.current .flow-state { color: var(--amber); }
+  .flow-step.done .flow-state { color: var(--green); }
+  .flow-add { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--panel-border); display: flex; flex-direction: column; gap: 8px; }
+  .flow-add-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin-bottom: 2px; }
+  .flow-add-btn {
+    background: rgba(216,31,39,0.1); border: 1px solid var(--red); color: var(--red);
+    padding: 9px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .flow-add-btn:hover { background: rgba(216,31,39,0.2); }
+  .flow-add-btn:disabled { opacity: 0.5; cursor: default; }
+  .summary-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--panel-border); }
+  .summary-row:last-of-type { border-bottom: none; }
+  .summary-label { color: var(--text-dim); }
+  .summary-section-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 14px 0 8px; }
+  .summary-notes { font-size: 13px; color: var(--text); line-height: 1.4; white-space: pre-wrap; }
+  .badges { display: flex; flex-wrap: wrap; gap: 4px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .badge.type-repair { background: rgba(216,31,39,0.15); color: #f0888c; }
+  .badge.type-customisation { background: rgba(240,165,44,0.15); color: var(--amber); }
+  .badge.type-performance { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.type-engine_building { background: rgba(124,58,237,0.15); color: #a78bfa; }
+  .badge.type-unclassified { background: rgba(156,150,145,0.15); color: var(--text-dim); font-style: italic; font-weight: 400; }
+  @media (max-width: 980px) {
+    .flow-layout { flex-wrap: wrap; }
+    .flow-sidebar, .flow-summary { flex: 1 1 100%; position: static; }
   }
 </style>
 </head>
@@ -122,7 +186,9 @@
     <a href="#" id="backLink" class="btn secondary">&larr; Back to Workshop</a>
   </div>
 
-  <main>
+  <div class="flow-layout">
+    <div class="flow-sidebar" id="flowSidebar"></div>
+    <main>
     <div class="actions-row">
       <button class="btn" id="generateBtn">Mark billed &amp; complete</button>
     </div>
@@ -185,13 +251,16 @@
       </table>
       <div class="sheet-footer">Paid in full. Thank you for choosing PDM 8230.</div>
     </div>
-  </main>
+    </main>
+    <div class="flow-summary" id="flowSummary"></div>
+  </div>
 
 <script src="https://cdn.jsdelivr.net/npm/html2canvas-pro@2.4.3/dist/html2canvas-pro.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="js/supabaseClient.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/workshop.js"></script>
+<script src="js/jobflow.js"></script>
 <script src="js/shift.js"></script>
 <script src="js/catalogue.js"></script>
 <script src="js/inspection.js"></script>
@@ -209,9 +278,23 @@
     document.querySelector('main').innerHTML = '<div class="empty-msg">No job specified.</div>';
     throw new Error('No job id in URL');
   }
-  document.getElementById('backLink').href = 'dashboard.html';
+  document.getElementById('backLink').href = 'dashboard.html?area=billing';
 
   let job = null;
+
+  async function renderFlowChrome() {
+    renderFlowSidebar(document.getElementById('flowSidebar'), {
+      jobId, jobTypes: job.job_types || [], legs: await listJobLegs(jobId), onAdded: renderFlowChrome
+    });
+    let mechanicName = null;
+    if (job.assigned_staff_id) {
+      try {
+        const staff = await getStaffMember(job.assigned_staff_id);
+        if (staff) mechanicName = staff.employee_name;
+      } catch (err) { /* ignore -- summary panel just shows Unassigned */ }
+    }
+    renderJobSummaryPanel(document.getElementById('flowSummary'), job, mechanicName);
+  }
 
   function renderShareBox() {
     const box = document.getElementById('shareBox');
@@ -379,7 +462,7 @@
     navigator.clipboard?.writeText(input.value).catch(() => {});
   });
 
-  loadJob().then(() => Promise.all([loadLines(), loadInspectionResults()]));
+  loadJob().then(() => Promise.all([loadLines(), loadInspectionResults(), renderFlowChrome()]));
 </script>
 </body>
 </html>

@@ -81,10 +81,74 @@
   #quoteSheet #carDiagram { width: 100%; max-width: 700px; height: auto; background: #f2f2f2; border-radius: 6px; display: block; margin: 0 auto; }
 
   @media print {
-    header, .job-bar, .actions-row, .share-box { display: none; }
+    header, .job-bar, .actions-row, .share-box, .flow-sidebar, .flow-summary { display: none; }
     body { background: white; }
     main { max-width: none; padding: 0; }
     #quoteSheet { border-radius: 0; }
+  }
+
+  /* Shared "job flow" chrome (sidebar stepper + summary panel) -- same
+     block copy-pasted onto every per-job page (inspection/job-items/
+     quote/receipt), matching this project's per-page-styles convention. */
+  .flow-layout { display: flex; gap: 20px; align-items: flex-start; padding: 24px; }
+  .flow-layout main { flex: 1 1 480px; min-width: 0; margin: 0; padding: 0; max-width: none; }
+  .flow-sidebar, .flow-summary {
+    flex: 0 0 240px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 18px;
+    position: sticky;
+    top: 16px;
+  }
+  .flow-title, .summary-title {
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; margin-bottom: 16px;
+  }
+  .flow-title { color: var(--red); }
+  .summary-title { color: var(--text-dim); }
+  .flow-steps { display: flex; flex-direction: column; }
+  .flow-step { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; position: relative; }
+  .flow-step:not(:last-child)::before {
+    content: ''; position: absolute; left: 9px; top: 28px; bottom: -8px; width: 2px;
+    background: var(--panel-border);
+  }
+  .flow-dot {
+    flex: 0 0 20px; height: 20px; width: 20px; border-radius: 50%;
+    border: 2px solid var(--panel-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: var(--text-dim); background: var(--bg); z-index: 1;
+  }
+  .flow-step.done .flow-dot { background: var(--green); border-color: var(--green); color: white; }
+  .flow-step.current .flow-dot { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+  .flow-label { font-size: 13px; font-weight: 600; }
+  .flow-step.pending .flow-label { color: var(--text-dim); font-weight: 400; }
+  .flow-state { font-size: 11px; color: var(--text-dim); }
+  .flow-step.current .flow-state { color: var(--amber); }
+  .flow-step.done .flow-state { color: var(--green); }
+  .flow-add { margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--panel-border); display: flex; flex-direction: column; gap: 8px; }
+  .flow-add-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin-bottom: 2px; }
+  .flow-add-btn {
+    background: rgba(216,31,39,0.1); border: 1px solid var(--red); color: var(--red);
+    padding: 9px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .flow-add-btn:hover { background: rgba(216,31,39,0.2); }
+  .flow-add-btn:disabled { opacity: 0.5; cursor: default; }
+  .summary-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--panel-border); }
+  .summary-row:last-of-type { border-bottom: none; }
+  .summary-label { color: var(--text-dim); }
+  .summary-section-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 14px 0 8px; }
+  .summary-notes { font-size: 13px; color: var(--text); line-height: 1.4; white-space: pre-wrap; }
+  .badges { display: flex; flex-wrap: wrap; gap: 4px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .badge.type-repair { background: rgba(216,31,39,0.15); color: #f0888c; }
+  .badge.type-customisation { background: rgba(240,165,44,0.15); color: var(--amber); }
+  .badge.type-performance { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.type-engine_building { background: rgba(124,58,237,0.15); color: #a78bfa; }
+  .badge.type-unclassified { background: rgba(156,150,145,0.15); color: var(--text-dim); font-style: italic; font-weight: 400; }
+  @media (max-width: 980px) {
+    .flow-layout { flex-wrap: wrap; }
+    .flow-sidebar, .flow-summary { flex: 1 1 100%; position: static; }
   }
 </style>
 </head>
@@ -116,9 +180,12 @@
     <a href="#" id="backLink" class="btn secondary">&larr; Back to Workshop</a>
   </div>
 
-  <main>
+  <div class="flow-layout">
+    <div class="flow-sidebar" id="flowSidebar"></div>
+    <main>
     <div class="actions-row">
       <button class="btn" id="generateBtn">Generate &amp; upload quote</button>
+      <button class="btn" id="quoteAgreedBtn" style="display:none;">Quote Agreed →</button>
     </div>
 
     <div class="share-box" id="shareBox">
@@ -167,27 +234,26 @@
         </div>
       </div>
 
-      <div class="section-title" id="quoteSectionTitle">Quote — Parts &amp; Labour</div>
+      <div id="sheetSections"></div>
+
+      <div class="section-title">Quote Summary</div>
       <table>
-        <thead>
-          <tr><th>Item</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Total</th></tr>
-        </thead>
-        <tbody id="sheetLines"></tbody>
-        <tfoot>
-          <tr class="subtotal-row"><td colspan="3">Parts Subtotal</td><td class="num" id="sheetSubtotal">To confirm</td></tr>
-          <tr class="subtotal-row"><td colspan="3">Labour Fee (10%)</td><td class="num" id="sheetLabourFee">To confirm</td></tr>
-          <tr class="total-row"><td colspan="3">Total</td><td class="num" id="sheetTotal">To confirm</td></tr>
-        </tfoot>
+        <tr class="subtotal-row"><td>Combined Parts Subtotal</td><td class="num" id="sheetSubtotal">To confirm</td></tr>
+        <tr class="subtotal-row"><td>Labour Fee (10%)</td><td class="num" id="sheetLabourFee">To confirm</td></tr>
+        <tr class="total-row"><td>Total</td><td class="num" id="sheetTotal">To confirm</td></tr>
       </table>
       <div class="sheet-footer">Prices subject to change until work begins. Thank you for choosing PDM 8230.</div>
     </div>
-  </main>
+    </main>
+    <div class="flow-summary" id="flowSummary"></div>
+  </div>
 
 <script src="https://cdn.jsdelivr.net/npm/html2canvas-pro@2.4.3/dist/html2canvas-pro.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="js/supabaseClient.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/workshop.js"></script>
+<script src="js/jobflow.js"></script>
 <script src="js/shift.js"></script>
 <script src="js/catalogue.js"></script>
 <script src="js/inspection.js"></script>
@@ -205,18 +271,28 @@
     document.querySelector('main').innerHTML = '<div class="empty-msg">No job specified.</div>';
     throw new Error('No job id in URL');
   }
-  let jobType = params.get('type');
-
-  // A link from before per-leg items existed won't carry &type= -- fall
-  // back to whichever leg is currently active, same as job-items.html.
-  async function resolveJobType() {
-    if (jobType) return;
-    const legs = await listJobLegs(jobId);
-    const active = activeLegForJob(legs);
-    jobType = active ? active.job_type : null;
-  }
 
   let job = null;
+  let legs = [];
+  let activeLeg = null;
+
+  async function renderFlowChrome() {
+    renderFlowSidebar(document.getElementById('flowSidebar'), {
+      jobId, jobTypes: job.job_types || [], legs, onAdded: async () => {
+        legs = await listJobLegs(jobId);
+        activeLeg = activeLegForJob(legs);
+        await renderFlowChrome();
+      }
+    });
+    let mechanicName = null;
+    if (job.assigned_staff_id) {
+      try {
+        const staff = await getStaffMember(job.assigned_staff_id);
+        if (staff) mechanicName = staff.employee_name;
+      } catch (err) { /* ignore -- summary panel just shows Unassigned */ }
+    }
+    renderJobSummaryPanel(document.getElementById('flowSummary'), job, mechanicName);
+  }
 
   function renderShareBox() {
     const box = document.getElementById('shareBox');
@@ -232,10 +308,16 @@
 
   async function loadJob() {
     job = await getJobSummary(jobId);
+    legs = await listJobLegs(jobId);
+    activeLeg = activeLegForJob(legs);
+
     const vehicle = job.owned_vehicles ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() || 'Unknown vehicle' : 'Unknown vehicle';
     const reg = job.owned_vehicles?.registration || 'Unknown';
     document.getElementById('jobTitle').textContent = `Job #${job.job_number} — ${job.customers?.customer_name || 'Unknown customer'}`;
     document.getElementById('jobSub').textContent = `${vehicle} · ${reg} · ${jobStatusLabel(job.status)}`;
+    document.getElementById('backLink').href = activeLeg
+      ? `job-items.html?job=${jobId}&type=${activeLeg.job_type}`
+      : `job-items.html?job=${jobId}`;
 
     document.getElementById('sheetJobNumber').textContent = `Job #${job.job_number}`;
     document.getElementById('sheetDate').textContent = formatDateTimeEST();
@@ -255,28 +337,62 @@
     }
     document.getElementById('sheetMechanic').textContent = mechanicName;
 
+    // Inspection only ever exists for the repair leg.
+    if (!(job.job_types || []).includes('repair')) {
+      document.getElementById('inspectionSection').style.display = 'none';
+    }
+
+    const agreedBtn = document.getElementById('quoteAgreedBtn');
+    if (activeLeg && activeLeg.status === 'quote_preparation') {
+      agreedBtn.textContent = `Quote Agreed — ${jobTypeLabel(activeLeg.job_type)} →`;
+      agreedBtn.style.display = 'inline-block';
+    } else {
+      agreedBtn.style.display = 'none';
+    }
+
     renderShareBox();
   }
 
-  // Subtotal/labour/total are computed from THIS leg's items only, not
-  // jobs.quoted_total (which stays a whole-job figure used elsewhere, e.g.
-  // the board card) -- a customisation quote shouldn't include repair parts.
-  async function loadLines() {
-    const lines = await listJobItems(jobId, jobType);
-    const tbody = document.getElementById('sheetLines');
-    if (lines.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="empty-note">No items added to this job yet.</td></tr>';
-    } else {
-      tbody.innerHTML = lines.map((line) => {
-        const lineTotal = line.unit_price !== null ? formatMoney(Number(line.unit_price) * Number(line.quantity)) : 'To confirm';
-        const unit = line.unit_price !== null ? formatMoney(line.unit_price) : 'To confirm';
-        return `<tr><td>${line.catalogue_items?.name || 'Unknown item'}</td><td class="num">${line.quantity}</td><td class="num">${unit}</td><td class="num">${lineTotal}</td></tr>`;
-      }).join('');
-    }
+  // Combined, whole-job quote -- one section per selected work type (each
+  // with its own subtotal), then one grand total across all of them. This
+  // is deliberately NOT filtered to one leg: the running quote a customer
+  // sees should always show everything agreed so far, same as the second
+  // reference screenshot ("Updated combined quote" once a type is added
+  // mid-flow).
+  async function loadSections() {
+    const allLines = await listJobItems(jobId);
+    const jobTypes = (job.job_types || []).filter((t) => LEG_ORDER.includes(t));
+    const container = document.getElementById('sheetSections');
+    const inspectionShown = jobTypes.includes('repair');
 
-    const subtotal = lines.some((l) => l.unit_price === null)
-      ? null
-      : lines.reduce((sum, l) => sum + Number(l.unit_price) * Number(l.quantity), 0);
+    let html = '';
+    let combinedSubtotal = 0;
+    let combinedHasUnknown = false;
+
+    jobTypes.forEach((type, idx) => {
+      const lines = allLines.filter((l) => l.job_type === type);
+      const isFirst = idx === 0 && !inspectionShown;
+      html += `<div class="section-title${isFirst ? ' first' : ''}">${jobTypeLabel(type)} — Parts &amp; Labour</div>`;
+      html += `<table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Total</th></tr></thead><tbody>`;
+      if (lines.length === 0) {
+        html += `<tr><td colspan="4" class="empty-note">No items added yet.</td></tr>`;
+      } else {
+        lines.forEach((line) => {
+          const unit = line.unit_price !== null ? formatMoney(line.unit_price) : 'To confirm';
+          const lineTotal = line.unit_price !== null ? formatMoney(Number(line.unit_price) * Number(line.quantity)) : 'To confirm';
+          html += `<tr><td>${line.catalogue_items?.name || 'Unknown item'}</td><td class="num">${line.quantity}</td><td class="num">${unit}</td><td class="num">${lineTotal}</td></tr>`;
+        });
+      }
+      const typeSubtotal = lines.some((l) => l.unit_price === null)
+        ? null
+        : lines.reduce((sum, l) => sum + Number(l.unit_price) * Number(l.quantity), 0);
+      if (typeSubtotal === null) combinedHasUnknown = true; else combinedSubtotal += typeSubtotal;
+      html += `</tbody><tfoot><tr class="subtotal-row"><td colspan="3">${jobTypeLabel(type)} Subtotal</td><td class="num">${formatMoney(typeSubtotal)}</td></tr></tfoot></table>`;
+    });
+
+    container.innerHTML = html || '<div class="empty-note">No work types selected yet.</div>';
+
+    const subtotal = combinedHasUnknown ? null : combinedSubtotal;
     document.getElementById('sheetSubtotal').textContent = formatMoney(subtotal);
     document.getElementById('sheetLabourFee').textContent = formatMoney(labourFeeFor(subtotal));
     document.getElementById('sheetTotal').textContent = formatMoney(grandTotalFor(subtotal));
@@ -375,18 +491,31 @@
     navigator.clipboard?.writeText(input.value).catch(() => {});
   });
 
-  resolveJobType().then(() => {
-    document.getElementById('backLink').href = `job-items.html?job=${jobId}&type=${jobType || ''}`;
-    // Customisation/performance legs never go through inspection.html.
-    if (jobType !== 'repair') {
-      document.getElementById('inspectionSection').style.display = 'none';
-      document.getElementById('quoteSectionTitle').classList.add('first');
+  // Approves the leg the mechanic's currently working (the first
+  // unfinished one, in LEG_ORDER) and drops them straight onto its
+  // materials-required page -- no trip back through the board.
+  document.getElementById('quoteAgreedBtn').addEventListener('click', async () => {
+    if (!activeLeg) return;
+    const btn = document.getElementById('quoteAgreedBtn');
+    btn.disabled = true;
+    try {
+      await updateLegStatus(jobId, activeLeg.job_type, 'approved');
+      logActivity({
+        actorId: session?.id, action: 'job_leg_status_changed', entityType: 'job', entityId: jobId,
+        summary: `${session?.employee_name || 'Someone'} agreed the ${jobTypeLabel(activeLeg.job_type)} quote for Job #${job.job_number}`
+      });
+      window.location.href = `job-items.html?job=${jobId}&type=${activeLeg.job_type}`;
+    } catch (err) {
+      alert(`Failed to agree quote: ${err.message}`);
+      btn.disabled = false;
     }
-    return loadJob().then(() => Promise.all([
-      loadLines(),
-      jobType === 'repair' ? loadInspectionResults() : Promise.resolve()
-    ]));
   });
+
+  loadJob().then(() => Promise.all([
+    loadSections(),
+    (job.job_types || []).includes('repair') ? loadInspectionResults() : Promise.resolve(),
+    renderFlowChrome()
+  ]));
 </script>
 </body>
 </html>

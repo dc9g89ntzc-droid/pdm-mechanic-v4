@@ -169,9 +169,11 @@
   function renderJobRow(job, mode) {
     const vehicle = job.owned_vehicles ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() : 'Unknown vehicle';
     const reg = job.owned_vehicles?.registration || 'Unknown';
+    // Active jobs resume exactly where they're at (same rule the Workshop
+    // board and check-in use) instead of always landing on job-items.
     const href = mode === 'completed'
       ? (job.receipt_document_url || `receipt.html?job=${job.id}`)
-      : `job-items.html?job=${job.id}`;
+      : jobFlowUrlFor(job.id, job.legs || []);
     const target = mode === 'completed' && job.receipt_document_url ? ' target="_blank" rel="noopener"' : '';
     return `
       <a class="job-row" href="${href}"${target}>
@@ -191,6 +193,7 @@
     const jobs = await listJobs({ mechanicId: session.id });
     const active = jobs.filter((j) => j.stage !== 'completed' && j.stage !== 'cancelled');
     const completed = jobs.filter((j) => j.stage === 'completed').slice(0, 8);
+    await Promise.all(active.map(async (j) => { j.legs = await listJobLegs(j.id); }));
 
     const activeCard = document.getElementById('activeJobsCard');
     activeCard.innerHTML = active.length
