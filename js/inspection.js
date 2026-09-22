@@ -293,9 +293,10 @@ function bodyZoneTierFromSeverity(severity) {
 // oil_level and oil_filter both -> Oil Change).
 const _serviceMaterialsCache = {};
 async function getServiceMaterialsByName(serviceName) {
-  if (_serviceMaterialsCache[serviceName]) return _serviceMaterialsCache[serviceName];
+  if (Object.prototype.hasOwnProperty.call(_serviceMaterialsCache, serviceName)) return _serviceMaterialsCache[serviceName];
   const services = await listServices({ search: serviceName, activeOnly: true });
   const service = services.find((s) => s.name.toLowerCase() === serviceName.toLowerCase());
+  console.log('[suggestedParts] lookup', JSON.stringify(serviceName), '-> services matched:', services.map((s) => s.name), '-> exact match:', service ? service.id : null);
   const materials = service ? await listServiceMaterials(service.id) : [];
   _serviceMaterialsCache[serviceName] = materials;
   return materials;
