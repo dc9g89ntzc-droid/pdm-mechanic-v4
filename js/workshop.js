@@ -601,6 +601,12 @@ async function syncJobLegs(jobId, jobTypes) {
       .eq('id', leg.id);
     if (error) throw new Error(error.message);
   }
+
+  // jobs.job_types is what the flow sidebar and every "which leg is next"
+  // check read -- keep it in lockstep with the legs that actually exist,
+  // whether this call came from the board's type editor or the sidebar's
+  // "+ Add work type" button.
+  await updateJobTypes(jobId, jobTypes);
 }
 
 const LEG_STATUS_TIMESTAMP_COLUMN = {
@@ -667,13 +673,21 @@ async function listJobsReadyToBill(filters = {}) {
 // used by check-in's redirect, the board's card click, and My Dashboard's
 // active-jobs list, so "come back to this ticket" always means the same
 // page everywhere. job-items.html itself decides add-materials vs
-// materials-required framing from the leg's own status, so this only ever
-// needs to choose between inspection, items, and billing.
+// materials-required framing from the leg's own status, so this mostly
+// only needs to choose between inspection, items, and billing -- except
+// repair's quote stage, which (unlike customisation/performance) skips
+// the add-materials stop and goes straight to the quote screen, since the
+// inspection findings are what tell the mechanic what to add there.
 function jobFlowUrlFor(jobId, legs) {
   const active = activeLegForJob(legs);
   if (!active) return `receipt.html?job=${jobId}`;
-  if (active.job_type === 'repair' && ['awaiting_inspection', 'inspection_in_progress'].includes(active.status)) {
-    return `inspection.html?job=${jobId}`;
+  if (active.job_type === 'repair') {
+    if (['awaiting_inspection', 'inspection_in_progress'].includes(active.status)) {
+      return `inspection.html?job=${jobId}`;
+    }
+    if (active.status === 'quote_preparation') {
+      return `quote.html?job=${jobId}`;
+    }
   }
   return `job-items.html?job=${jobId}&type=${active.job_type}`;
 }

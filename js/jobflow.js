@@ -22,27 +22,39 @@ const FLOW_STEP_DEFS = {
   ]
 };
 
-// Which of a leg's 3 steps is done/current/pending, derived from
-// job_legs.status. There's no status distinct from quote_preparation for
+// Which of a leg's 3 steps is done/current/pending. A leg that isn't the
+// job's current active one (per activeLegForJob) is always shown fully
+// pending, no matter what its raw status is -- every queued, not-yet-
+// started leg sits at its own initialLegStatus (quote_preparation for
+// non-repair) until it becomes active, which is otherwise indistinguishable
+// from "actively being quoted right now" and was showing queued legs as
+// already in progress / done.
+//
+// For the active leg, there's no status distinct from quote_preparation for
 // "quote generated, awaiting agreement" vs "still adding items" -- that
-// whole window reads as one "Quote" step, which matches the real page flow
+// whole window reads as one "Quote" step, matching the real page flow
 // either way (job-items add-mode -> quote.html both happen while the leg
 // is still quote_preparation). Non-repair legs have no discovery sub-phase
 // at all (initialLegStatus skips straight to quote_preparation for them),
-// so their first step is trivially done as soon as the leg exists.
-function legStepStates(leg) {
-  const s = leg ? leg.status : null;
-  const isRepair = leg && leg.job_type === 'repair';
+// so their first step is trivially done as soon as they become active.
+function legStepStates(leg, isActive) {
+  if (!leg) return { discovery: 'pending', quote: 'pending', work: 'pending' };
+  if (leg.status === 'completed' || leg.status === 'cancelled') {
+    return { discovery: 'done', quote: 'done', work: 'done' };
+  }
+  if (!isActive) return { discovery: 'pending', quote: 'pending', work: 'pending' };
+
+  const s = leg.status;
+  const isRepair = leg.job_type === 'repair';
   const discoveryCurrent = isRepair && ['awaiting_inspection', 'inspection_in_progress'].includes(s);
-  const discoveryDone = !discoveryCurrent && !!s;
+  const discoveryDone = !discoveryCurrent;
   const quoteCurrent = s === 'quote_preparation';
-  const quoteDone = ['approved', 'waiting_for_parts', 'work_in_progress', 'completed'].includes(s);
+  const quoteDone = ['approved', 'waiting_for_parts', 'work_in_progress'].includes(s);
   const workCurrent = ['approved', 'waiting_for_parts', 'work_in_progress'].includes(s);
-  const workDone = s === 'completed';
   return {
     discovery: discoveryDone ? 'done' : discoveryCurrent ? 'current' : 'pending',
     quote: quoteDone ? 'done' : quoteCurrent ? 'current' : 'pending',
-    work: workDone ? 'done' : workCurrent ? 'current' : 'pending'
+    work: workCurrent ? 'current' : 'pending'
   };
 }
 
@@ -52,13 +64,14 @@ function legStepStates(leg) {
 function renderFlowSidebar(container, { jobId, jobTypes, legs, onAdded }) {
   const legByType = {};
   legs.forEach((l) => { legByType[l.job_type] = l; });
+  const active = activeLegForJob(legs);
 
   const steps = [
     '<div class="flow-step done"><span class="flow-dot">&#10003;</span><div><div class="flow-label">New Job</div><div class="flow-state">Completed</div></div></div>'
   ];
 
   LEG_ORDER.filter((t) => jobTypes.includes(t)).forEach((t) => {
-    const states = legStepStates(legByType[t]);
+    const states = legStepStates(legByType[t], !!(active && active.job_type === t));
     FLOW_STEP_DEFS[t].forEach((stepDef) => {
       const state = states[stepDef.key];
       const stateLabel = state === 'done' ? 'Completed' : state === 'current' ? 'In progress' : 'Pending';

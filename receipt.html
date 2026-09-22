@@ -283,6 +283,7 @@
   let job = null;
 
   async function renderFlowChrome() {
+    job = await getJobSummary(jobId);
     renderFlowSidebar(document.getElementById('flowSidebar'), {
       jobId, jobTypes: job.job_types || [], legs: await listJobLegs(jobId), onAdded: renderFlowChrome
     });

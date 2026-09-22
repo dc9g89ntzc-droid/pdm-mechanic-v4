@@ -693,7 +693,8 @@
     clearError();
     try {
       await completeInspection(inspection.id, jobId);
-      window.location.href = `job-items.html?job=${jobId}&type=repair`;
+      const legs = await listJobLegs(jobId);
+      window.location.href = jobFlowUrlFor(jobId, legs);
     } catch (err) {
       showError(err.message);
     }

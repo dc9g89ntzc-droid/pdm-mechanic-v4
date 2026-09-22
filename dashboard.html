@@ -293,8 +293,7 @@
       <label for="statusSelect" id="statusSelectLabel">Status</label>
       <select id="statusSelect"></select>
       <div class="quick-actions">
-        <button type="button" class="quick-action-btn" id="approveQuickBtn">Quote accepted →</button>
-        <button type="button" class="quick-action-btn" id="startWorkQuickBtn">Start work →</button>
+        <button type="button" class="quick-action-btn" id="approveQuickBtn">Quote agreed — start work →</button>
         <button type="button" class="quick-action-btn" id="completeQuickBtn">Work complete →</button>
       </div>
       <a href="#" id="editItemsLink" class="btn secondary" style="display:block; text-align:center; margin-bottom:10px;">Add / edit items</a>
@@ -552,8 +551,9 @@
       alert(`Failed to update job: ${err.message}`);
     }
   }
-  document.getElementById('approveQuickBtn').addEventListener('click', () => quickSetLegStatus('approved'));
-  document.getElementById('startWorkQuickBtn').addEventListener('click', () => quickSetLegStatus('work_in_progress'));
+  // Quote agreed assumes work starts in the same step -- no separate
+  // "approved, not yet started" wait in the normal flow.
+  document.getElementById('approveQuickBtn').addEventListener('click', () => quickSetLegStatus('work_in_progress'));
   document.getElementById('completeQuickBtn').addEventListener('click', () => quickSetLegStatus('completed'));
 
   document.getElementById('statusSaveBtn').addEventListener('click', async () => {

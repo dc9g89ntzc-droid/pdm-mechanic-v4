@@ -177,7 +177,7 @@
       <div class="job-title" id="jobTitle">Loading job…</div>
       <div class="job-sub" id="jobSub"></div>
     </div>
-    <a href="#" id="backLink" class="btn secondary">&larr; Back to Workshop</a>
+    <a href="#" id="backLink" class="btn secondary">&larr; Add / edit items</a>
   </div>
 
   <div class="flow-layout">
@@ -279,6 +279,7 @@
   async function renderFlowChrome() {
     renderFlowSidebar(document.getElementById('flowSidebar'), {
       jobId, jobTypes: job.job_types || [], legs, onAdded: async () => {
+        job = await getJobSummary(jobId);
         legs = await listJobLegs(jobId);
         activeLeg = activeLegForJob(legs);
         await renderFlowChrome();
@@ -491,18 +492,19 @@
     navigator.clipboard?.writeText(input.value).catch(() => {});
   });
 
-  // Approves the leg the mechanic's currently working (the first
-  // unfinished one, in LEG_ORDER) and drops them straight onto its
-  // materials-required page -- no trip back through the board.
+  // Agreeing the quote starts the work in the same step -- no separate
+  // "approved, not yet started" waiting state in the normal flow -- and
+  // drops the mechanic straight onto the materials-required page for it,
+  // no trip back through the board.
   document.getElementById('quoteAgreedBtn').addEventListener('click', async () => {
     if (!activeLeg) return;
     const btn = document.getElementById('quoteAgreedBtn');
     btn.disabled = true;
     try {
-      await updateLegStatus(jobId, activeLeg.job_type, 'approved');
+      await updateLegStatus(jobId, activeLeg.job_type, 'work_in_progress');
       logActivity({
         actorId: session?.id, action: 'job_leg_status_changed', entityType: 'job', entityId: jobId,
-        summary: `${session?.employee_name || 'Someone'} agreed the ${jobTypeLabel(activeLeg.job_type)} quote for Job #${job.job_number}`
+        summary: `${session?.employee_name || 'Someone'} agreed the ${jobTypeLabel(activeLeg.job_type)} quote for Job #${job.job_number} and started work`
       });
       window.location.href = `job-items.html?job=${jobId}&type=${activeLeg.job_type}`;
     } catch (err) {
