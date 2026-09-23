@@ -114,13 +114,25 @@
 <script src="js/supabaseClient.js"></script>
 <script src="js/auth.js"></script>
 <script>
-  if (getSession()) {
+  if (hasValidSession()) {
     window.location.href = 'my-dashboard.html';
+  } else {
+    // A session object can outlive its token (12h expiry, mechanic-login.js)
+    // -- clear both here so this form stays reachable instead of the old
+    // behaviour of bouncing straight back to a dashboard that's just going
+    // to fail to load anything.
+    clearSession();
+    clearToken();
   }
 
   const form = document.getElementById('loginForm');
   const btn = document.getElementById('loginBtn');
   const errorBox = document.getElementById('loginError');
+
+  if (new URLSearchParams(window.location.search).get('expired') === '1') {
+    errorBox.textContent = 'Your session expired. Please sign in again.';
+    errorBox.style.display = 'block';
+  }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();

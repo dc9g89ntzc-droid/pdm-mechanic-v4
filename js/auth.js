@@ -30,10 +30,45 @@ function clearToken() {
   localStorage.removeItem('pdm_mechanic_token');
 }
 
+// Decodes a JWT's payload without verifying the signature -- fine here
+// since this is just the client deciding whether its own token is stale
+// enough to not bother sending (Postgres/PostgREST still does the real,
+// signature-checked expiry enforcement on every request regardless).
+function decodeJwtPayload(token) {
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function isTokenExpired(token) {
+  const payload = token && decodeJwtPayload(token);
+  if (!payload || !payload.exp) return true;
+  return Date.now() / 1000 >= payload.exp;
+}
+
+function hasValidSession() {
+  return !!(getSession() && getToken() && !isTokenExpired(getToken()));
+}
+
+// A stale tab left open past the 12h token lifetime (mechanic-login.js)
+// used to surface as a raw "JWT expired" Postgres error the moment the
+// page tried to load anything. Checking the token's own exp claim here --
+// the one choke point every page already calls before doing real work --
+// catches that up front and sends the mechanic back to a clean sign-in
+// instead.
 function requireSession() {
   const session = getSession();
-  if (!session) {
-    window.location.href = 'index.html';
+  const token = getToken();
+  if (!session || !token || isTokenExpired(token)) {
+    const hadSession = !!session;
+    clearSession();
+    clearToken();
+    window.location.href = hadSession ? 'index.html?expired=1' : 'index.html';
+    return null;
   }
   return session;
 }
