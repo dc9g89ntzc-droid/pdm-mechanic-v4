@@ -85,6 +85,24 @@
   }
   .leg-action-btn:hover { background: var(--red-dim); }
 
+  .build-panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .build-panel h2 { font-size: 14px; margin: 0 0 12px; }
+  .build-panel .build-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .build-panel .build-field { flex: 1 1 160px; min-width: 140px; }
+  .build-panel .build-field label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+  .build-panel select { width: 100%; padding: 9px 10px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 8px; font-size: 13px; }
+  .build-tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 16px; }
+  .build-tier { background: var(--bg); border: 1px solid var(--panel-border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .build-tier h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .build-tier.tier-cheap h3 { color: var(--text-dim); }
+  .build-tier.tier-medium h3 { color: var(--amber); }
+  .build-tier.tier-best h3 { color: var(--green); }
+  .build-tier .caveat { color: var(--red); font-size: 11px; }
+  .build-tier ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+  .build-tier ul li { display: flex; justify-content: space-between; gap: 8px; color: var(--text-dim); }
+  .build-tier ul li .unavailable { color: var(--red); }
+  .build-tier .tier-total { display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; padding-top: 8px; border-top: 1px solid var(--panel-border); }
+
   /* Shared "job flow" chrome (sidebar stepper + summary panel) -- same
      block copy-pasted onto every per-job page (inspection/job-items/
      quote/receipt), matching this project's per-page-styles convention. */
@@ -185,7 +203,28 @@
   <div class="flow-layout">
     <div class="flow-sidebar" id="flowSidebar"></div>
     <div class="layout" style="flex: 1 1 auto; padding: 0;">
-      <main id="mainArea"></main>
+      <div style="flex: 1 1 560px; min-width: 0;">
+        <div class="build-panel" id="buildPanel" style="display:none;">
+          <h2>Suggested performance build</h2>
+          <div class="build-row">
+            <div class="build-field">
+              <label for="buildStyle">Style</label>
+              <select id="buildStyle"></select>
+            </div>
+            <div class="build-field">
+              <label for="buildValvetrain">Valvetrain</label>
+              <select id="buildValvetrain"></select>
+            </div>
+            <div class="build-field">
+              <label for="buildConfig">Engine configuration</label>
+              <select id="buildConfig"></select>
+            </div>
+            <button type="button" class="btn" id="buildSuggestBtn" style="flex: 0 0 auto;">Suggest parts</button>
+          </div>
+          <div class="build-tiers" id="buildTiers"></div>
+        </div>
+        <main id="mainArea"></main>
+      </div>
       <aside class="quote-panel">
         <h2 id="quotePanelTitle">Items on this job</h2>
         <div id="quoteLines"></div>
@@ -203,6 +242,7 @@
 <script src="js/jobflow.js"></script>
 <script src="js/shift.js"></script>
 <script src="js/catalogue.js"></script>
+<script src="js/performanceBuild.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -502,8 +542,90 @@
     }
   }
 
+  // ---- Suggested performance build (performance-leg jobs only) ----
+  const TIER_LABELS = { cheap: 'Cheap', medium: 'Medium', best: 'Best' };
+  // Resolving a name to a real catalogue row is looked up fresh each time
+  // "Suggest parts" is clicked (not cached) -- stock/price can move between
+  // uses, and this only ever fires on an explicit click, not per keystroke.
+  const catalogueItemCache = {};
+  async function resolveCatalogueItemByName(name) {
+    if (name in catalogueItemCache) return catalogueItemCache[name];
+    const matches = await listCatalogueItems({ search: name, activeOnly: true });
+    const exact = matches.find((m) => m.name.toLowerCase() === name.toLowerCase()) || null;
+    catalogueItemCache[name] = exact;
+    return exact;
+  }
+
+  function initBuildPanel() {
+    if (jobType !== 'performance') return;
+    document.getElementById('buildPanel').style.display = 'block';
+    const styleSelect = document.getElementById('buildStyle');
+    const valvetrainSelect = document.getElementById('buildValvetrain');
+    const configSelect = document.getElementById('buildConfig');
+    styleSelect.innerHTML = STYLE_OPTIONS.map((s) => `<option value="${s.value}">${s.label}</option>`).join('');
+    valvetrainSelect.innerHTML = VALVETRAIN_OPTIONS.map((v) => `<option value="${v}">${v}</option>`).join('');
+    configSelect.innerHTML = ENGINE_CONFIGURATIONS.map((c) => `<option value="${c.value}">${c.value}</option>`).join('');
+
+    document.getElementById('buildSuggestBtn').addEventListener('click', () => {
+      renderBuildTiers({
+        style: styleSelect.value,
+        valvetrain: valvetrainSelect.value,
+        configuration: configSelect.value
+      });
+    });
+  }
+
+  async function renderBuildTiers({ style, valvetrain, configuration }) {
+    const tiersEl = document.getElementById('buildTiers');
+    tiersEl.innerHTML = '<div class="empty-msg">Looking up parts…</div>';
+    const suggestion = suggestPerformanceBuild({ style, valvetrain, configuration });
+
+    const resolved = {};
+    for (const tier of ['cheap', 'medium', 'best']) {
+      resolved[tier] = await Promise.all(
+        suggestion[tier].map(async (entry) => ({ ...entry, catalogueItem: await resolveCatalogueItemByName(entry.itemName) }))
+      );
+    }
+
+    tiersEl.innerHTML = ['cheap', 'medium', 'best'].map((tier) => {
+      const items = resolved[tier];
+      const total = items.reduce((sum, i) => sum + (i.catalogueItem?.customer_price != null ? Number(i.catalogueItem.customer_price) * i.quantity : 0), 0);
+      const caveat = cheapTierCaveat(style);
+      return `
+        <div class="build-tier tier-${tier}" data-tier="${tier}">
+          <h3>${TIER_LABELS[tier]}</h3>
+          ${tier === 'cheap' && caveat ? `<div class="caveat">${caveat}</div>` : ''}
+          <ul>
+            ${items.map((i) => i.catalogueItem
+              ? `<li><span>${i.quantity}x ${i.catalogueItem.name}</span><span>${i.catalogueItem.customer_price != null ? formatMoney(i.catalogueItem.customer_price) : 'To confirm'}</span></li>`
+              : `<li><span class="unavailable">${i.itemName} (not in catalogue)</span></li>`
+            ).join('')}
+          </ul>
+          <div class="tier-total"><span>Total</span><span>${formatMoney(total)}</span></div>
+          <button type="button" class="btn add-tier-btn" data-tier="${tier}">Add to job</button>
+        </div>
+      `;
+    }).join('');
+
+    tiersEl.querySelectorAll('.add-tier-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const tier = btn.dataset.tier;
+        try {
+          for (const entry of resolved[tier]) {
+            if (!entry.catalogueItem) continue; // skipped -- flagged as unavailable in the list above
+            await addJobItem({ jobId, catalogueItem: entry.catalogueItem, quantity: entry.quantity, sourcingChoice: null, performedBy: session?.id, jobType });
+          }
+          await refreshQuote();
+        } catch (err) {
+          alert(`Failed to add tier to job: ${err.message}`);
+        }
+      });
+    });
+  }
+
   resolveJobType().then(() => {
     renderLegAction();
+    initBuildPanel();
     return loadJobBar();
   }).then(() => Promise.all([renderFlowChrome(), showCategories(), refreshQuote()]));
 </script>
