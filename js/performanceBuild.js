@@ -301,6 +301,29 @@ const TRANSMISSION_UPGRADES_BY_STYLE = {
   race: { best: ['Pneumatic Shifter'] }
 };
 
+// Drivetrain conversion -- only suggested where the real-world signal is
+// strong enough to act on. Always suggests the ideal drivetrain for the
+// style regardless of what the vehicle already has (no "current
+// drivetrain" input exists yet), so this can suggest a conversion kit for
+// a car that's already the right layout -- a deliberate simplicity
+// tradeoff, not an oversight. Comfort and Street are left out entirely: a
+// drivetrain swap is a major, invasive job neither of those styles calls
+// for. Same single kit at every tier -- there's no material/quality
+// grading on a conversion kit the way there is on, say, a block.
+const DRIVETRAIN_BY_STYLE = {
+  // 4WD over AWD -- genuine off-road capability, not just an all-weather
+  // on-road compromise.
+  offroad: { cheap: '4WD Conversion Kit', medium: '4WD Conversion Kit', best: '4WD Conversion Kit' },
+  // About as close to mandatory as this gets -- RWD is close to the
+  // definition of drift.
+  drift: { cheap: 'RWD Conversion Kit', medium: 'RWD Conversion Kit', best: 'RWD Conversion Kit' },
+  // Drag and Race genuinely vary by class/car in reality (AWD launch cars
+  // are legitimate for both) -- RWD is the more traditional default, not a
+  // hard rule.
+  drag: { cheap: 'RWD Conversion Kit', medium: 'RWD Conversion Kit', best: 'RWD Conversion Kit' },
+  race: { cheap: 'RWD Conversion Kit', medium: 'RWD Conversion Kit', best: 'RWD Conversion Kit' }
+};
+
 function blockName(material, configuration) {
   const cfg = ENGINE_CONFIGURATIONS.find((c) => c.value === configuration);
   const suffix = cfg ? cfg.suffix : 'Engine Block';
@@ -499,6 +522,9 @@ function suggestPerformanceBuild({ style, valvetrain, configuration }) {
   }
   if (FORCED_INDUCTION_BY_STYLE[style]) {
     pushTiered(result, FORCED_INDUCTION_BY_STYLE[style]);
+  }
+  if (DRIVETRAIN_BY_STYLE[style]) {
+    pushTiered(result, mapTiers(DRIVETRAIN_BY_STYLE[style], (name) => ({ itemName: name, quantity: 1 })));
   }
 
   return result;
