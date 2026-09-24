@@ -255,6 +255,52 @@ const FORCED_INDUCTION_BY_STYLE = {
   }
 };
 
+// Transmission -- unlike Suspension/Radiator/Tires, none of these are
+// named by generic tier (Stock/Sport/Race); they're real, distinct
+// gearboxes (brand + speed count + auto/manual), so each style picks the
+// specific box that actually suits its character rather than climbing one
+// shared ladder. This is included for every style, including Comfort --
+// transmission feel is as much a comfort factor as anything else here.
+const TRANSMISSION_BY_STYLE = {
+  // A smooth modern auto is the real "comfort" pick; Comfort skips the
+  // add-on upgrade parts below like it skips everything else aggressive.
+  comfort: { cheap: 'Declasse TH400 Transmission (3-speed auto)', medium: 'Benefactor 722.6 / NAG1 Transmission (5-speed auto)', best: 'Benefactor 7G-Drive Transmission (7-speed auto)' },
+  // A manual for driver engagement, climbing toward the most refined
+  // manual in the catalogue.
+  street: { cheap: 'Bullworth T-5 Transmission (5-speed manual)', medium: 'Tarmac TR-6060 Transmission (6-speed manual)', best: 'Pfister 7MT Transmission (7-speed manual)' },
+  // Declasse 4L80-E is a real heavy-duty tow/off-road automatic; Zancudo's
+  // brand styling (rugged/utility) fits an 8-speed HD auto as the top end.
+  offroad: { cheap: 'Declasse TH400 Transmission (3-speed auto)', medium: 'Declasse 4L80-E Transmission (4-speed auto)', best: 'Zancudo 8HP Transmission (8-speed auto)' },
+  // Manual, and deliberately NOT climbing past 6-speed -- drift favours a
+  // close, predictable ratio set for quick mid-slide shifts over more
+  // gears; "best" instead comes from the shift-speed upgrades below.
+  drift: { cheap: 'Bullworth T-5 Transmission (5-speed manual)', medium: 'Tarmac TR-6060 Transmission (6-speed manual)', best: 'Tarmac TR-6060 Transmission (6-speed manual)' },
+  // Declasse Powerslide is a real Powerglide-style 2-speed drag auto --
+  // about as authentic a signature pick as Drift Tire was for Drift.
+  drag: { cheap: 'Declasse TH400 Transmission (3-speed auto)', medium: 'Declasse Powerslide Transmission (2-speed auto)', best: 'Declasse Powerslide Transmission (2-speed auto)' },
+  // The Race Sequential transmissions are a literal, unambiguous match.
+  // Cheap stays a normal manual rather than jumping straight to a
+  // several-thousand-dollar sequential box, matching the "cheap tier is
+  // still real, just not exotic" framing used everywhere else.
+  race: { cheap: 'Tarmac TR-6060 Transmission (6-speed manual)', medium: 'Race 8-Speed Sequential Transmission (manual)', best: 'Race 10-Speed Sequential Transmission (manual)' }
+};
+
+// Bolt-on transmission upgrades, matched to whether that style's base box
+// is manual or automatic -- Upgraded Synchronizers only make sense on a
+// synchromesh manual (Street/Drift), Upgraded Clutch Packs and Built Valve
+// Body are automatic-transmission upgrades (Off-Road/Drag). Race is
+// deliberately left off Synchronizers: a real sequential gearbox uses dog
+// engagement, not synchros, so that part wouldn't belong there even at
+// Race's cheap (still-synchromesh) tier -- Pneumatic Shifter at Race's
+// best instead, a genuinely authentic pairing with a full sequential box.
+const TRANSMISSION_UPGRADES_BY_STYLE = {
+  street: { medium: ['Upgraded Synchronizers'], best: ['Upgraded Synchronizers'] },
+  offroad: { medium: ['Upgraded Clutch Packs'], best: ['Upgraded Clutch Packs'] },
+  drift: { medium: ['Upgraded Synchronizers'], best: ['Upgraded Synchronizers', 'Pneumatic Shifter'] },
+  drag: { medium: ['Upgraded Clutch Packs'], best: ['Upgraded Clutch Packs', 'Built Valve Body'] },
+  race: { best: ['Pneumatic Shifter'] }
+};
+
 function blockName(material, configuration) {
   const cfg = ENGINE_CONFIGURATIONS.find((c) => c.value === configuration);
   const suffix = cfg ? cfg.suffix : 'Engine Block';
@@ -343,8 +389,17 @@ function pickSparkPlugs(cylinders) {
   return mapTiers({ cheap: SPARK_PLUG_LADDER[0], medium: SPARK_PLUG_LADDER[1], best: SPARK_PLUG_LADDER[2] }, (name) => ({ itemName: name, quantity: cylinders }));
 }
 
+function pickTransmission(style) {
+  const upgrades = TRANSMISSION_UPGRADES_BY_STYLE[style] || {};
+  return mapTiers(TRANSMISSION_BY_STYLE[style], (name, tier) => {
+    const items = [{ itemName: name, quantity: 1 }];
+    (upgrades[tier] || []).forEach((upgradeName) => items.push({ itemName: upgradeName, quantity: 1 }));
+    return items;
+  });
+}
+
 function mapTiers(tiers, fn) {
-  return { cheap: fn(tiers.cheap), medium: fn(tiers.medium), best: fn(tiers.best) };
+  return { cheap: fn(tiers.cheap, 'cheap'), medium: fn(tiers.medium, 'medium'), best: fn(tiers.best, 'best') };
 }
 
 function pushTiered(target, tiered) {
@@ -380,10 +435,12 @@ function suggestPerformanceBuild({ style, valvetrain, configuration }) {
   const sparkPlugQty = isRotary ? ROTOR_COUNT[configuration] * 2 : cylinders;
 
   pushTiered(result, pickSparkPlugs(sparkPlugQty));
+  if (TRANSMISSION_BY_STYLE[style]) pushTiered(result, pickTransmission(style));
 
   // Comfort stays deliberately minimal -- reliability + ride polish, not
-  // an engine build. Tires are the one non-engine item it still touches
-  // (a genuine comfort upgrade); everything else below is skipped.
+  // an engine build. Tires and transmission are the two non-engine items
+  // it still touches (both genuine comfort factors); everything else
+  // below is skipped.
   if (style === 'comfort') {
     if (TIRE_BY_STYLE[style]) pushTiered(result, mapTiers(TIRE_BY_STYLE[style], (name) => ({ itemName: name, quantity: 4 })));
     return result;
