@@ -17,6 +17,7 @@ const STYLE_OPTIONS = [
   { value: 'comfort', label: 'Comfort' },
   { value: 'street', label: 'Street' },
   { value: 'offroad', label: 'Off-Road' },
+  { value: 'drift', label: 'Drift' },
   { value: 'drag', label: 'Drag' },
   { value: 'race', label: 'Race' }
 ];
@@ -126,10 +127,13 @@ const CONROD_MATERIAL_LADDER_TOUGH = ['Cast Steel', 'Forged Steel', 'Billet Stee
 // nothing -- matches Joanna's own "cheap/unreliable" framing (a real, if
 // bad, part). Comfort doesn't use this at all -- it never touches these
 // subcategories.
-const STYLE_REACH = { street: 0.45, offroad: 0.6, drag: 0.85, race: 1 };
-// Off-Road and Drag always reach the top of their *tough* ladders (already
-// capped appropriately) rather than the general reach value.
-const TOUGH_STYLES = new Set(['offroad', 'drag']);
+const STYLE_REACH = { street: 0.45, offroad: 0.6, drift: 0.85, drag: 0.85, race: 1 };
+// Off-Road, Drift, and Drag always reach the top of their *tough* ladders
+// (already capped appropriately) rather than the general reach value --
+// drift joins Off-Road/Drag here because sustained sideways loading and
+// repeated clutch kicks are the same "durability over ultimate weight
+// savings" case as a hard launch or rough terrain.
+const TOUGH_STYLES = new Set(['offroad', 'drift', 'drag']);
 
 function pickFromLadder(ladder, style) {
   const reach = TOUGH_STYLES.has(style) ? 1 : STYLE_REACH[style];
@@ -169,6 +173,9 @@ const RADIATOR_BY_STYLE = {
   drag: { cheap: 'Street Radiator', medium: 'Street Radiator', best: 'Sport Radiator' },
   // A drag pass is a short burst, not sustained load -- cooling matters far
   // less here than for a circuit car, so even "best" doesn't need Race.
+  drift: { cheap: 'Street Radiator', medium: 'Sport Radiator', best: 'Race Radiator' },
+  // Drift is the opposite of drag here -- long sustained runs at high RPM
+  // under load build real heat, closer to circuit racing than a single pass.
   race: { cheap: 'Sport Radiator', medium: 'Race Radiator', best: 'Race Radiator' }
   // Sustained circuit heat is a real reliability risk -- a race build
   // shouldn't run less than Sport radiator even at its cheap tier.
@@ -178,6 +185,10 @@ const SUSPENSION_BY_STYLE = {
   offroad: { cheap: 'Stock Suspension', medium: 'Off-Road Suspension', best: 'Off-Road Suspension' },
   // Off-Road's own suspension is the correct tool here, not "upgrading
   // toward Race" -- Race suspension is stiff/track-tuned, wrong job.
+  drift: { cheap: 'Stock Suspension', medium: 'Sport Suspension', best: 'Race Suspension' },
+  // Suspension geometry (angle, response) is arguably THE core drift mod in
+  // reality -- no dedicated "Drift Suspension" item exists in the catalogue,
+  // so Race is the closest real analogue (stiff, precise, adjustable).
   race: { cheap: 'Sport Suspension', medium: 'Race Suspension', best: 'Race Suspension' }
   // A genuine track build shouldn't run Stock suspension even as the
   // budget option -- drag intentionally has no suspension entry below
@@ -191,6 +202,7 @@ const TIRE_BY_STYLE = {
   comfort: { cheap: 'Stock Tire', medium: 'Street Tire', best: 'Street Tire' },
   street: { cheap: 'Stock Tire', medium: 'Street Tire', best: 'Sport Tire' },
   offroad: { cheap: 'Stock Tire', medium: 'Off-Road Tire', best: 'Off-Road Tire' },
+  drift: { cheap: 'Street Tire', medium: 'Drift Tire', best: 'Drift Tire' },
   drag: { cheap: 'Street Tire', medium: 'Drag Tire', best: 'Drag Tire' },
   // Slick Tires are priced *below* Track Tire in the catalogue, which
   // doesn't match real motorsport (slicks are normally the specialist/
@@ -202,17 +214,32 @@ const TIRE_BY_STYLE = {
 const BRAKE_PADS_BY_STYLE = {
   street: { cheap: 'Stock Brake Pads', medium: 'Street Brake Pads', best: 'Sport Brake Pads' },
   offroad: { cheap: 'Stock Brake Pads', medium: 'Street Brake Pads', best: 'Street Brake Pads' },
+  // Threshold/trail braking to initiate a slide matters, but pure bite
+  // isn't the point the way it is for a circuit car -- Sport caps it.
+  drift: { cheap: 'Stock Brake Pads', medium: 'Street Brake Pads', best: 'Sport Brake Pads' },
   drag: { cheap: 'Stock Brake Pads', medium: 'Street Brake Pads', best: 'Sport Brake Pads' },
   race: { cheap: 'Street Brake Pads', medium: 'Sport Brake Pads', best: 'Race Brake Pads' }
   // A genuine track build needs real stopping power even at its cheap
   // tier -- Stock brakes aren't a safe "budget" option for Race.
 };
 
-// Forced induction is Drag/Race only. Each tier bundles a sized
+// Forced induction is Drift/Drag/Race only. Each tier bundles a sized
 // turbocharger + matching intercooler; Boost Controller and the
-// style-specific "signature" extra (Nitrous for Drag, Anti-Lag for Race)
-// only show up from medium/best, not cheap.
+// style-specific "signature" extra (Nitrous for Drag, Anti-Lag for
+// Drift/Race) only show up from medium/best, not cheap.
 const FORCED_INDUCTION_BY_STYLE = {
+  drift: {
+    cheap: [{ itemName: 'Turbocharger — Small Compressor / Medium Turbine', quantity: 1 }, { itemName: 'Stock Intercooler', quantity: 1 }],
+    medium: [{ itemName: 'Turbocharger — Medium Compressor / Medium Turbine', quantity: 1 }, { itemName: 'Street Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }],
+    best: [{ itemName: 'Turbocharger — Medium Compressor / Large Turbine', quantity: 1 }, { itemName: 'Race Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }, { itemName: 'Anti-Lag System Kit', quantity: 1 }]
+    // A bigger turbine than compressor here on purpose -- drift needs
+    // predictable, controllable power delivery through a slide, not just
+    // outright peak, so it's biased toward flow/response over the
+    // straight-line-max Large/Large combo Drag and Race reach for. Real
+    // drift cars (2JZ/RB26/SR20 swaps) also lean heavily on anti-lag to
+    // keep boost up between the constant throttle blips of a transition --
+    // arguably even more central to drift than to circuit racing.
+  },
   drag: {
     cheap: [{ itemName: 'Turbocharger — Small Compressor / Small Turbine', quantity: 1 }, { itemName: 'Stock Intercooler', quantity: 1 }],
     medium: [{ itemName: 'Turbocharger — Medium Compressor / Medium Turbine', quantity: 1 }, { itemName: 'Street Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }],
@@ -331,9 +358,11 @@ function pushTiered(target, tiered) {
 // Matches Joanna's own "cheap/unreliable" framing -- the aggressive styles
 // are exactly where a bottom-tier part under real load is a genuine risk,
 // not just a smaller number. Street/Off-Road/Comfort don't get this: their
-// cheap tier is a legitimate budget pick, not a warning.
+// cheap tier is a legitimate budget pick, not a warning. Drift joins
+// Drag/Race here -- sustained sideways loading and clutch kicks stress
+// budget parts just as much as a hard launch does.
 function cheapTierCaveat(style) {
-  return (style === 'drag' || style === 'race')
+  return (style === 'drift' || style === 'drag' || style === 'race')
     ? 'Budget parts under high stress -- real risk of failure under boost/load.'
     : null;
 }
@@ -379,7 +408,7 @@ function suggestPerformanceBuild({ style, valvetrain, configuration }) {
       const vt = VALVETRAIN_TIERS[valvetrain][tier];
       result[tier].push({ itemName: vt.camshaft, quantity: camCount }, { itemName: vt.tappet, quantity: totalValves });
     });
-    const boosted = style === 'drag' || style === 'race';
+    const boosted = style === 'drift' || style === 'drag' || style === 'race';
     pushTiered(result, pickPistons(style, boosted, cylinders));
     pushTiered(result, pickRings(style, cylinders));
     pushTiered(result, pickConrod(style, cylinders));
