@@ -36,13 +36,7 @@ const ENGINE_CONFIGURATIONS = [
   .concat(['Single Rotor', 'Twin Rotor', 'Three Rotor', 'Four Rotor'].map((value) =>
     ({ value, subcategory: 'Rotor Housings', suffix: 'Rotor Housing' })));
 
-// Real cylinder counts per configuration -- used to scale the parts that
-// genuinely need one-per-cylinder in reality (pistons, rings, rods, spark
-// plugs, conrod bearings). Cylinder head / camshaft / tappet / valve
-// spring / main bearing quantities are NOT scaled yet -- those depend on
-// bank count and per-cylinder valve count, which aren't confirmed against
-// how this specific game models an engine build, so they're deliberately
-// left at a flat 1 rather than guessed (flagged to Joanna directly).
+// Real cylinder counts per configuration.
 const CYLINDER_COUNT = {
   'Flat 2': 2, 'Flat 4': 4, 'Flat 6': 6, 'Flat 8': 8,
   'Inline 3': 3, 'Inline 4': 4, 'Inline 5': 5, 'Inline 6': 6, 'Inline 8': 8,
@@ -53,6 +47,45 @@ const CYLINDER_COUNT = {
 // A real Wankel rotor is a Reuleaux triangle -- exactly 3 apex seals per
 // rotor, always. Confident enough to scale without asking.
 const ROTOR_COUNT = { 'Single Rotor': 1, 'Twin Rotor': 2, 'Three Rotor': 3, 'Four Rotor': 4 };
+
+// Bank count and per-cylinder valve/camshaft rules below were derived from
+// five real in-game teardowns Joanna supplied (DOHC Inline-6, DOHC V12,
+// OHV V-Twin, SOHC Flat-6, DOHC W16), not assumed -- each was
+// cross-checked against at least one other example before being treated
+// as confirmed. See commit history for the worked-out arithmetic.
+//
+// Bank count: every V/Flat/W configuration (and V-Twin) counts as 2 banks
+// in-game, regardless of a W-block's real-world physical row count (a real
+// W16 is arguably 4 rows -- this game treats it the same as a V16, 2
+// banks with more cylinders each, confirmed via the W16 example: 4
+// camshafts / 2-per-bank-for-DOHC = 2 banks, 2 cylinder heads, and a 9/9
+// main bearing count that only matches (16 cylinders / 2 banks) + 1).
+// Inline and Single Piston are the only 1-bank configurations.
+function bankCount(configuration) {
+  return (configuration.startsWith('Inline') || configuration === 'Single Piston') ? 1 : 2;
+}
+
+// Valves per cylinder, confirmed per valvetrain (OHV 4÷2=2, SOHC 18÷6=3,
+// DOHC confirmed three times: 24÷6, 48÷12, 64÷16, all =4).
+const VALVES_PER_CYLINDER = { OHV: 2, SOHC: 3, DOHC: 4 };
+
+// Camshafts per bank -- OHV is a flat 1 for the *whole engine* regardless
+// of bank count (one shared cam in the block driving every bank via
+// pushrods, confirmed on the V-Twin: still just 1 camshaft slot despite 2
+// banks). SOHC and DOHC scale per bank instead (confirmed: SOHC Flat-6 =
+// 2 camshafts for 2 banks; DOHC Inline-6 = 2 for 1 bank, DOHC V12/W16 = 4
+// for 2 banks).
+function camshaftCount(valvetrain, banks) {
+  return valvetrain === 'OHV' ? 1 : banks * (valvetrain === 'DOHC' ? 2 : 1);
+}
+
+// Main bearings = cylinders-per-bank + 1, not total-cylinders + 1 --
+// confirmed on all five examples (Inline-6: 6+1=7; V12: 6+1=7, not 13;
+// V-Twin: 1+1=2; Flat-6: 3+1=4; W16: 8+1=9). Matches real engine design:
+// a V-block's crank throw count tracks cylinders-per-bank, not the total.
+function mainBearingCount(cylinders, banks) {
+  return Math.round(cylinders / banks) + 1;
+}
 
 // ---- Quality ladders (cheap -> best), curated by hand from real
 // engine-building logic, not raw price sort. ----
@@ -254,25 +287,27 @@ function pickCrankshaft(style) {
   return mapTiers(pickFromLadder(CRANKSHAFT_LADDER, style), (process) => ({ itemName: `${process} Crankshaft`, quantity: 1 }));
 }
 
-function pickBearings(style, cylinders) {
-  // One conrod bearing per rod journal, always -- confident to scale.
-  // Main bearing count varies by real engine design (not a fixed
-  // cylinders+1 rule across every configuration), so that one's left at a
-  // flat 1 pending confirmation rather than guessed.
+function pickBearings(style, cylinders, banks) {
+  // One conrod bearing per rod journal; main bearings = cylinders-per-bank
+  // + 1 (see mainBearingCount).
   return mapTiers(pickFromLadder(BEARING_LADDER, style), (material) => ([
     { itemName: `${material} Conrod Bearing`, quantity: cylinders },
-    { itemName: `${material} Main Bearing`, quantity: 1 }
+    { itemName: `${material} Main Bearing`, quantity: mainBearingCount(cylinders, banks) }
   ]));
 }
 
-function pickCylinderHead(style) {
-  return mapTiers(pickFromLadder(CYLINDER_HEAD_MATERIAL_LADDER, style), (material) => ({ itemName: `Ported & Polished ${material} Cylinder Head`, quantity: 1 }));
+function pickCylinderHead(style, banks) {
+  // One head per bank -- confirmed across every example regardless of
+  // valvetrain (an OHV V-Twin gets 2 heads same as a DOHC V12).
+  return mapTiers(pickFromLadder(CYLINDER_HEAD_MATERIAL_LADDER, style), (material) => ({ itemName: `Ported & Polished ${material} Cylinder Head`, quantity: banks }));
 }
 
-function pickValveSprings(style) {
+function pickValveSprings(style, totalValves) {
+  // One set per valve, not per cylinder -- confirmed: total valve springs
+  // always equals cylinders x valves-per-cylinder, same count as tappets.
   // Beehive is the modern high-RPM standard (lighter, less spring mass
   // than Dual) across every active style here.
-  return mapTiers(pickFromLadder(VALVE_SPRING_MATERIAL_LADDER, style), (material) => ({ itemName: `Beehive ${material} Valve Spring Set`, quantity: 1 }));
+  return mapTiers(pickFromLadder(VALVE_SPRING_MATERIAL_LADDER, style), (material) => ({ itemName: `Beehive ${material} Valve Spring Set`, quantity: totalValves }));
 }
 
 function pickSparkPlugs(cylinders) {
@@ -331,22 +366,37 @@ function suggestPerformanceBuild({ style, valvetrain, configuration }) {
     const rotorCount = ROTOR_COUNT[configuration];
     pushTiered(result, mapTiers({ cheap: 'Apex Seals', medium: 'Apex Seals', best: 'Apex Seals' }, (name) => ({ itemName: name, quantity: rotorCount * 3 })));
     // No camshaft/tappet/pistons/rings/conrod/crankshaft/cylinder head/
-    // valve springs here -- a Wankel doesn't have any of these, and this
-    // catalogue has no rotary equivalent for the eccentric shaft (its
-    // "crankshaft"), so that's left out rather than guessed at.
+    // valve springs/head gasket/timing kit here -- a Wankel doesn't have
+    // any of these, and this catalogue has no rotary equivalent for the
+    // eccentric shaft (its "crankshaft"), so that's left out rather than
+    // guessed at.
   } else {
+    const banks = bankCount(configuration);
+    const totalValves = cylinders * VALVES_PER_CYLINDER[valvetrain];
+    const camCount = camshaftCount(valvetrain, banks);
+
     ['cheap', 'medium', 'best'].forEach((tier) => {
       const vt = VALVETRAIN_TIERS[valvetrain][tier];
-      result[tier].push({ itemName: vt.camshaft, quantity: 1 }, { itemName: vt.tappet, quantity: 1 });
+      result[tier].push({ itemName: vt.camshaft, quantity: camCount }, { itemName: vt.tappet, quantity: totalValves });
     });
     const boosted = style === 'drag' || style === 'race';
     pushTiered(result, pickPistons(style, boosted, cylinders));
     pushTiered(result, pickRings(style, cylinders));
     pushTiered(result, pickConrod(style, cylinders));
     pushTiered(result, pickCrankshaft(style));
-    pushTiered(result, pickBearings(style, cylinders));
-    pushTiered(result, pickCylinderHead(style));
-    pushTiered(result, pickValveSprings(style));
+    pushTiered(result, pickBearings(style, cylinders, banks));
+    pushTiered(result, pickCylinderHead(style, banks));
+    pushTiered(result, pickValveSprings(style, totalValves));
+    // Head Gasket and Timing Kit are both flat 1 regardless of bank/head
+    // count -- confirmed on every example including multi-head ones.
+    // Timing system (Chain/Belt/Gears) doesn't appear to follow from
+    // style/valvetrain/configuration at all (two DOHC examples and one
+    // OHV example all used Chain, but the one SOHC example used Gears) --
+    // defaulting to Timing Chain Kit as the safest general-purpose pick
+    // pending Joanna's call on whether to add it as its own input.
+    result.cheap.push({ itemName: 'Head Gasket Set', quantity: 1 }, { itemName: 'Timing Chain Kit', quantity: 1 });
+    result.medium.push({ itemName: 'Head Gasket Set', quantity: 1 }, { itemName: 'Timing Chain Kit', quantity: 1 });
+    result.best.push({ itemName: 'Head Gasket Set', quantity: 1 }, { itemName: 'Timing Chain Kit', quantity: 1 });
   }
 
   if (RADIATOR_BY_STYLE[style]) {
