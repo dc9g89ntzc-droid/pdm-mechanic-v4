@@ -36,6 +36,24 @@ const ENGINE_CONFIGURATIONS = [
   .concat(['Single Rotor', 'Twin Rotor', 'Three Rotor', 'Four Rotor'].map((value) =>
     ({ value, subcategory: 'Rotor Housings', suffix: 'Rotor Housing' })));
 
+// Real cylinder counts per configuration -- used to scale the parts that
+// genuinely need one-per-cylinder in reality (pistons, rings, rods, spark
+// plugs, conrod bearings). Cylinder head / camshaft / tappet / valve
+// spring / main bearing quantities are NOT scaled yet -- those depend on
+// bank count and per-cylinder valve count, which aren't confirmed against
+// how this specific game models an engine build, so they're deliberately
+// left at a flat 1 rather than guessed (flagged to Joanna directly).
+const CYLINDER_COUNT = {
+  'Flat 2': 2, 'Flat 4': 4, 'Flat 6': 6, 'Flat 8': 8,
+  'Inline 3': 3, 'Inline 4': 4, 'Inline 5': 5, 'Inline 6': 6, 'Inline 8': 8,
+  'Single Piston': 1, 'V-Twin': 2,
+  V4: 4, V6: 6, V8: 8, V10: 10, V12: 12, V16: 16,
+  W6: 6, W8: 8, W12: 12, W16: 16, W18: 18
+};
+// A real Wankel rotor is a Reuleaux triangle -- exactly 3 apex seals per
+// rotor, always. Confident enough to scale without asking.
+const ROTOR_COUNT = { 'Single Rotor': 1, 'Twin Rotor': 2, 'Three Rotor': 3, 'Four Rotor': 4 };
+
 // ---- Quality ladders (cheap -> best), curated by hand from real
 // engine-building logic, not raw price sort. ----
 
@@ -133,6 +151,30 @@ const SUSPENSION_BY_STYLE = {
   // (straight-line racing rarely touches suspension at all).
 };
 
+// Not engine-internal, but a real performance upgrade category same as
+// suspension -- per Joanna's own note that this shouldn't stay
+// engine-only. Quantity is 4 (a full set) for every tier.
+const TIRE_BY_STYLE = {
+  comfort: { cheap: 'Stock Tire', medium: 'Street Tire', best: 'Street Tire' },
+  street: { cheap: 'Stock Tire', medium: 'Street Tire', best: 'Sport Tire' },
+  offroad: { cheap: 'Stock Tire', medium: 'Off-Road Tire', best: 'Off-Road Tire' },
+  drag: { cheap: 'Street Tire', medium: 'Drag Tire', best: 'Drag Tire' },
+  // Slick Tires are priced *below* Track Tire in the catalogue, which
+  // doesn't match real motorsport (slicks are normally the specialist/
+  // priciest choice) -- kept as Race's "best" anyway since slicks are
+  // genuinely the ultimate-grip real-world pick, price aside. Worth a
+  // second look if that catalogue price turns out to be a typo.
+  race: { cheap: 'Sport Tire', medium: 'Track Tire', best: 'Slick Tires' }
+};
+const BRAKE_PADS_BY_STYLE = {
+  street: { cheap: 'Stock Brake Pads', medium: 'Street Brake Pads', best: 'Sport Brake Pads' },
+  offroad: { cheap: 'Stock Brake Pads', medium: 'Street Brake Pads', best: 'Street Brake Pads' },
+  drag: { cheap: 'Stock Brake Pads', medium: 'Street Brake Pads', best: 'Sport Brake Pads' },
+  race: { cheap: 'Street Brake Pads', medium: 'Sport Brake Pads', best: 'Race Brake Pads' }
+  // A genuine track build needs real stopping power even at its cheap
+  // tier -- Stock brakes aren't a safe "budget" option for Race.
+};
+
 // Forced induction is Drag/Race only. Each tier bundles a sized
 // turbocharger + matching intercooler; Boost Controller and the
 // style-specific "signature" extra (Nitrous for Drag, Anti-Lag for Race)
@@ -186,36 +228,39 @@ function pickBlock(style, configuration) {
   };
 }
 
-function pickPistons(style, boosted) {
+function pickPistons(style, boosted, cylinders) {
   // Dished pistons lower static compression to run safely under boost;
   // Flat Top is the safe neutral default for a naturally-aspirated build.
   const topStyle = boosted ? 'Dished' : 'Flat Top';
   const picked = pickFromLadder(PISTON_MATERIAL_LADDER, style);
   return {
-    cheap: { itemName: `${topStyle} ${picked.cheap} Piston`, quantity: 1 },
-    medium: { itemName: `${topStyle} ${picked.medium} Piston`, quantity: 1 },
-    best: { itemName: `${topStyle} ${picked.best} Piston`, quantity: 1 }
+    cheap: { itemName: `${topStyle} ${picked.cheap} Piston`, quantity: cylinders },
+    medium: { itemName: `${topStyle} ${picked.medium} Piston`, quantity: cylinders },
+    best: { itemName: `${topStyle} ${picked.best} Piston`, quantity: cylinders }
   };
 }
 
-function pickRings(style) {
-  return mapTiers(pickFromLadder(RING_PACK_LADDER, style), (name) => ({ itemName: name, quantity: 1 }));
+function pickRings(style, cylinders) {
+  // One ring pack fits one piston.
+  return mapTiers(pickFromLadder(RING_PACK_LADDER, style), (name) => ({ itemName: name, quantity: cylinders }));
 }
 
-function pickConrod(style) {
+function pickConrod(style, cylinders) {
   const ladder = TOUGH_STYLES.has(style) ? CONROD_MATERIAL_LADDER_TOUGH : CONROD_MATERIAL_LADDER;
-  return mapTiers(pickFromLadder(ladder, style), (material) => ({ itemName: `H-Beam ${material} Connecting Rod`, quantity: 1 }));
+  return mapTiers(pickFromLadder(ladder, style), (material) => ({ itemName: `H-Beam ${material} Connecting Rod`, quantity: cylinders }));
 }
 
 function pickCrankshaft(style) {
   return mapTiers(pickFromLadder(CRANKSHAFT_LADDER, style), (process) => ({ itemName: `${process} Crankshaft`, quantity: 1 }));
 }
 
-function pickBearings(style) {
-  // Real bearing count depends on cylinder/main count -- this suggests one
-  // of each type as a representative starting point, not an exact count.
+function pickBearings(style, cylinders) {
+  // One conrod bearing per rod journal, always -- confident to scale.
+  // Main bearing count varies by real engine design (not a fixed
+  // cylinders+1 rule across every configuration), so that one's left at a
+  // flat 1 pending confirmation rather than guessed.
   return mapTiers(pickFromLadder(BEARING_LADDER, style), (material) => ([
-    { itemName: `${material} Conrod Bearing`, quantity: 1 },
+    { itemName: `${material} Conrod Bearing`, quantity: cylinders },
     { itemName: `${material} Main Bearing`, quantity: 1 }
   ]));
 }
@@ -230,8 +275,10 @@ function pickValveSprings(style) {
   return mapTiers(pickFromLadder(VALVE_SPRING_MATERIAL_LADDER, style), (material) => ({ itemName: `Beehive ${material} Valve Spring Set`, quantity: 1 }));
 }
 
-function pickSparkPlugs() {
-  return mapTiers({ cheap: SPARK_PLUG_LADDER[0], medium: SPARK_PLUG_LADDER[1], best: SPARK_PLUG_LADDER[2] }, (name) => ({ itemName: name, quantity: 1 }));
+function pickSparkPlugs(cylinders) {
+  // One plug per cylinder is about as universal a rule as engine building
+  // has -- confident to scale without asking.
+  return mapTiers({ cheap: SPARK_PLUG_LADDER[0], medium: SPARK_PLUG_LADDER[1], best: SPARK_PLUG_LADDER[2] }, (name) => ({ itemName: name, quantity: cylinders }));
 }
 
 function mapTiers(tiers, fn) {
@@ -262,32 +309,57 @@ function cheapTierCaveat(style) {
 // { cheap: [{itemName, quantity}], medium: [...], best: [...] }.
 function suggestPerformanceBuild({ style, valvetrain, configuration }) {
   const result = { cheap: [], medium: [], best: [] };
+  const isRotary = configuration in ROTOR_COUNT;
+  const cylinders = CYLINDER_COUNT[configuration] || 1;
+  // Real Wankels run twin plugs per rotor (leading + trailing) -- confident
+  // enough to use without asking, same as the one-per-cylinder rule above.
+  const sparkPlugQty = isRotary ? ROTOR_COUNT[configuration] * 2 : cylinders;
 
-  // Comfort stays deliberately minimal -- reliability polish, not an
-  // engine build. Everything else below is skipped on purpose.
-  pushTiered(result, pickSparkPlugs());
-  if (style === 'comfort') return result;
+  pushTiered(result, pickSparkPlugs(sparkPlugQty));
 
-  ['cheap', 'medium', 'best'].forEach((tier) => {
-    const vt = VALVETRAIN_TIERS[valvetrain][tier];
-    result[tier].push({ itemName: vt.camshaft, quantity: 1 }, { itemName: vt.tappet, quantity: 1 });
-  });
+  // Comfort stays deliberately minimal -- reliability + ride polish, not
+  // an engine build. Tires are the one non-engine item it still touches
+  // (a genuine comfort upgrade); everything else below is skipped.
+  if (style === 'comfort') {
+    if (TIRE_BY_STYLE[style]) pushTiered(result, mapTiers(TIRE_BY_STYLE[style], (name) => ({ itemName: name, quantity: 4 })));
+    return result;
+  }
 
   pushTiered(result, pickBlock(style, configuration));
-  const boosted = style === 'drag' || style === 'race';
-  pushTiered(result, pickPistons(style, boosted));
-  pushTiered(result, pickRings(style));
-  pushTiered(result, pickConrod(style));
-  pushTiered(result, pickCrankshaft(style));
-  pushTiered(result, pickBearings(style));
-  pushTiered(result, pickCylinderHead(style));
-  pushTiered(result, pickValveSprings(style));
+
+  if (isRotary) {
+    const rotorCount = ROTOR_COUNT[configuration];
+    pushTiered(result, mapTiers({ cheap: 'Apex Seals', medium: 'Apex Seals', best: 'Apex Seals' }, (name) => ({ itemName: name, quantity: rotorCount * 3 })));
+    // No camshaft/tappet/pistons/rings/conrod/crankshaft/cylinder head/
+    // valve springs here -- a Wankel doesn't have any of these, and this
+    // catalogue has no rotary equivalent for the eccentric shaft (its
+    // "crankshaft"), so that's left out rather than guessed at.
+  } else {
+    ['cheap', 'medium', 'best'].forEach((tier) => {
+      const vt = VALVETRAIN_TIERS[valvetrain][tier];
+      result[tier].push({ itemName: vt.camshaft, quantity: 1 }, { itemName: vt.tappet, quantity: 1 });
+    });
+    const boosted = style === 'drag' || style === 'race';
+    pushTiered(result, pickPistons(style, boosted, cylinders));
+    pushTiered(result, pickRings(style, cylinders));
+    pushTiered(result, pickConrod(style, cylinders));
+    pushTiered(result, pickCrankshaft(style));
+    pushTiered(result, pickBearings(style, cylinders));
+    pushTiered(result, pickCylinderHead(style));
+    pushTiered(result, pickValveSprings(style));
+  }
 
   if (RADIATOR_BY_STYLE[style]) {
     pushTiered(result, mapTiers(RADIATOR_BY_STYLE[style], (name) => ({ itemName: name, quantity: 1 })));
   }
   if (SUSPENSION_BY_STYLE[style]) {
     pushTiered(result, mapTiers(SUSPENSION_BY_STYLE[style], (name) => ({ itemName: name, quantity: 1 })));
+  }
+  if (TIRE_BY_STYLE[style]) {
+    pushTiered(result, mapTiers(TIRE_BY_STYLE[style], (name) => ({ itemName: name, quantity: 4 })));
+  }
+  if (BRAKE_PADS_BY_STYLE[style]) {
+    pushTiered(result, mapTiers(BRAKE_PADS_BY_STYLE[style], (name) => ({ itemName: name, quantity: 4 })));
   }
   if (FORCED_INDUCTION_BY_STYLE[style]) {
     pushTiered(result, FORCED_INDUCTION_BY_STYLE[style]);
