@@ -130,12 +130,16 @@ async function updateRolePermission(role, area, allowed) {
   }
 }
 
+// Excludes retired duplicates (sql/036_customer_name_cleanup.sql) so a
+// cleaned-up name doesn't keep reappearing at check-in and inviting a new
+// duplicate -- the whole point of that cleanup.
 async function searchCustomers(query) {
   const q = query.trim();
   if (!q) return [];
   const { data, error } = await sb
     .from('customers')
     .select('customer_id, customer_name, phone')
+    .eq('active', true)
     .or(`customer_name.ilike.%${q}%,phone.ilike.%${q}%`)
     .order('customer_name')
     .limit(10);
