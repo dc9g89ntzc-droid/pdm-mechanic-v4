@@ -288,7 +288,7 @@
     const reg = job.owned_vehicles?.registration || 'Unknown';
     document.getElementById('jobTitle').textContent = `Job #${job.job_number} — ${job.customers?.customer_name || 'Unknown customer'}${jobType ? ` — ${jobTypeLabel(jobType)}` : ''}`;
     document.getElementById('jobSub').textContent = `${vehicle} · ${reg} · ${jobStatusLabel(job.status)}`;
-    document.getElementById('quoteTotal').textContent = formatMoney(grandTotalFor(job.quoted_total));
+    document.getElementById('quoteTotal').textContent = `${formatMoney(job.quoted_total)} + labour`;
     document.getElementById('quoteLink').href = `quote.html?job=${jobId}`;
   }
 

@@ -266,6 +266,24 @@ function effectiveUnitCost(catalogueItem, sourcingChoice) {
   return null;
 }
 
+// Sliding-scale markup suggestion for the catalogue management form's
+// "Suggest" button (catalogue.html) -- higher % on cheap parts, lower % on
+// expensive ones, matching sql/035_sliding_scale_markup.sql's formula
+// exactly. Never called automatically; Joanna clicks to fill the customer
+// price field, and can still edit the result by hand.
+function suggestedCustomerPrice(purchaseCost) {
+  const cost = Number(purchaseCost);
+  if (!Number.isFinite(cost) || cost < 0) return null;
+  let rate;
+  if (cost < 25) rate = 2.00;
+  else if (cost < 100) rate = 1.75;
+  else if (cost < 500) rate = 1.50;
+  else if (cost < 2000) rate = 1.35;
+  else if (cost < 10000) rate = 1.25;
+  else rate = 1.15;
+  return Math.round(cost * rate * 100) / 100;
+}
+
 // ---- Job items (what's been added to a job's quote) ----
 
 // jobType, when passed, scopes to one leg (sql/031) -- job-items.html and

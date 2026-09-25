@@ -285,7 +285,7 @@ async function listBilledJobs({ from, to, limit = 300 } = {}) {
   let query = sb
     .from('jobs')
     .select(`
-      id, job_number, quoted_total, assigned_staff_id, receipt_generated_at,
+      id, job_number, quoted_total, labour_fee, assigned_staff_id, receipt_generated_at,
       customers ( customer_name ),
       owned_vehicles ( registration, make, model )
     `)
@@ -532,6 +532,14 @@ async function updateJobReceiptDocument(jobId, url) {
   if (error) throw new Error(error.message);
 }
 
+// Snapshotted once at billing time -- same reasoning as job_items.unit_price
+// already being a snapshot (013/023): a historical bill must never
+// silently change if LABOUR_RATE_PER_HOUR gets retuned later.
+async function updateJobLabourFee(jobId, fee) {
+  const { error } = await sb.from('jobs').update({ labour_fee: fee }).eq('id', jobId);
+  if (error) throw new Error(error.message);
+}
+
 async function updateJobStatus(jobId, status) {
   const { error } = await sb.from('jobs').update({ status }).eq('id', jobId);
   if (error) throw new Error(error.message);
@@ -737,21 +745,45 @@ function formatMoney(value) {
   return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Shop policy: a 10% labour fee on top of the parts subtotal, paid in full
-// to the job's assigned mechanic as commission. jobs.quoted_total (the DB
-// trigger-maintained sum of job_items) stays parts-only on purpose -- the
-// labour fee and grand total are always derived from it, never stored, so
-// they can't drift out of sync if quoted_total changes.
-const LABOUR_FEE_RATE = 0.10;
+// Shop policy (replacing the old flat-10%-of-parts model): labour is
+// billed as real hours worked on the job x a flat shop rate, the way real
+// shops price labour -- hours x rate, not a cut of the parts bill. The
+// rate sits comfortably above the mechanic's own guaranteed
+// SHIFT_PAY_RATE_PER_HOUR wage so the difference is the shop's own margin
+// on the labour line, separate from parts margin entirely.
+const LABOUR_RATE_PER_HOUR = 12500;
 
-function labourFeeFor(partsSubtotal) {
-  if (partsSubtotal === null || partsSubtotal === undefined) return null;
-  return Math.round(Number(partsSubtotal) * LABOUR_FEE_RATE * 100) / 100;
+// job_legs.work_started_at/completed_at are already recorded on every real
+// status transition (updateLegStatus below) -- this is genuine elapsed
+// time on that specific leg, not inferred from anything.
+function hoursForLeg(leg) {
+  if (!leg || !leg.work_started_at || !leg.completed_at) return 0;
+  const hours = (new Date(leg.completed_at) - new Date(leg.work_started_at)) / 3600000;
+  return hours > 0 ? hours : 0;
 }
 
-function grandTotalFor(partsSubtotal) {
-  if (partsSubtotal === null || partsSubtotal === undefined) return null;
-  return Math.round(Number(partsSubtotal) * (1 + LABOUR_FEE_RATE) * 100) / 100;
+// A job can have more than one leg (repair/customisation/performance/
+// engine_building), each with its own start/complete times -- the bill
+// covers every completed leg, not just one.
+function totalBillableHours(legs) {
+  return (legs || []).reduce((sum, leg) => sum + hoursForLeg(leg), 0);
+}
+
+// null (not 0) until at least one leg is actually complete -- matches this
+// app's "null = To confirm" convention for every other unset price, since
+// the real figure genuinely isn't knowable before then.
+function labourFeeForHours(hours) {
+  if (!hours || hours <= 0) return null;
+  return Math.round(hours * LABOUR_RATE_PER_HOUR * 100) / 100;
+}
+
+// The mechanic's commission is only the shop's own margin slice on
+// labour (billed rate minus their already-guaranteed wage rate) x hours --
+// paying the full labour fee as commission on top of the guaranteed
+// per-hour wage would double-pay the same hours.
+function commissionForHours(hours) {
+  if (!hours || hours <= 0) return 0;
+  return Math.round(hours * (LABOUR_RATE_PER_HOUR - SHIFT_PAY_RATE_PER_HOUR) * 100) / 100;
 }
 
 function formatDateTime(value) {

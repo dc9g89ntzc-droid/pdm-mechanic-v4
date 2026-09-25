@@ -379,7 +379,7 @@
       ${job.short_description ? `<div class="desc">${job.short_description}</div>` : ''}
       <div class="badges" style="margin-bottom:8px;">${typeBadges}${overdue ? `<span class="badge overdue">Overdue &middot; ${jobAgeLabel(job)}</span>` : ''}</div>
       <div class="meta-row">
-        <span class="${job.quoted_total === null ? 'total unknown' : 'total'}">${formatMoney(grandTotalFor(job.quoted_total))}</span>
+        <span class="${job.quoted_total === null ? 'total unknown' : 'total'}">${formatMoney(job.quoted_total)} + labour</span>
       </div>
       <div class="meta-row" style="margin-top:6px;">
         <span>${mechanic}</span>

@@ -184,7 +184,7 @@
         </div>
         <div class="job-right">
           <span class="badge">${jobStageLabel(job.stage)}</span>${mode === 'active' && isJobOverdue(job) ? `<span class="badge overdue">Overdue</span>` : ''}<br/>
-          ${formatMoney(grandTotalFor(job.quoted_total))}
+          ${formatMoney(job.quoted_total)} + labour
         </div>
       </a>
     `;

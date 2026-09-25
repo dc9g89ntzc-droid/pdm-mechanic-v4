@@ -173,8 +173,8 @@
               <td>${staffById[j.assigned_staff_id] || 'Unassigned'}</td>
               <td>${formatDateTime(j.receipt_generated_at)}</td>
               <td class="num">${formatMoney(j.quoted_total)}</td>
-              <td class="num">${formatMoney(labourFeeFor(j.quoted_total))}</td>
-              <td class="num">${formatMoney(grandTotalFor(j.quoted_total))}</td>
+              <td class="num">${formatMoney(j.labour_fee)}</td>
+              <td class="num">${formatMoney(Number(j.quoted_total || 0) + Number(j.labour_fee || 0))}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -194,7 +194,7 @@
     const jobItems = await listJobItemsForJobs(jobs.map((j) => j.id));
 
     const partsRevenue = jobs.reduce((sum, j) => sum + (Number(j.quoted_total) || 0), 0);
-    const labourRevenue = jobs.reduce((sum, j) => sum + (labourFeeFor(j.quoted_total) || 0), 0);
+    const labourRevenue = jobs.reduce((sum, j) => sum + (Number(j.labour_fee) || 0), 0);
     const totalRevenue = partsRevenue + labourRevenue;
     const paidOut = ledger.filter((e) => e.paid).reduce((sum, e) => sum + Number(e.amount), 0);
     const outstanding = ledger.filter((e) => !e.paid).reduce((sum, e) => sum + Number(e.amount), 0);

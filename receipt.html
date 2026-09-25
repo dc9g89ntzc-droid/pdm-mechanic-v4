@@ -282,6 +282,7 @@
   document.getElementById('backLink').href = 'dashboard.html?area=billing';
 
   let job = null;
+  let billableHours = 0; // real elapsed time across every leg on this job, computed once in loadJob() and reused when actually billing
 
   async function renderFlowChrome() {
     job = await getJobSummary(jobId);
@@ -321,9 +322,20 @@
     document.getElementById('sheetDate').textContent = formatDateTimeEST();
     document.getElementById('sheetCustomer').textContent = job.customers?.customer_name || 'Unknown customer';
     document.getElementById('sheetVehicle').textContent = `${vehicle} — ${reg}`;
+    // Labour is real hours worked (every leg's work_started_at ->
+    // completed_at) x the shop rate -- not knowable until at least one leg
+    // is actually complete, same "null = To confirm" convention as every
+    // other unset price in this app. Computed once here and reused as-is
+    // when the bill is actually generated below, so the number shown on
+    // the receipt image and the number persisted/paid out never diverge.
+    const legs = await listJobLegs(jobId);
+    billableHours = totalBillableHours(legs);
+    const fee = labourFeeForHours(billableHours);
     document.getElementById('sheetSubtotal').textContent = formatMoney(job.quoted_total);
-    document.getElementById('sheetLabourFee').textContent = formatMoney(labourFeeFor(job.quoted_total));
-    document.getElementById('sheetTotal').textContent = formatMoney(grandTotalFor(job.quoted_total));
+    document.getElementById('sheetLabourFee').textContent = fee !== null ? formatMoney(fee) : 'To confirm';
+    document.getElementById('sheetTotal').textContent = fee !== null
+      ? formatMoney(Number(job.quoted_total || 0) + fee)
+      : 'To confirm';
 
     // Assigned mechanic if the job has one; otherwise whoever's generating
     // this document right now, so the quote never shows a blank mechanic.
@@ -439,13 +451,17 @@
       // Commission goes to whoever the job is assigned to, not necessarily
       // whoever happened to click this button. No assignee means no one to
       // pay it to -- skip and leave a trail rather than guessing.
-      const fee = labourFeeFor(job.quoted_total);
-      if (fee && job.assigned_staff_id) {
-        await recordCommission(job.assigned_staff_id, jobId, fee, `10% labour fee on Job #${job.job_number}`);
-      } else if (fee) {
+      const fee = labourFeeForHours(billableHours);
+      if (fee !== null) {
+        await updateJobLabourFee(jobId, fee);
+      }
+      const commission = commissionForHours(billableHours);
+      if (commission && job.assigned_staff_id) {
+        await recordCommission(job.assigned_staff_id, jobId, commission, `Labour commission on Job #${job.job_number}: ${billableHours.toFixed(2)}h worked x $${(LABOUR_RATE_PER_HOUR - SHIFT_PAY_RATE_PER_HOUR).toLocaleString()}/h shop margin`);
+      } else if (commission) {
         logActivity({
           actorId: session?.id, action: 'commission_skipped_unassigned', entityType: 'job', entityId: jobId,
-          summary: `Job #${job.job_number} billed with a ${formatMoney(fee)} labour fee but no assigned mechanic -- commission not recorded`
+          summary: `Job #${job.job_number} billed with a ${formatMoney(commission)} labour commission but no assigned mechanic -- commission not recorded`
         });
       }
 

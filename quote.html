@@ -396,8 +396,10 @@
 
     const subtotal = combinedHasUnknown ? null : combinedSubtotal;
     document.getElementById('sheetSubtotal').textContent = formatMoney(subtotal);
-    document.getElementById('sheetLabourFee').textContent = formatMoney(labourFeeFor(subtotal));
-    document.getElementById('sheetTotal').textContent = formatMoney(grandTotalFor(subtotal));
+    // Labour is real hours worked, billed at receipt time -- work hasn't
+    // started yet at the quote stage, so it's never knowable here.
+    document.getElementById('sheetLabourFee').textContent = 'To confirm (billed on completion)';
+    document.getElementById('sheetTotal').textContent = 'To confirm';
   }
 
   async function loadInspectionResults() {
