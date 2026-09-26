@@ -171,6 +171,7 @@
           <th>Item</th>
           <th>Category</th>
           <th>Sourcing</th>
+          <th>Store</th>
           <th>Craft cost</th>
           <th>Purchase cost</th>
           <th>Customer price</th>
@@ -262,6 +263,14 @@
         <div class="field full">
           <label>Notes</label>
           <textarea id="fNotes"></textarea>
+        </div>
+        <div class="field checkbox-row">
+          <input type="checkbox" id="fAvailableAutoparts" />
+          <label style="margin:0;">Available at Autoparts Store</label>
+        </div>
+        <div class="field checkbox-row">
+          <input type="checkbox" id="fAvailableScrapyard" />
+          <label style="margin:0;">Available at Scrapyard</label>
         </div>
         <div class="field full checkbox-row">
           <input type="checkbox" id="fActive" checked />
@@ -389,7 +398,7 @@
   function renderItems(items) {
     itemsBody.innerHTML = '';
     if (items.length === 0) {
-      itemsBody.innerHTML = '<tr><td colspan="7"><div class="empty-msg">No items match the current filters.</div></td></tr>';
+      itemsBody.innerHTML = '<tr><td colspan="8"><div class="empty-msg">No items match the current filters.</div></td></tr>';
       return;
     }
     items.forEach((item) => {
@@ -399,6 +408,7 @@
       const categoryBadges = (item.categories || [])
         .map((c) => `<span class="badge" style="background:${c ? categoryColor(c) + '26' : '#333'}; color:${categoryColor(c)};">${c}</span>`)
         .join('');
+      const storeLabel = sourceStoreLabel(item);
       tr.innerHTML = `
         <td>
           <div class="item-name">${item.name}</div>
@@ -406,6 +416,7 @@
         </td>
         <td>${categoryBadges}</td>
         <td>${sourcingLabel(item.sourcing)}</td>
+        <td>${storeLabel || '<span class="item-desc">—</span>'}</td>
         <td>${item.craft_cost !== null ? formatMoney(item.craft_cost) : '—'}</td>
         <td>${item.purchase_cost !== null ? formatMoney(item.purchase_cost) : '—'}</td>
         <td>${item.customer_price !== null ? formatMoney(item.customer_price) : '—'}</td>
@@ -460,6 +471,8 @@
     document.getElementById('fReorderThreshold').value = '';
     document.getElementById('fImageUrl').value = '';
     document.getElementById('fNotes').value = '';
+    document.getElementById('fAvailableAutoparts').checked = false;
+    document.getElementById('fAvailableScrapyard').checked = false;
     document.getElementById('fActive').checked = true;
   }
 
@@ -485,6 +498,8 @@
       reorder_threshold: numOrNull(document.getElementById('fReorderThreshold').value),
       image_url: document.getElementById('fImageUrl').value.trim() || null,
       notes: document.getElementById('fNotes').value.trim() || null,
+      available_autoparts: document.getElementById('fAvailableAutoparts').checked,
+      available_scrapyard: document.getElementById('fAvailableScrapyard').checked,
       active: document.getElementById('fActive').checked
     };
   }
@@ -506,6 +521,8 @@
     document.getElementById('fReorderThreshold').value = item.reorder_threshold ?? '';
     document.getElementById('fImageUrl').value = item.image_url || '';
     document.getElementById('fNotes').value = item.notes || '';
+    document.getElementById('fAvailableAutoparts').checked = !!item.available_autoparts;
+    document.getElementById('fAvailableScrapyard').checked = !!item.available_scrapyard;
     document.getElementById('fActive').checked = item.active;
   }
 

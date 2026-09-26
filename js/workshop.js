@@ -170,11 +170,15 @@ async function searchVehicleByRegistration(registration) {
   return data;
 }
 
+// registration is optional -- a vehicle bought from the dealership but not
+// yet plated in-game genuinely has none yet (sql/038 dropped the not-null
+// constraint for this reason).
 async function createVehicle({ registration, make, model, class: vClass, owner_id, mileage }) {
+  const reg = (registration || '').trim();
   const { data, error } = await sb
     .from('owned_vehicles')
     .insert({
-      registration: registration.trim().toUpperCase(),
+      registration: reg ? reg.toUpperCase() : null,
       make: make || null,
       model: model || null,
       class: vClass || null,
@@ -183,6 +187,25 @@ async function createVehicle({ registration, make, model, class: vClass, owner_i
     })
     .select('owned_vehicle_id, registration, make, model, class, owner_id, mileage')
     .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Dealership stock catalog (sql/037 backfilled make/model on most of it) --
+// read-only soft-suggest for the "+ New vehicle" form so a mechanic can type
+// a make/model/display name and pick the real vehicle instead of retyping
+// it by hand. Never written to from here -- the dealership app owns this
+// table (see sql/002's header).
+async function searchCatalogVehicles(query) {
+  const q = query.trim();
+  if (!q) return [];
+  const { data, error } = await sb
+    .from('vehicles')
+    .select('vehicle_id, make, model, display_name, category')
+    .eq('active', true)
+    .ilike('display_name', `%${q}%`)
+    .order('display_name')
+    .limit(8);
   if (error) throw new Error(error.message);
   return data;
 }

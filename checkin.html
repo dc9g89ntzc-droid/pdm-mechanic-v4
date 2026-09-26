@@ -137,6 +137,30 @@
     margin-top: 10px;
     display: inline-block;
   }
+  .owned-vehicles { margin-top: 4px; }
+  .owned-vehicle-item {
+    padding: 10px 12px;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .owned-vehicle-item:hover { border-color: var(--red); }
+  .owned-vehicle-item .no-plate { color: var(--text-dim); font-style: italic; }
+  .suggest-wrap { position: relative; }
+  .suggest-list {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 5; margin-top: 4px;
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px;
+    max-height: 220px; overflow-y: auto;
+  }
+  .suggest-item { padding: 8px 12px; font-size: 13px; cursor: pointer; }
+  .suggest-item:hover { background: rgba(216,31,39,0.08); }
+  .suggest-item .sub { color: var(--text-dim); font-size: 11px; }
+  .or-divider { color: var(--text-dim); font-size: 12px; margin: 12px 0; text-align: center; }
   .new-form { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--panel-border); }
   .new-form.open { display: block; }
   .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
@@ -206,51 +230,16 @@
     <div class="success-box" id="successBox"></div>
     <div class="error-box" id="errorBox"></div>
 
-    <!-- Vehicle (searched first -- picking a known vehicle auto-fills its owner below) -->
-    <div class="section">
-      <h2>Vehicle <span class="picked" id="vehiclePickedLabel"></span></h2>
-      <div id="vehicleSearchBlock">
-        <div class="search-row">
-          <input type="text" id="vehicleSearchInput" placeholder="Search by registration" />
-          <button type="button" id="vehicleSearchBtn">Search</button>
-        </div>
-        <div class="results" id="vehicleResults"></div>
-        <span class="new-toggle" id="newVehicleToggle">+ New vehicle</span>
-        <div class="new-form" id="newVehicleForm">
-          <label for="newVehicleReg">Registration</label>
-          <input type="text" id="newVehicleReg" />
-          <div class="row">
-            <div>
-              <label for="newVehicleMake">Make</label>
-              <input type="text" id="newVehicleMake" />
-            </div>
-            <div>
-              <label for="newVehicleModel">Model</label>
-              <input type="text" id="newVehicleModel" />
-            </div>
-          </div>
-          <label for="newVehicleClass">Class</label>
-          <input type="text" id="newVehicleClass" />
-          <p style="color:var(--text-dim); font-size:12px; margin:12px 0 0;">New vehicle — select or create its owner in the Customer section below, then come back here to create it.</p>
-          <div class="submit-row">
-            <button type="button" id="createVehicleBtn">Create vehicle</button>
-          </div>
-        </div>
-      </div>
-      <div class="selected-box" id="vehicleSelectedBox" style="display:none;">
-        <span id="vehicleSelectedText"></span>
-        <a href="#" id="vehicleHistoryLink" target="_blank" rel="noopener" style="display:none; font-size:13px; color:var(--amber);">History</a>
-        <button type="button" id="changeVehicleBtn">Change</button>
-      </div>
-    </div>
-
-    <!-- Customer (auto-filled when an existing vehicle is picked above) -->
+    <!-- Customer (searched first -- picking one loads the vehicles they own below) -->
     <div class="section">
       <h2>Customer <span class="picked" id="customerPickedLabel"></span></h2>
       <div id="customerSearchBlock">
-        <div class="search-row">
-          <input type="text" id="customerSearchInput" placeholder="Search by name or phone" />
-          <button type="button" id="customerSearchBtn">Search</button>
+        <div class="suggest-wrap">
+          <div class="search-row">
+            <input type="text" id="customerSearchInput" placeholder="Search by name or phone" autocomplete="off" />
+            <button type="button" id="customerSearchBtn">Search</button>
+          </div>
+          <div class="suggest-list" id="customerSuggestList" style="display:none;"></div>
         </div>
         <div class="results" id="customerResults"></div>
         <span class="new-toggle" id="newCustomerToggle">+ New customer</span>
@@ -269,6 +258,57 @@
       <div class="selected-box" id="customerSelectedBox" style="display:none;">
         <span id="customerSelectedText"></span>
         <button type="button" id="changeCustomerBtn">Change</button>
+      </div>
+    </div>
+
+    <!-- Vehicle (once a customer is picked, their own vehicles list here --
+         no plate needed, e.g. a car bought from the dealership but not yet
+         plated in-game. A registration search is still available as a
+         fallback for a walk-in whose plate is known before their name is.) -->
+    <div class="section">
+      <h2>Vehicle <span class="picked" id="vehiclePickedLabel"></span></h2>
+      <div id="vehicleSearchBlock">
+        <div id="ownedVehiclesBlock" style="display:none;">
+          <p style="color:var(--text-dim); font-size:12px; margin:0 0 10px;">Vehicles on file for this customer:</p>
+          <div class="owned-vehicles" id="ownedVehiclesList"></div>
+          <div class="or-divider">— or —</div>
+        </div>
+        <div class="search-row">
+          <input type="text" id="vehicleSearchInput" placeholder="Search all vehicles by registration" />
+          <button type="button" id="vehicleSearchBtn">Search</button>
+        </div>
+        <div class="results" id="vehicleResults"></div>
+        <span class="new-toggle" id="newVehicleToggle">+ New vehicle</span>
+        <div class="new-form" id="newVehicleForm">
+          <label for="newVehicleReg">Registration (leave blank if not yet plated)</label>
+          <input type="text" id="newVehicleReg" />
+          <label for="newVehicleTypeSearch">Vehicle type</label>
+          <div class="suggest-wrap">
+            <input type="text" id="newVehicleTypeSearch" placeholder="Start typing a make or model…" autocomplete="off" />
+            <div class="suggest-list" id="vehicleTypeSuggestList" style="display:none;"></div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="newVehicleMake">Make</label>
+              <input type="text" id="newVehicleMake" />
+            </div>
+            <div>
+              <label for="newVehicleModel">Model</label>
+              <input type="text" id="newVehicleModel" />
+            </div>
+          </div>
+          <label for="newVehicleClass">Class</label>
+          <input type="text" id="newVehicleClass" />
+          <p style="color:var(--text-dim); font-size:12px; margin:12px 0 0;">New vehicle — select or create its owner above, then come back here to create it.</p>
+          <div class="submit-row">
+            <button type="button" id="createVehicleBtn">Create vehicle</button>
+          </div>
+        </div>
+      </div>
+      <div class="selected-box" id="vehicleSelectedBox" style="display:none;">
+        <span id="vehicleSelectedText"></span>
+        <a href="#" id="vehicleHistoryLink" target="_blank" rel="noopener" style="display:none; font-size:13px; color:var(--amber);">History</a>
+        <button type="button" id="changeVehicleBtn">Change</button>
       </div>
     </div>
 
@@ -368,7 +408,7 @@
   typeCheckboxes.addEventListener('change', updateSubmitState);
 
   // --- Customer search / select / create ---
-  document.getElementById('customerSearchBtn').addEventListener('click', async () => {
+  async function runCustomerSearch() {
     clearError();
     const q = document.getElementById('customerSearchInput').value;
     const resultsEl = document.getElementById('customerResults');
@@ -389,6 +429,40 @@
     } catch (err) {
       showError(err.message);
     }
+  }
+  document.getElementById('customerSearchBtn').addEventListener('click', runCustomerSearch);
+
+  // Soft-suggest as the mechanic types -- the manual Search button above
+  // still works too, this just saves the click for the common case.
+  const customerSearchInput = document.getElementById('customerSearchInput');
+  const customerSuggestList = document.getElementById('customerSuggestList');
+  customerSearchInput.addEventListener('input', () => {
+    clearTimeout(customerSearchInput._t);
+    const q = customerSearchInput.value.trim();
+    if (!q) { customerSuggestList.style.display = 'none'; return; }
+    customerSearchInput._t = setTimeout(async () => {
+      try {
+        const results = await searchCustomers(q);
+        if (results.length === 0) { customerSuggestList.style.display = 'none'; return; }
+        customerSuggestList.innerHTML = '';
+        results.forEach((c) => {
+          const item = document.createElement('div');
+          item.className = 'suggest-item';
+          item.innerHTML = `${c.customer_name}<div class="sub">${c.phone || 'No phone on file'}</div>`;
+          item.addEventListener('click', () => {
+            customerSuggestList.style.display = 'none';
+            selectCustomer(c);
+          });
+          customerSuggestList.appendChild(item);
+        });
+        customerSuggestList.style.display = 'block';
+      } catch (err) { /* live-suggest failure is silent -- the Search button still works */ }
+    }, 200);
+  });
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.suggest-wrap')) return;
+    customerSuggestList.style.display = 'none';
+    document.getElementById('vehicleTypeSuggestList').style.display = 'none';
   });
 
   document.getElementById('newCustomerToggle').addEventListener('click', () => {
@@ -420,11 +494,39 @@
       `${customer.customer_name}${customer.phone ? ' — ' + customer.phone : ''}${autoFilled ? ' (from vehicle)' : ''}`;
     document.getElementById('customerPickedLabel').textContent = 'Selected';
     updateSubmitState();
+    if (!autoFilled) loadOwnedVehicles(customer.customer_id);
+  }
+
+  // --- Vehicles owned by the selected customer (no plate required) ---
+  async function loadOwnedVehicles(customerId) {
+    const block = document.getElementById('ownedVehiclesBlock');
+    const list = document.getElementById('ownedVehiclesList');
+    if (selectedVehicle) return; // a vehicle's already picked -- don't second-guess it
+    try {
+      const vehicles = await listVehiclesForCustomer(customerId);
+      if (vehicles.length === 0) {
+        block.style.display = 'none';
+        return;
+      }
+      list.innerHTML = '';
+      vehicles.forEach((v) => {
+        const item = document.createElement('div');
+        item.className = 'owned-vehicle-item';
+        const plate = v.registration ? v.registration : '<span class="no-plate">No plate on file</span>';
+        item.innerHTML = `<span>${plate}</span><span class="sub">${v.make || ''} ${v.model || ''}</span>`;
+        item.addEventListener('click', () => selectVehicle(v));
+        list.appendChild(item);
+      });
+      block.style.display = 'block';
+    } catch (err) {
+      block.style.display = 'none';
+    }
   }
 
   function clearCustomer() {
     selectedCustomer = null;
     customerAutoFilled = false;
+    document.getElementById('ownedVehiclesBlock').style.display = 'none';
     document.getElementById('customerSearchBlock').style.display = 'block';
     document.getElementById('customerSelectedBox').style.display = 'none';
     document.getElementById('customerPickedLabel').textContent = '';
@@ -467,8 +569,9 @@
   document.getElementById('createVehicleBtn').addEventListener('click', async () => {
     clearError();
     if (!selectedCustomer) { showError('Select or create a customer before adding a new vehicle.'); return; }
+    // Registration is optional -- a car bought from the dealership but not
+    // yet plated in-game genuinely has none yet (sql/038).
     const registration = document.getElementById('newVehicleReg').value.trim();
-    if (!registration) { showError('Registration is required.'); return; }
     try {
       const vehicle = await createVehicle({
         registration,
@@ -484,12 +587,44 @@
     }
   });
 
+  // Soft-suggest make/model against the dealership's own stock catalog
+  // (sql/037 backfilled make/model on most of it) -- picking a suggestion
+  // fills Make/Model but leaves them editable for anything the catalog
+  // doesn't have or a customer's own customisation.
+  const vehicleTypeSearchInput = document.getElementById('newVehicleTypeSearch');
+  const vehicleTypeSuggestList = document.getElementById('vehicleTypeSuggestList');
+  vehicleTypeSearchInput.addEventListener('input', () => {
+    clearTimeout(vehicleTypeSearchInput._t);
+    const q = vehicleTypeSearchInput.value.trim();
+    if (!q) { vehicleTypeSuggestList.style.display = 'none'; return; }
+    vehicleTypeSearchInput._t = setTimeout(async () => {
+      try {
+        const results = await searchCatalogVehicles(q);
+        if (results.length === 0) { vehicleTypeSuggestList.style.display = 'none'; return; }
+        vehicleTypeSuggestList.innerHTML = '';
+        results.forEach((v) => {
+          const item = document.createElement('div');
+          item.className = 'suggest-item';
+          item.innerHTML = `${v.display_name}<div class="sub">${v.category || ''}</div>`;
+          item.addEventListener('click', () => {
+            document.getElementById('newVehicleMake').value = v.make || '';
+            document.getElementById('newVehicleModel').value = v.model || '';
+            vehicleTypeSearchInput.value = v.display_name;
+            vehicleTypeSuggestList.style.display = 'none';
+          });
+          vehicleTypeSuggestList.appendChild(item);
+        });
+        vehicleTypeSuggestList.style.display = 'block';
+      } catch (err) { /* live-suggest failure is silent -- Make/Model stay plain editable inputs */ }
+    }, 200);
+  });
+
   function selectVehicle(vehicle) {
     selectedVehicle = vehicle;
     document.getElementById('vehicleSearchBlock').style.display = 'none';
     document.getElementById('vehicleSelectedBox').style.display = 'flex';
     document.getElementById('vehicleSelectedText').textContent =
-      `${vehicle.registration} — ${vehicle.make || ''} ${vehicle.model || ''}`.trim();
+      `${vehicle.registration || 'No plate on file'} — ${vehicle.make || ''} ${vehicle.model || ''}`.trim();
     document.getElementById('vehiclePickedLabel').textContent = 'Selected';
     const historyLink = document.getElementById('vehicleHistoryLink');
     if (vehicle.owned_vehicle_id) {

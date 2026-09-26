@@ -75,6 +75,9 @@ async function deleteSubcategory(id) {
 }
 
 // filters: { category, subcategoryId, search, activeOnly }
+// search matches name, description AND notes -- a keyword like "exhaust"
+// should still find "Manifold" if that's what "exhaust manifold" got typed
+// as, even when "exhaust" itself only appears in the description/notes.
 async function listCatalogueItems(filters = {}) {
   let query = sb
     .from('catalogue_items')
@@ -83,6 +86,7 @@ async function listCatalogueItems(filters = {}) {
       sourcing, craft_time_minutes, craft_cost, purchase_cost, customer_price,
       install_time_minutes, usage_type, required_tool,
       stock_quantity, reorder_threshold, active, image_url, notes,
+      available_autoparts, available_scrapyard,
       catalogue_subcategories ( name )
     `)
     .order('name');
@@ -90,7 +94,10 @@ async function listCatalogueItems(filters = {}) {
   if (filters.category) query = query.contains('categories', [filters.category]);
   if (filters.subcategoryId) query = query.eq('subcategory_id', filters.subcategoryId);
   if (filters.activeOnly) query = query.eq('active', true);
-  if (filters.search) query = query.ilike('name', `%${filters.search}%`);
+  if (filters.search) {
+    const q = filters.search.replace(/[%,]/g, '');
+    query = query.or(`name.ilike.%${q}%,description.ilike.%${q}%,notes.ilike.%${q}%`);
+  }
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
@@ -247,13 +254,24 @@ async function listSubcategoriesForCategory(category) {
 async function listItemsForTile(category, subcategoryId) {
   const { data, error } = await sb
     .from('catalogue_items')
-    .select('id, name, description, sourcing, customer_price, craft_cost, purchase_cost, image_url, usage_type, stock_quantity, reorder_threshold')
+    .select('id, name, description, sourcing, customer_price, craft_cost, purchase_cost, image_url, usage_type, stock_quantity, reorder_threshold, available_autoparts, available_scrapyard')
     .contains('categories', [category])
     .eq('subcategory_id', subcategoryId)
     .eq('active', true)
     .order('name');
   if (error) throw new Error(error.message);
   return data;
+}
+
+// Small "Auto" / "Scrap" tag for wherever a part's real-world source matters
+// (item tiles, materials-required panel, the .txt export). Empty when
+// neither is known/set yet -- these start false until Joanna marks them via
+// catalogue.html, same "unknown stays unmarked" convention as everywhere else.
+function sourceStoreLabel(item) {
+  const tags = [];
+  if (item.available_autoparts) tags.push('Auto');
+  if (item.available_scrapyard) tags.push('Scrap');
+  return tags.join(' + ');
 }
 
 // Which internal cost applies to a unit of this item, given how it's
@@ -292,7 +310,7 @@ function suggestedCustomerPrice(purchaseCost) {
 async function listJobItems(jobId, jobType) {
   let query = sb
     .from('job_items')
-    .select('id, quantity, unit_price, sourcing_choice, catalogue_item_id, job_type, catalogue_items ( name, image_url ) ')
+    .select('id, quantity, unit_price, sourcing_choice, catalogue_item_id, job_type, catalogue_items ( name, image_url, available_autoparts, available_scrapyard ) ')
     .eq('job_id', jobId)
     .order('created_at');
   if (jobType) query = query.eq('job_type', jobType);
