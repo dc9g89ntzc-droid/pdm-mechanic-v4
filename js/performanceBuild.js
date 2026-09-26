@@ -398,12 +398,29 @@ function pickCylinderHead(style, banks) {
   return mapTiers(pickFromLadder(CYLINDER_HEAD_MATERIAL_LADDER, style), (material) => ({ itemName: `Ported & Polished ${material} Cylinder Head`, quantity: banks }));
 }
 
-function pickValveSprings(style, totalValves) {
+// Spring TYPE follows that tier's own tappet, not style alone -- confirmed
+// against the in-game engine builder's own compatibility check: a Solid
+// Roller race cam paired with Beehive springs (the old blanket default)
+// gets flagged as a genuine mismatch causing extra wear on both parts.
+// Real-world logic behind the mapping: hydraulic lifters self-adjust and
+// need the least spring pressure (Conical is fine); a solid FLAT tappet or
+// hydraulic ROLLER allows a more aggressive lobe and wants the lighter,
+// high-RPM-capable Beehive; a solid ROLLER race cam's much steeper ramp
+// rate needs Dual springs to control valve float at the RPM it's built
+// for. Material grade still follows style, same as every other ladder.
+function valveSpringTypeForTappet(tappet) {
+  if (tappet === 'Solid Roller Tappet Set') return 'Dual';
+  if (tappet === 'Hydraulic Flat Tappet Set') return 'Conical';
+  return 'Beehive'; // Hydraulic Roller Tappet Set, Solid Flat Tappet Set
+}
+
+function pickValveSprings(style, totalValves, tappetByTier) {
   // One set per valve, not per cylinder -- confirmed: total valve springs
   // always equals cylinders x valves-per-cylinder, same count as tappets.
-  // Beehive is the modern high-RPM standard (lighter, less spring mass
-  // than Dual) across every active style here.
-  return mapTiers(pickFromLadder(VALVE_SPRING_MATERIAL_LADDER, style), (material) => ({ itemName: `Beehive ${material} Valve Spring Set`, quantity: totalValves }));
+  return mapTiers(pickFromLadder(VALVE_SPRING_MATERIAL_LADDER, style), (material, tier) => ({
+    itemName: `${valveSpringTypeForTappet(tappetByTier[tier])} ${material} Valve Spring Set`,
+    quantity: totalValves
+  }));
 }
 
 function pickSparkPlugs(cylinders) {
@@ -484,8 +501,10 @@ function suggestPerformanceBuild({ style, valvetrain, configuration }) {
     const totalValves = cylinders * VALVES_PER_CYLINDER[valvetrain];
     const camCount = camshaftCount(valvetrain, banks);
 
+    const tappetByTier = {};
     ['cheap', 'medium', 'best'].forEach((tier) => {
       const vt = VALVETRAIN_TIERS[valvetrain][tier];
+      tappetByTier[tier] = vt.tappet;
       result[tier].push({ itemName: vt.camshaft, quantity: camCount }, { itemName: vt.tappet, quantity: totalValves });
     });
     const boosted = style === 'drift' || style === 'drag' || style === 'race';
@@ -495,7 +514,7 @@ function suggestPerformanceBuild({ style, valvetrain, configuration }) {
     pushTiered(result, pickCrankshaft(style));
     pushTiered(result, pickBearings(style, cylinders, banks));
     pushTiered(result, pickCylinderHead(style, banks));
-    pushTiered(result, pickValveSprings(style, totalValves));
+    pushTiered(result, pickValveSprings(style, totalValves, tappetByTier));
     // Head Gasket and Timing Kit are both flat 1 regardless of bank/head
     // count -- confirmed on every example including multi-head ones.
     // Timing system (Chain/Belt/Gears) doesn't appear to follow from
