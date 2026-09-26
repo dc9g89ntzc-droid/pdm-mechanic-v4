@@ -71,7 +71,6 @@
   }
   .search-bar input:focus { outline: none; border-color: var(--red); }
   .item-card .item-store { color: var(--amber); font-size: 11px; font-weight: 600; }
-  .quote-line .ql-store { color: var(--amber); font-size: 10px; font-weight: 600; white-space: nowrap; }
   .export-txt-btn {
     display: block; width: 100%; text-align: center; box-sizing: border-box;
     background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim);
@@ -81,14 +80,22 @@
 
   .quote-panel { flex: 0 0 320px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; position: sticky; top: 16px; }
   .quote-panel h2 { font-size: 14px; margin: 0 0 12px; }
-  .quote-line { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--panel-border); font-size: 12px; }
+  /* Two rows per line -- name/icon/store tag on top (free to wrap, this
+     catalogue has plenty of long performance-part names), qty/price/remove
+     on their own row below. A single flex row here fought the fixed 320px
+     panel width badly once names wrapped to 2-3 lines. */
+  .quote-line { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--panel-border); font-size: 12px; }
+  .quote-line .ql-top { display: flex; align-items: flex-start; gap: 8px; }
   .quote-line img { width: 32px; height: 32px; object-fit: contain; background: var(--bg); border-radius: 6px; flex: 0 0 auto; }
-  .quote-line .ql-name { flex: 1; min-width: 0; }
-  .quote-line .ql-qty { display: flex; align-items: center; gap: 4px; }
+  .quote-line .ql-name { flex: 1; min-width: 0; line-height: 1.35; padding-top: 2px; }
+  .quote-line .ql-store { color: var(--amber); font-size: 10px; font-weight: 700; white-space: nowrap; flex: 0 0 auto; padding-top: 2px; }
+  .quote-line .ql-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-left: 40px; }
+  .quote-line .ql-qty { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
   .quote-line .ql-qty button { width: 20px; height: 20px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; cursor: pointer; font-size: 12px; line-height: 1; }
-  .quote-line .ql-total { width: 56px; text-align: right; color: var(--text-dim); background: none; border: none; padding: 0; font: inherit; cursor: pointer; }
+  .quote-line .ql-price-group { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+  .quote-line .ql-total { text-align: right; color: var(--text-dim); background: none; border: none; padding: 0; font: inherit; font-weight: 600; cursor: pointer; }
   .quote-line .ql-total:hover { color: var(--text); text-decoration: underline dotted; }
-  .quote-line .ql-price-input { width: 56px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; padding: 2px 4px; font-size: 12px; text-align: right; }
+  .quote-line .ql-price-input { width: 70px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; padding: 2px 4px; font-size: 12px; text-align: right; }
   .quote-line .ql-remove { background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 0 2px; }
   .quote-line .ql-remove:hover { color: var(--red); }
   .quote-total { display: flex; justify-content: space-between; font-weight: 700; font-size: 15px; padding-top: 12px; margin-top: 4px; }
@@ -570,16 +577,22 @@
           const lineTotal = line.unit_price !== null ? formatMoney(Number(line.unit_price) * Number(line.quantity)) : 'To confirm';
           const storeLabel = line.catalogue_items ? sourceStoreLabel(line.catalogue_items) : '';
           row.innerHTML = `
-            ${img}
-            <div class="ql-name">${line.catalogue_items?.name || 'Unknown item'}</div>
-            ${storeLabel ? `<span class="ql-store">${storeLabel}</span>` : ''}
-            <div class="ql-qty">
-              <button class="qty-dec">−</button>
-              <span>${line.quantity}</span>
-              <button class="qty-inc">+</button>
+            <div class="ql-top">
+              ${img}
+              <div class="ql-name">${line.catalogue_items?.name || 'Unknown item'}</div>
+              ${storeLabel ? `<span class="ql-store">${storeLabel}</span>` : ''}
             </div>
-            <button class="ql-total" title="Click to override unit price">${lineTotal}</button>
-            <button class="ql-remove">✕</button>
+            <div class="ql-bottom">
+              <div class="ql-qty">
+                <button class="qty-dec">−</button>
+                <span>${line.quantity}</span>
+                <button class="qty-inc">+</button>
+              </div>
+              <div class="ql-price-group">
+                <button class="ql-total" title="Click to override unit price">${lineTotal}</button>
+                <button class="ql-remove">✕</button>
+              </div>
+            </div>
           `;
           row.querySelector('.qty-inc').addEventListener('click', async () => {
             await updateJobItemQuantity(line.id, line.catalogue_item_id, Number(line.quantity) + 1, Number(line.quantity), session?.id, jobId);
