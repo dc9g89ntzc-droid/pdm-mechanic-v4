@@ -280,6 +280,11 @@
         <div class="results" id="vehicleResults"></div>
         <span class="new-toggle" id="newVehicleToggle">+ New vehicle</span>
         <div class="new-form" id="newVehicleForm">
+          <div id="dealershipPurchasesBlock" style="display:none;">
+            <p style="color:var(--text-dim); font-size:12px; margin:0 0 10px;">Purchased from the dealership:</p>
+            <div class="owned-vehicles" id="dealershipPurchasesList"></div>
+            <div class="or-divider">— or fill in below —</div>
+          </div>
           <label for="newVehicleReg">Registration (leave blank if not yet plated)</label>
           <input type="text" id="newVehicleReg" />
           <label for="newVehicleTypeSearch">Vehicle type</label>
@@ -560,11 +565,50 @@
   });
 
   document.getElementById('newVehicleToggle').addEventListener('click', () => {
-    document.getElementById('newVehicleForm').classList.toggle('open');
+    const form = document.getElementById('newVehicleForm');
+    form.classList.toggle('open');
     if (!selectedCustomer) {
       document.getElementById('customerSearchBlock').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (form.classList.contains('open')) {
+      loadDealershipPurchases(selectedCustomer.customer_id);
     }
   });
+
+  // Vehicles this customer actually bought from the dealership but never
+  // got checked in (no owned_vehicles row yet) -- suggested here so the
+  // mechanic isn't retyping a make/model that's already on record.
+  async function loadDealershipPurchases(customerId) {
+    const block = document.getElementById('dealershipPurchasesBlock');
+    const list = document.getElementById('dealershipPurchasesList');
+    try {
+      const purchases = await listDealershipPurchasesForCustomer(customerId);
+      if (purchases.length === 0) {
+        block.style.display = 'none';
+        return;
+      }
+      list.innerHTML = '';
+      purchases.forEach((p) => {
+        const v = p.vehicle;
+        const name = v?.display_name || p.legacy_vehicle_name || 'Unknown vehicle';
+        const saleDate = p.sale_date
+          ? new Date(p.sale_date).toLocaleDateString('en-GB')
+          : '';
+        const item = document.createElement('div');
+        item.className = 'owned-vehicle-item';
+        item.innerHTML = `<span>${name}</span><span class="sub">${saleDate ? `Bought ${saleDate}` : ''}</span>`;
+        item.addEventListener('click', () => {
+          document.getElementById('newVehicleMake').value = v?.make || '';
+          document.getElementById('newVehicleModel').value = v?.model || '';
+          document.getElementById('newVehicleClass').value = v?.category || '';
+          document.getElementById('newVehicleTypeSearch').value = name;
+        });
+        list.appendChild(item);
+      });
+      block.style.display = 'block';
+    } catch (err) {
+      block.style.display = 'none';
+    }
+  }
 
   document.getElementById('createVehicleBtn').addEventListener('click', async () => {
     clearError();
@@ -609,6 +653,7 @@
           item.addEventListener('click', () => {
             document.getElementById('newVehicleMake').value = v.make || '';
             document.getElementById('newVehicleModel').value = v.model || '';
+            document.getElementById('newVehicleClass').value = v.category || '';
             vehicleTypeSearchInput.value = v.display_name;
             vehicleTypeSuggestList.style.display = 'none';
           });

@@ -381,6 +381,55 @@ async function listVehiclesForCustomer(customerId) {
   return data;
 }
 
+// Dealership purchase history (sql/040) -- for the "+ New vehicle" form,
+// so a car the customer bought but never got checked in still shows up as
+// a suggestion instead of the mechanic retyping its make/model from
+// scratch. vehicle_sales/vehicle_sale_items are dealership-owned and
+// read-only from here, same as `vehicles` itself.
+//
+// No foreign keys are actually declared between vehicle_sales,
+// vehicle_sale_items and vehicles (confirmed via pg_constraint before
+// building this), so PostgREST can't auto-embed them -- three plain
+// queries joined in JS instead of one nested select.
+async function listDealershipPurchasesForCustomer(customerId) {
+  const { data: sales, error: salesErr } = await sb
+    .from('vehicle_sales')
+    .select('sale_id, sale_date')
+    .eq('customer_id', customerId)
+    .eq('is_deleted', false);
+  if (salesErr) throw new Error(salesErr.message);
+  if (sales.length === 0) return [];
+  const saleDateBySaleId = new Map(sales.map((s) => [s.sale_id, s.sale_date]));
+
+  const { data: items, error: itemsErr } = await sb
+    .from('vehicle_sale_items')
+    .select('sale_item_id, sale_id, vehicle_id, legacy_vehicle_name')
+    .in('sale_id', sales.map((s) => s.sale_id))
+    .eq('is_deleted', false);
+  if (itemsErr) throw new Error(itemsErr.message);
+  if (items.length === 0) return [];
+
+  const vehicleIds = [...new Set(items.map((i) => i.vehicle_id).filter(Boolean))];
+  let vehiclesById = new Map();
+  if (vehicleIds.length > 0) {
+    const { data: vehicles, error: vErr } = await sb
+      .from('vehicles')
+      .select('vehicle_id, make, model, display_name, category')
+      .in('vehicle_id', vehicleIds);
+    if (vErr) throw new Error(vErr.message);
+    vehiclesById = new Map(vehicles.map((v) => [v.vehicle_id, v]));
+  }
+
+  return items
+    .map((i) => ({
+      sale_item_id: i.sale_item_id,
+      legacy_vehicle_name: i.legacy_vehicle_name,
+      sale_date: saleDateBySaleId.get(i.sale_id),
+      vehicle: vehiclesById.get(i.vehicle_id) || null
+    }))
+    .sort((a, b) => new Date(b.sale_date) - new Date(a.sale_date));
+}
+
 async function listJobsForVehicle(vehicleId) {
   const { data, error } = await sb
     .from('jobs')
