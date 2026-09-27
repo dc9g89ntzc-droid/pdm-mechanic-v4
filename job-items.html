@@ -662,8 +662,7 @@
   const catalogueItemCache = {};
   async function resolveCatalogueItemByName(name) {
     if (name in catalogueItemCache) return catalogueItemCache[name];
-    const matches = await listCatalogueItems({ search: name, activeOnly: true });
-    const exact = matches.find((m) => m.name.toLowerCase() === name.toLowerCase()) || null;
+    const exact = await getCatalogueItemByExactName(name);
     catalogueItemCache[name] = exact;
     return exact;
   }

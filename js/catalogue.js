@@ -104,6 +104,25 @@ async function listCatalogueItems(filters = {}) {
   return data;
 }
 
+// Exact, case-insensitive name lookup -- for callers (the performance
+// build suggester) that already know the real catalogue name and just need
+// the row, rather than a fuzzy multi-word search. A single .ilike() filter
+// like this is safe with any characters in the name (parentheses, commas,
+// etc); listCatalogueItems' keyword search below goes through PostgREST's
+// .or() syntax instead, which treats those characters as structural and
+// breaks on a name like "Race 10-Speed Sequential Transmission (manual)".
+async function getCatalogueItemByExactName(name) {
+  const { data, error } = await sb
+    .from('catalogue_items')
+    .select('id, name, customer_price, sourcing, craft_cost, purchase_cost, image_url')
+    .ilike('name', name.trim())
+    .eq('active', true)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 async function getCatalogueItem(id) {
   const { data, error } = await sb
     .from('catalogue_items')
