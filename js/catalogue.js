@@ -305,19 +305,21 @@ function effectiveUnitCost(catalogueItem, sourcingChoice) {
 
 // Sliding-scale markup suggestion for the catalogue management form's
 // "Suggest" button (catalogue.html) -- higher % on cheap parts, lower % on
-// expensive ones, matching sql/035_sliding_scale_markup.sql's formula
-// exactly. Never called automatically; Joanna clicks to fill the customer
-// price field, and can still edit the result by hand.
+// expensive ones, matching sql/042_markup_increase.sql's formula exactly
+// (bumped ~11-13% per band over the original sql/035 rates -- Joanna felt
+// pricing was running a bit cheap overall). Never called automatically;
+// Joanna clicks to fill the customer price field, and can still edit the
+// result by hand.
 function suggestedCustomerPrice(purchaseCost) {
   const cost = Number(purchaseCost);
   if (!Number.isFinite(cost) || cost < 0) return null;
   let rate;
-  if (cost < 25) rate = 2.00;
-  else if (cost < 100) rate = 1.75;
-  else if (cost < 500) rate = 1.50;
-  else if (cost < 2000) rate = 1.35;
-  else if (cost < 10000) rate = 1.25;
-  else rate = 1.15;
+  if (cost < 25) rate = 2.25;
+  else if (cost < 100) rate = 1.95;
+  else if (cost < 500) rate = 1.70;
+  else if (cost < 2000) rate = 1.50;
+  else if (cost < 10000) rate = 1.40;
+  else rate = 1.30;
   return Math.round(cost * rate * 100) / 100;
 }
 
