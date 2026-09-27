@@ -241,7 +241,7 @@
       <div class="section-title">Quote Summary</div>
       <table>
         <tr class="subtotal-row"><td>Combined Parts Subtotal</td><td class="num" id="sheetSubtotal">To confirm</td></tr>
-        <tr class="subtotal-row"><td>Labour Fee (10%)</td><td class="num" id="sheetLabourFee">To confirm</td></tr>
+        <tr class="subtotal-row"><td>Labour Fee</td><td class="num" id="sheetLabourFee">To confirm</td></tr>
         <tr class="total-row"><td>Total</td><td class="num" id="sheetTotal">To confirm</td></tr>
       </table>
       <div class="sheet-footer">Prices subject to change until work begins. Thank you for choosing PDM 8230.</div>
@@ -258,6 +258,7 @@
 <script src="js/jobflow.js"></script>
 <script src="js/shift.js"></script>
 <script src="js/catalogue.js"></script>
+<script src="js/services.js"></script>
 <script src="js/inspection.js"></script>
 <script>
   const session = requireSession();
@@ -397,10 +398,19 @@
 
     const subtotal = combinedHasUnknown ? null : combinedSubtotal;
     document.getElementById('sheetSubtotal').textContent = formatMoney(subtotal);
-    // Labour is real hours worked, billed at receipt time -- work hasn't
-    // started yet at the quote stage, so it's never knowable here.
-    document.getElementById('sheetLabourFee').textContent = 'To confirm (billed on completion)';
-    document.getElementById('sheetTotal').textContent = 'To confirm';
+    // A leg with one or more attached services (sql/043) has a real flat
+    // labour figure even at quote time -- work hasn't started, but the
+    // price is already known, which is the whole point of the flat-rate
+    // model. A leg with no service attached still can't show anything
+    // (real hours genuinely don't exist yet), same as before.
+    const jobServices = await listJobServices(jobId);
+    const labourFee = totalLabourFee(legs, jobServices);
+    document.getElementById('sheetLabourFee').textContent = labourFee !== null
+      ? formatMoney(labourFee)
+      : 'To confirm (billed on completion)';
+    document.getElementById('sheetTotal').textContent = (subtotal !== null && labourFee !== null)
+      ? formatMoney(subtotal + labourFee)
+      : 'To confirm';
   }
 
   async function loadInspectionResults() {

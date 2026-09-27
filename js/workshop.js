@@ -845,28 +845,68 @@ function totalBillableHours(legs) {
   return (legs || []).reduce((sum, leg) => sum + hoursForLeg(leg), 0);
 }
 
-// null (not 0) until at least one leg is actually complete -- matches this
-// app's "null = To confirm" convention for every other unset price, since
-// the real figure genuinely isn't knowable before then.
-function labourFeeForHours(hours) {
-  if (!hours || hours <= 0) return null;
-  return Math.round(hours * LABOUR_RATE_PER_HOUR * 100) / 100;
+// ---- Flat per-service labour (sql/043) ----
+//
+// Real-hours billing (above) penalises RP pacing rather than measuring
+// actual mechanic effort, so a leg with one or more attached services now
+// bills a flat sum of those services' own labour_fee instead -- the way a
+// real shop's flat-rate/book-time system works. A leg with no attached
+// service still falls back to hours-worked exactly as before, so nothing
+// changes for freeform performance/customisation builds that don't go
+// through a formal Service.
+//
+// Returns: undefined = no services attached to this leg (caller should
+// fall back to hours-based); null = services attached but at least one has
+// no labour_fee set yet ("To confirm", same convention as everywhere else
+// -- a partial number would misrepresent the real total); a number = the
+// known flat total.
+function serviceLabourFeeForType(jobServices, jobType) {
+  const matching = (jobServices || []).filter((js) => js.job_type === jobType);
+  if (matching.length === 0) return undefined;
+  if (matching.some((js) => js.labour_fee == null)) return null;
+  return matching.reduce((sum, js) => sum + Number(js.labour_fee), 0);
 }
 
-// The mechanic's commission is only the shop's own margin slice on
-// labour (billed rate minus their already-guaranteed wage rate) x hours --
-// paying the full labour fee as commission on top of the guaranteed
-// per-hour wage would double-pay the same hours.
-function commissionForHours(hours) {
-  if (!hours || hours <= 0) return 0;
-  return Math.round(hours * (LABOUR_RATE_PER_HOUR - SHIFT_PAY_RATE_PER_HOUR) * 100) / 100;
+// One total across every leg on the job: each leg independently prefers
+// its own attached services' flat fee, falling back to real hours worked
+// only for legs with no service attached. null once any leg's total is
+// genuinely unconfirmed (an unpriced service, or the whole job has neither
+// services nor any completed hours yet).
+function totalLabourFee(legs, jobServices) {
+  let total = 0;
+  let anyUnknown = false;
+  let anyKnown = false;
+  (legs || []).forEach((leg) => {
+    const svcFee = serviceLabourFeeForType(jobServices, leg.job_type);
+    if (svcFee === undefined) {
+      const hours = hoursForLeg(leg);
+      if (hours > 0) { total += hours * LABOUR_RATE_PER_HOUR; anyKnown = true; }
+    } else if (svcFee === null) {
+      anyUnknown = true;
+    } else {
+      total += svcFee;
+      anyKnown = true;
+    }
+  });
+  if (anyUnknown || !anyKnown) return null;
+  return Math.round(total * 100) / 100;
 }
 
-// Rough pre-completion estimate only -- a preview based on each item's
-// catalogue install_time_minutes x LABOUR_RATE_PER_HOUR, shown alongside
-// (never instead of) the real hours-worked figure above. The real bill
-// still only exists once a leg's actually complete (labourFeeForHours) --
-// this is just a heads-up number so quoting doesn't have to guess blind.
+// Commission is always the same shop-margin-share cut, whichever path
+// produced the labour fee -- for the hours-based path this reduces to
+// exactly hours x (rate - wage), the same ratio either way, so one formula
+// covers both instead of two separate ones.
+const LABOUR_MARGIN_SHARE = (LABOUR_RATE_PER_HOUR - SHIFT_PAY_RATE_PER_HOUR) / LABOUR_RATE_PER_HOUR;
+function commissionForLabourFee(fee) {
+  if (!fee || fee <= 0) return 0;
+  return Math.round(fee * LABOUR_MARGIN_SHARE * 100) / 100;
+}
+
+// Rough pre-completion estimate only, for a leg with no service attached --
+// a preview based on each item's catalogue install_time_minutes x
+// LABOUR_RATE_PER_HOUR. The real bill still only exists once a leg's
+// actually complete (totalLabourFee's hours-based fallback) -- this is
+// just a heads-up number so quoting doesn't have to guess blind.
 // jobItems is listJobItems()'s shape: catalogue_items.install_time_minutes
 // must be selected for this to see anything (defaults missing rows to 0,
 // not null, since a genuinely-missing time estimate on one item shouldn't

@@ -79,7 +79,7 @@ async function updateService(id, service) {
 async function listServiceMaterials(serviceId) {
   const { data, error } = await sb
     .from('service_materials')
-    .select('id, quantity, catalogue_item_id, catalogue_items ( name, customer_price, stock_quantity, reorder_threshold )')
+    .select('id, quantity, catalogue_item_id, catalogue_items ( name, customer_price, sourcing, craft_cost, purchase_cost, stock_quantity, reorder_threshold )')
     .eq('service_id', serviceId);
   if (error) throw new Error(error.message);
   return data;
@@ -105,4 +105,53 @@ async function listServiceMaterialCounts() {
   const counts = {};
   data.forEach((row) => { counts[row.service_id] = (counts[row.service_id] || 0) + 1; });
   return counts;
+}
+
+// ---- Attaching a service to a job (sql/043) ----
+
+async function listJobServices(jobId, jobType) {
+  let query = sb
+    .from('job_services')
+    .select('id, service_id, job_type, labour_fee, created_at, services ( name )')
+    .eq('job_id', jobId)
+    .order('created_at');
+  if (jobType) query = query.eq('job_type', jobType);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Snapshots the service's current labour_fee (permanent, same convention
+// as job_items.unit_price -- a later edit to services.labour_fee must not
+// retroactively change an already-attached job) and expands every material
+// onto job_items via the existing addJobItem() path, so stock tracking
+// stays exactly as if each part had been added by hand.
+async function addServiceToJob({ jobId, jobType, service, performedBy }) {
+  const { error } = await sb.from('job_services').insert({
+    job_id: jobId, service_id: service.id, job_type: jobType,
+    labour_fee: service.labour_fee, added_by: performedBy || null
+  });
+  if (error) throw new Error(error.message);
+
+  const materials = await listServiceMaterials(service.id);
+  for (const m of materials) {
+    if (!m.catalogue_items) continue; // material's catalogue item was deleted -- skip rather than crash
+    await addJobItem({
+      jobId,
+      catalogueItem: { id: m.catalogue_item_id, ...m.catalogue_items },
+      quantity: Number(m.quantity),
+      sourcingChoice: null,
+      performedBy,
+      jobType
+    });
+  }
+}
+
+// Detaches the service record only -- materials it added stay on the job
+// (they're tracked independently in job_items from that point on, same as
+// anything added by hand; removing them individually is a separate action
+// via the existing remove button, not implied by detaching the service).
+async function removeServiceFromJob(jobServiceId) {
+  const { error } = await sb.from('job_services').delete().eq('id', jobServiceId);
+  if (error) throw new Error(error.message);
 }

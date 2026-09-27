@@ -265,6 +265,7 @@
 <script src="js/jobflow.js"></script>
 <script src="js/shift.js"></script>
 <script src="js/catalogue.js"></script>
+<script src="js/services.js"></script>
 <script src="js/inspection.js"></script>
 <script>
   const session = requireSession();
@@ -283,7 +284,7 @@
   document.getElementById('backLink').href = 'dashboard.html?area=billing';
 
   let job = null;
-  let billableHours = 0; // real elapsed time across every leg on this job, computed once in loadJob() and reused when actually billing
+  let finalLabourFee = null; // per-leg: attached services' flat fee, else real hours worked x rate -- computed once in loadJob() and reused when actually billing
 
   async function renderFlowChrome() {
     job = await getJobSummary(jobId);
@@ -323,19 +324,21 @@
     document.getElementById('sheetDate').textContent = formatDateTimeEST();
     document.getElementById('sheetCustomer').textContent = job.customers?.customer_name || 'Unknown customer';
     document.getElementById('sheetVehicle').textContent = `${vehicle} — ${reg}`;
-    // Labour is real hours worked (every leg's work_started_at ->
-    // completed_at) x the shop rate -- not knowable until at least one leg
-    // is actually complete, same "null = To confirm" convention as every
+    // Labour: a leg with one or more attached services (sql/043) bills
+    // their flat labour_fee; a leg with none falls back to real hours
+    // worked (work_started_at -> completed_at) x the shop rate. Not
+    // knowable until either a service is attached or at least one leg is
+    // actually complete, same "null = To confirm" convention as every
     // other unset price in this app. Computed once here and reused as-is
     // when the bill is actually generated below, so the number shown on
     // the receipt image and the number persisted/paid out never diverge.
     const legs = await listJobLegs(jobId);
-    billableHours = totalBillableHours(legs);
-    const fee = labourFeeForHours(billableHours);
+    const jobServices = await listJobServices(jobId);
+    finalLabourFee = totalLabourFee(legs, jobServices);
     document.getElementById('sheetSubtotal').textContent = formatMoney(job.quoted_total);
-    document.getElementById('sheetLabourFee').textContent = fee !== null ? formatMoney(fee) : 'To confirm';
-    document.getElementById('sheetTotal').textContent = fee !== null
-      ? formatMoney(Number(job.quoted_total || 0) + fee)
+    document.getElementById('sheetLabourFee').textContent = finalLabourFee !== null ? formatMoney(finalLabourFee) : 'To confirm';
+    document.getElementById('sheetTotal').textContent = finalLabourFee !== null
+      ? formatMoney(Number(job.quoted_total || 0) + finalLabourFee)
       : 'To confirm';
 
     // Assigned mechanic if the job has one; otherwise whoever's generating
@@ -452,13 +455,12 @@
       // Commission goes to whoever the job is assigned to, not necessarily
       // whoever happened to click this button. No assignee means no one to
       // pay it to -- skip and leave a trail rather than guessing.
-      const fee = labourFeeForHours(billableHours);
-      if (fee !== null) {
-        await updateJobLabourFee(jobId, fee);
+      if (finalLabourFee !== null) {
+        await updateJobLabourFee(jobId, finalLabourFee);
       }
-      const commission = commissionForHours(billableHours);
+      const commission = commissionForLabourFee(finalLabourFee);
       if (commission && job.assigned_staff_id) {
-        await recordCommission(job.assigned_staff_id, jobId, commission, `Labour commission on Job #${job.job_number}: ${billableHours.toFixed(2)}h worked x $${(LABOUR_RATE_PER_HOUR - SHIFT_PAY_RATE_PER_HOUR).toLocaleString()}/h shop margin`);
+        await recordCommission(job.assigned_staff_id, jobId, commission, `Labour commission on Job #${job.job_number}: ${formatMoney(finalLabourFee)} billed labour x ${(LABOUR_MARGIN_SHARE * 100).toFixed(0)}% shop margin share`);
       } else if (commission) {
         logActivity({
           actorId: session?.id, action: 'commission_skipped_unassigned', entityType: 'job', entityId: jobId,

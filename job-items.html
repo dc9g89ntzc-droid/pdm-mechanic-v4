@@ -110,6 +110,18 @@
   .build-panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
   .build-panel h2 { font-size: 14px; margin: 0 0 12px; }
   .build-panel .build-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .attached-service-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid var(--panel-border); font-size: 13px;
+  }
+  .attached-service-row:last-child { border-bottom: none; }
+  .attached-service-row .as-fee { color: var(--amber); font-weight: 600; margin-left: auto; }
+  .attached-service-row .as-remove {
+    background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim);
+    border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 12px;
+  }
+  .attached-service-row .as-remove:hover { border-color: var(--red); color: var(--red); }
+  .services-empty { color: var(--text-dim); font-size: 12px; padding: 4px 0 2px; }
   .build-panel .build-field { flex: 1 1 160px; min-width: 140px; }
   .build-panel .build-field label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
   .build-panel select { width: 100%; padding: 9px 10px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 8px; font-size: 13px; }
@@ -229,6 +241,17 @@
     <div class="flow-sidebar" id="flowSidebar"></div>
     <div class="layout" style="flex: 1 1 auto; padding: 0;">
       <div style="flex: 1 1 560px; min-width: 0;">
+        <div class="build-panel" id="servicesPanel" style="display:none;">
+          <h2>Services</h2>
+          <div id="attachedServicesList"></div>
+          <div class="build-row" style="margin-top:10px;">
+            <div class="build-field" style="flex:1 1 300px;">
+              <label for="serviceSelect">Attach a service</label>
+              <select id="serviceSelect"></select>
+            </div>
+            <button type="button" class="btn" id="attachServiceBtn" style="flex:0 0 auto;">Attach</button>
+          </div>
+        </div>
         <div class="build-panel" id="buildPanel" style="display:none;">
           <h2>Suggested performance build</h2>
           <div class="build-row">
@@ -271,6 +294,7 @@
 <script src="js/jobflow.js"></script>
 <script src="js/shift.js"></script>
 <script src="js/catalogue.js"></script>
+<script src="js/services.js"></script>
 <script src="js/performanceBuild.js"></script>
 <script>
   const session = requireSession();
@@ -567,13 +591,29 @@
       const lines = await listJobItems(jobId, jobType);
       lastQuoteLines = lines;
       renderExportButton();
+      // Prefer the real flat fee from attached services (sql/043) once one
+      // exists -- it's an actual committed number, not a guess. Only falls
+      // back to the rough install-time preview when no service is attached
+      // to this leg at all.
       const estLabourRow = document.getElementById('estLabourRow');
-      const estLabour = estimatedLabourFeeForItems(lines);
-      if (estLabour !== null) {
-        document.getElementById('estLabourValue').textContent = `~${formatMoney(estLabour)}`;
+      const jobServicesForLeg = await listJobServices(jobId, jobType);
+      const svcFee = serviceLabourFeeForType(jobServicesForLeg, jobType);
+      const estLabourLabel = estLabourRow.querySelector('span');
+      if (svcFee !== undefined) {
+        estLabourLabel.textContent = 'Labour (services)';
+        estLabourRow.title = 'Flat labour fee from the service(s) attached to this leg.';
+        document.getElementById('estLabourValue').textContent = svcFee !== null ? formatMoney(svcFee) : 'To confirm';
         estLabourRow.style.display = 'flex';
       } else {
-        estLabourRow.style.display = 'none';
+        const est = estimatedLabourFeeForItems(lines);
+        estLabourLabel.textContent = 'Est. labour';
+        estLabourRow.title = "Rough preview based on each part's typical install time -- the real labour bill is based on actual hours worked and only exists once the job's complete.";
+        if (est !== null) {
+          document.getElementById('estLabourValue').textContent = `~${formatMoney(est)}`;
+          estLabourRow.style.display = 'flex';
+        } else {
+          estLabourRow.style.display = 'none';
+        }
       }
       if (lines.length === 0) {
         linesEl.innerHTML = '<div class="quote-empty">No items added yet.</div>';
@@ -665,6 +705,75 @@
     }
   }
 
+  // ---- Services (flat labour fee, sql/043) ----
+  async function renderAttachedServices() {
+    const listEl = document.getElementById('attachedServicesList');
+    const attached = await listJobServices(jobId, jobType);
+    if (attached.length === 0) {
+      listEl.innerHTML = '<div class="services-empty">No services attached to this leg yet.</div>';
+    } else {
+      listEl.innerHTML = attached.map((js) => `
+        <div class="attached-service-row" data-id="${js.id}">
+          <span>${js.services?.name || 'Unknown service'}</span>
+          <span class="as-fee">${js.labour_fee !== null ? formatMoney(js.labour_fee) : 'To confirm'}</span>
+          <button type="button" class="as-remove" data-id="${js.id}">Remove</button>
+        </div>
+      `).join('');
+      listEl.querySelectorAll('.as-remove').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          try {
+            await removeServiceFromJob(btn.dataset.id);
+            await renderAttachedServices();
+          } catch (err) {
+            alert(`Failed to remove service: ${err.message}`);
+          }
+        });
+      });
+    }
+    return attached;
+  }
+
+  async function initServicesPanel() {
+    const panel = document.getElementById('servicesPanel');
+    const select = document.getElementById('serviceSelect');
+    let services = [];
+    try {
+      services = await listServices({ jobTypeCategory: jobType, activeOnly: true });
+    } catch (err) {
+      panel.style.display = 'none';
+      return;
+    }
+    const attached = await renderAttachedServices();
+    if (services.length === 0 && attached.length === 0) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = 'block';
+    select.innerHTML = services.length > 0
+      ? services.map((s) => `<option value="${s.id}">${s.name} — ${s.labour_fee !== null ? formatMoney(s.labour_fee) : 'To confirm'}</option>`).join('')
+      : '<option value="">No services defined for this work type yet</option>';
+    document.getElementById('attachServiceBtn').disabled = services.length === 0;
+
+    document.getElementById('attachServiceBtn').onclick = async () => {
+      const service = services.find((s) => s.id === select.value);
+      if (!service) return;
+      const btn = document.getElementById('attachServiceBtn');
+      btn.disabled = true;
+      try {
+        await addServiceToJob({ jobId, jobType, service, performedBy: session?.id });
+        logActivity({
+          actorId: session?.id, action: 'service_attached_to_job', entityType: 'job', entityId: jobId,
+          summary: `${session?.employee_name || 'Someone'} attached service "${service.name}" to Job #${job.job_number}`
+        });
+        await Promise.all([renderAttachedServices(), refreshQuote()]);
+      } catch (err) {
+        alert(`Failed to attach service: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  }
+
   // ---- Suggested performance build (performance-leg jobs only) ----
   const TIER_LABELS = { cheap: 'Cheap', medium: 'Medium', best: 'Best' };
   // Resolving a name to a real catalogue row is looked up fresh each time
@@ -748,6 +857,7 @@
   resolveJobType().then(() => {
     renderLegAction();
     initBuildPanel();
+    initServicesPanel();
     return loadJobBar();
   }).then(() => Promise.all([renderFlowChrome(), showCategories(), refreshQuote()]));
 </script>
