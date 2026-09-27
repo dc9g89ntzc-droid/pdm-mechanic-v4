@@ -862,6 +862,24 @@ function commissionForHours(hours) {
   return Math.round(hours * (LABOUR_RATE_PER_HOUR - SHIFT_PAY_RATE_PER_HOUR) * 100) / 100;
 }
 
+// Rough pre-completion estimate only -- a preview based on each item's
+// catalogue install_time_minutes x LABOUR_RATE_PER_HOUR, shown alongside
+// (never instead of) the real hours-worked figure above. The real bill
+// still only exists once a leg's actually complete (labourFeeForHours) --
+// this is just a heads-up number so quoting doesn't have to guess blind.
+// jobItems is listJobItems()'s shape: catalogue_items.install_time_minutes
+// must be selected for this to see anything (defaults missing rows to 0,
+// not null, since a genuinely-missing time estimate on one item shouldn't
+// blank the whole estimate -- it just under-counts that line).
+function estimatedLabourFeeForItems(jobItems) {
+  const minutes = (jobItems || []).reduce((sum, item) => {
+    const perUnit = item.catalogue_items?.install_time_minutes;
+    return sum + (perUnit != null ? Number(perUnit) * Number(item.quantity) : 0);
+  }, 0);
+  if (minutes <= 0) return null;
+  return Math.round((minutes / 60) * LABOUR_RATE_PER_HOUR * 100) / 100;
+}
+
 function formatDateTime(value) {
   if (!value) return 'Unknown';
   return new Date(value).toLocaleString(undefined, {

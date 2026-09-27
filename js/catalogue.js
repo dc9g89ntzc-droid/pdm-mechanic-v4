@@ -331,7 +331,7 @@ function suggestedCustomerPrice(purchaseCost) {
 async function listJobItems(jobId, jobType) {
   let query = sb
     .from('job_items')
-    .select('id, quantity, unit_price, sourcing_choice, catalogue_item_id, job_type, catalogue_items ( name, image_url, available_autoparts, available_scrapyard ) ')
+    .select('id, quantity, unit_price, sourcing_choice, catalogue_item_id, job_type, catalogue_items ( name, image_url, available_autoparts, available_scrapyard, install_time_minutes ) ')
     .eq('job_id', jobId)
     .order('created_at');
   if (jobType) query = query.eq('job_type', jobType);

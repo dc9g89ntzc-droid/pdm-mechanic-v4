@@ -255,6 +255,9 @@
         <div id="quoteLines"></div>
         <div id="exportBtnArea"></div>
         <div class="quote-total"><span>Total</span><span id="quoteTotal">To confirm</span></div>
+        <div class="quote-total" id="estLabourRow" title="Rough preview based on each part's typical install time -- the real labour bill is based on actual hours worked and only exists once the job's complete." style="display:none; font-weight:400; font-size:12px; color:var(--text-dim); padding-top:2px;">
+          <span>Est. labour</span><span id="estLabourValue"></span>
+        </div>
         <div id="legActionArea" style="margin-top: 14px;"></div>
       </aside>
     </div>
@@ -564,6 +567,14 @@
       const lines = await listJobItems(jobId, jobType);
       lastQuoteLines = lines;
       renderExportButton();
+      const estLabourRow = document.getElementById('estLabourRow');
+      const estLabour = estimatedLabourFeeForItems(lines);
+      if (estLabour !== null) {
+        document.getElementById('estLabourValue').textContent = `~${formatMoney(estLabour)}`;
+        estLabourRow.style.display = 'flex';
+      } else {
+        estLabourRow.style.display = 'none';
+      }
       if (lines.length === 0) {
         linesEl.innerHTML = '<div class="quote-empty">No items added yet.</div>';
       } else {
