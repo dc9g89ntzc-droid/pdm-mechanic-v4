@@ -145,7 +145,7 @@
   .modal .hint { color: var(--text-dim); font-size: 12px; margin: 0 0 16px; }
   .convert-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--panel-border); font-size: 13px; }
   .convert-row .cr-name { flex: 1; min-width: 0; }
-  .convert-row .cr-qty { color: var(--text-dim); flex: 0 0 auto; font-size: 12px; }
+  .convert-row .cr-qty { width: 56px; }
   .convert-row select, .convert-row input {
     background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 6px;
     padding: 6px 8px; font-size: 12px; flex: 0 0 auto;
@@ -761,7 +761,7 @@
       return `
         <div class="convert-row" data-idx="${idx}">
           <span class="cr-name">${item?.name || 'Unknown item'}</span>
-          <span class="cr-qty">${r.quantity}x</span>
+          <input type="number" class="cr-qty" min="0.01" step="1" value="${r.quantity}" title="Quantity actually bought -- edit if you picked up more (or less) than the list asked for" />
           <select class="cr-source">${sourceOptions}</select>
           <input type="number" class="cr-cost" min="0" step="1" value="${item?.purchase_cost ?? ''}" placeholder="Price each" />
         </div>
@@ -786,12 +786,18 @@
     const rowEls = document.querySelectorAll('#convertRows .convert-row');
     const entries = Array.from(rowEls).map((el) => ({
       idx: Number(el.dataset.idx),
+      quantity: el.querySelector('.cr-qty').value,
       source: el.querySelector('.cr-source').value,
       cost: el.querySelector('.cr-cost').value
     }));
     for (const e of entries) {
+      const name = convertRowsData[e.idx].catalogue_items?.name;
+      if (e.quantity === '' || isNaN(Number(e.quantity)) || Number(e.quantity) <= 0) {
+        alert(`Enter how many of "${name}" were actually bought.`);
+        return;
+      }
       if (e.cost === '' || isNaN(Number(e.cost)) || Number(e.cost) < 0) {
-        alert(`Enter the price paid for "${convertRowsData[e.idx].catalogue_items?.name}".`);
+        alert(`Enter the price paid for "${name}".`);
         return;
       }
     }
@@ -801,8 +807,12 @@
     try {
       for (const e of entries) {
         const row = convertRowsData[e.idx];
+        // Quantity actually purchased can differ from what the list asked
+        // for (e.g. a stocker buying extra to fill up the truck) -- the
+        // edited amount is what actually goes into stock, not the
+        // original request.
         await recordPurchase({
-          itemId: row.catalogue_items.id, quantity: Number(row.quantity), unitCost: Number(e.cost),
+          itemId: row.catalogue_items.id, quantity: Number(e.quantity), unitCost: Number(e.cost),
           sourceType: e.source, performedBy: session?.id, notes: 'Converted from shopping list'
         });
       }
