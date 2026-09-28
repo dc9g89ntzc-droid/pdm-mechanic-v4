@@ -116,6 +116,10 @@
         <div class="value money" id="statCommission">—</div>
       </div>
       <div class="stat-card">
+        <div class="label">Deliveries</div>
+        <div class="value money" id="statDeliveries">—</div>
+      </div>
+      <div class="stat-card">
         <div class="label">Total This Week</div>
         <div class="value money" id="statTotal">—</div>
       </div>
@@ -232,9 +236,11 @@
     const ledger = await listPayrollLedger({ from: periodStart.toISOString(), to: periodEnd.toISOString(), mechanicId: session.id });
     const shiftPay = ledger.filter((e) => e.entry_type === 'shift_pay').reduce((sum, e) => sum + Number(e.amount), 0);
     const commission = ledger.filter((e) => e.entry_type === 'commission').reduce((sum, e) => sum + Number(e.amount), 0);
+    const delivery = ledger.filter((e) => e.entry_type === 'delivery').reduce((sum, e) => sum + Number(e.amount), 0);
     document.getElementById('statShiftPay').textContent = formatMoney(shiftPay);
     document.getElementById('statCommission').textContent = formatMoney(commission);
-    document.getElementById('statTotal').textContent = formatMoney(shiftPay + commission);
+    document.getElementById('statDeliveries').textContent = formatMoney(delivery);
+    document.getElementById('statTotal').textContent = formatMoney(shiftPay + commission + delivery);
   }
 
   loadJobs();

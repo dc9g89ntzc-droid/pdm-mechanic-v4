@@ -36,14 +36,18 @@ const JOB_STAGES = [
   { value: 'cancelled', label: 'Cancelled' }
 ];
 
-// The shop's real staff hierarchy, low to high.
+// The shop's real staff hierarchy, low to high. Stocker sits outside that
+// hierarchy entirely (deliveries, not repair work -- paid flat per
+// delivery, not the shift-clock hourly wage) so it's appended rather than
+// slotted into the skill ladder.
 const STAFF_ROLES = [
   { value: 'apprentice', label: 'Apprentice' },
   { value: 'mechanic', label: 'Mechanic' },
   { value: 'master_mechanic', label: 'Master Mechanic' },
   { value: 'foreman', label: 'Foreman' },
   { value: 'manager', label: 'Manager' },
-  { value: 'boss', label: 'Boss (Admin)' }
+  { value: 'boss', label: 'Boss (Admin)' },
+  { value: 'stocker', label: 'Stocker' }
 ];
 
 function staffRoleLabel(value) {
@@ -257,6 +261,19 @@ async function recordShiftPay(mechanicId, shiftId, clockInAt, clockOutAt) {
 async function recordCommission(mechanicId, jobId, amount, notes) {
   const { error } = await sb.from('payroll_ledger').insert({
     mechanic_id: mechanicId, entry_type: 'commission', amount, reference_id: jobId, notes
+  });
+  if (error) throw new Error(error.message);
+}
+
+// Flat per-delivery pay for the Stocker role -- one delivery run (however
+// many shopping-list items it covers, part or full) earns this flat amount,
+// not a per-item or per-hour rate. Same payroll_ledger/markPayrollEntryPaid
+// mechanism as everyone else's pay -- "pay them at any point" was already
+// how that works, this just adds the entry type that feeds it.
+const DELIVERY_PAY_AMOUNT = 2500;
+async function recordDelivery(mechanicId, notes) {
+  const { error } = await sb.from('payroll_ledger').insert({
+    mechanic_id: mechanicId, entry_type: 'delivery', amount: DELIVERY_PAY_AMOUNT, notes
   });
   if (error) throw new Error(error.message);
 }

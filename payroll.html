@@ -152,19 +152,20 @@
     const payByMechanic = {};
     ledger.forEach((entry) => {
       const key = entry.mechanic_id;
-      if (!payByMechanic[key]) payByMechanic[key] = { shiftPay: 0, commission: 0, owed: 0 };
+      if (!payByMechanic[key]) payByMechanic[key] = { shiftPay: 0, commission: 0, delivery: 0, owed: 0 };
       if (entry.entry_type === 'shift_pay') payByMechanic[key].shiftPay += Number(entry.amount);
+      else if (entry.entry_type === 'delivery') payByMechanic[key].delivery += Number(entry.amount);
       else payByMechanic[key].commission += Number(entry.amount);
       if (!entry.paid) payByMechanic[key].owed += Number(entry.amount);
     });
 
     container.innerHTML = `
       <table>
-        <thead><tr><th>Employee</th><th>IBAN</th><th class="num">Hours</th><th class="num">Shift Pay</th><th class="num">Labour</th><th class="num">Total</th><th></th></tr></thead>
+        <thead><tr><th>Employee</th><th>IBAN</th><th class="num">Hours</th><th class="num">Shift Pay</th><th class="num">Labour</th><th class="num">Deliveries</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>
           ${activeStaff.map((s) => {
-            const pay = payByMechanic[s.id] || { shiftPay: 0, commission: 0, owed: 0 };
-            const total = pay.shiftPay + pay.commission;
+            const pay = payByMechanic[s.id] || { shiftPay: 0, commission: 0, delivery: 0, owed: 0 };
+            const total = pay.shiftPay + pay.commission + pay.delivery;
             const hours = (hoursMsByMechanic[s.id] || 0) / 3600000;
             return `
               <tr>
@@ -173,6 +174,7 @@
                 <td class="num">${hours.toFixed(1)}</td>
                 <td class="num">${formatMoney(pay.shiftPay)}</td>
                 <td class="num">${formatMoney(pay.commission)}</td>
+                <td class="num">${formatMoney(pay.delivery)}</td>
                 <td class="num total">${formatMoney(total)}</td>
                 <td>${pay.owed > 0
                   ? `<button class="mark-paid-btn" data-id="${s.id}">Mark paid (${formatMoney(pay.owed)})</button>`

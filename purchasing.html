@@ -114,6 +114,16 @@
   .shop-suggest-item:hover { background: rgba(216,31,39,0.08); }
   .shop-suggest-item .sub { color: var(--text-dim); font-size: 11px; }
 
+  .shop-list-total { color: var(--text-dim); font-size: 13px; white-space: nowrap; }
+  .shop-list-total .amount { color: var(--amber); font-weight: 600; }
+  .low-stock-banner {
+    background: rgba(240,165,44,0.08); border: 1px solid rgba(240,165,44,0.3); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 16px; font-size: 13px;
+  }
+  .low-stock-banner .lsb-title { color: var(--amber); font-weight: 600; margin-bottom: 8px; }
+  .low-stock-banner .lsb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; }
+  .low-stock-banner .lsb-add { background: transparent; border: 1px solid var(--panel-border); color: var(--text); border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+  .low-stock-banner .lsb-add:hover { border-color: var(--amber); color: var(--amber); }
   .shop-section { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
   .shop-section h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 0 0 12px; }
   .shop-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--panel-border); font-size: 13px; }
@@ -208,9 +218,12 @@
           <input type="text" id="shopAddInput" placeholder="Add an item by name…" autocomplete="off" />
           <div class="shop-suggest-list" id="shopSuggestList" style="display:none;"></div>
         </div>
+        <div id="shopListTotal" class="shop-list-total"></div>
       </div>
 
+      <div id="lowStockSuggestions"></div>
       <div id="shopListSections"></div>
+      <div id="shopSelectionBar" style="margin: 12px 0;"></div>
 
       <div class="shop-list-actions">
         <button type="button" class="btn secondary" id="shopExportBtn">Export as .txt</button>
@@ -507,6 +520,8 @@
     try {
       const rows = await listShoppingList();
       renderShopListSections(rows);
+      renderShopListTotal(rows);
+      await renderLowStockSuggestions(rows);
       const convertBtn = document.getElementById('shopConvertBtn');
       const boughtRows = rows.filter((r) => r.bought);
       convertBtn.style.display = boughtRows.length > 0 ? 'inline-block' : 'none';
@@ -521,10 +536,68 @@
     }
   }
 
+  // Rough total only -- based on each item's last known purchase_cost, not
+  // necessarily what it'll actually cost this trip (same caveat as the
+  // convert-to-stock price field, which is what actually gets recorded).
+  function renderShopListTotal(rows) {
+    const el = document.getElementById('shopListTotal');
+    if (rows.length === 0) { el.textContent = ''; return; }
+    let total = 0;
+    let anyUnknown = false;
+    rows.forEach((r) => {
+      const cost = r.catalogue_items?.purchase_cost;
+      if (cost == null) { anyUnknown = true; return; }
+      total += Number(cost) * Number(r.quantity);
+    });
+    el.innerHTML = `Est. total: <span class="amount">${formatMoney(total)}</span>${anyUnknown ? ' (some items have no price on file)' : ''}`;
+  }
+
+  async function renderLowStockSuggestions(currentRows) {
+    const container = document.getElementById('lowStockSuggestions');
+    try {
+      const lowStock = await listLowStockItems();
+      const onListIds = new Set(currentRows.map((r) => r.catalogue_items?.id));
+      const missing = lowStock.filter((item) => !onListIds.has(item.id));
+      if (missing.length === 0) { container.innerHTML = ''; return; }
+      container.innerHTML = `
+        <div class="low-stock-banner">
+          <div class="lsb-title">Running low (${missing.length}) -- not yet on the shopping list</div>
+          ${missing.map((item) => `
+            <div class="lsb-row">
+              <span>${item.name} <span style="color:var(--text-dim);">(${item.stock_quantity} left)</span></span>
+              <button type="button" class="lsb-add" data-id="${item.id}">+ Add</button>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      container.querySelectorAll('.lsb-add').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            await addToShoppingList(btn.dataset.id, 1, session?.id);
+            await loadShoppingList();
+          } catch (err) {
+            alert(`Failed to add: ${err.message}`);
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (err) {
+      container.innerHTML = '';
+    }
+  }
+
+  // Checking an unbought row only selects it locally -- committing (and,
+  // for a Stocker, getting paid) happens once via "Mark selected as
+  // bought" below, so a delivery covering several items in one trip is
+  // still exactly one $2,500 payment, not one per item.
+  const selectedShopListIds = new Set();
+
   function renderShopListSections(rows) {
     const container = document.getElementById('shopListSections');
     if (rows.length === 0) {
       container.innerHTML = '<div class="empty-msg">Nothing on the shopping list yet -- add items above, or from a job\'s materials-required panel.</div>';
+      renderShopListSelectionBar();
       return;
     }
     const sections = { autoparts: [], scrapyard: [], unspecified: [] };
@@ -535,7 +608,8 @@
       if (sections[key].length === 0) return '';
       const rowsHtml = sections[key].map((r) => `
         <div class="shop-row ${r.bought ? 'bought' : ''}" data-id="${r.id}">
-          <input type="checkbox" class="sr-bought" data-id="${r.id}" ${r.bought ? 'checked' : ''} />
+          <input type="checkbox" class="sr-bought" data-id="${r.id}"
+            ${r.bought ? 'checked disabled' : (selectedShopListIds.has(r.id) ? 'checked' : '')} />
           <span class="sr-name">${r.catalogue_items?.name || 'Unknown item'}</span>
           <span class="sr-qty">${r.quantity}x</span>
           <button type="button" class="sr-remove" data-id="${r.id}">✕</button>
@@ -544,19 +618,17 @@
       return `<div class="shop-section"><h3>${titles[key]}</h3>${rowsHtml}</div>`;
     }).join('');
 
-    container.querySelectorAll('.sr-bought').forEach((cb) => {
-      cb.addEventListener('change', async () => {
-        try {
-          await setShoppingListItemBought(cb.dataset.id, cb.checked, session?.id);
-          await loadShoppingList();
-        } catch (err) {
-          alert(`Failed to update: ${err.message}`);
-        }
+    container.querySelectorAll('.sr-bought:not(:disabled)').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) selectedShopListIds.add(cb.dataset.id);
+        else selectedShopListIds.delete(cb.dataset.id);
+        renderShopListSelectionBar();
       });
     });
     container.querySelectorAll('.sr-remove').forEach((btn) => {
       btn.addEventListener('click', async () => {
         try {
+          selectedShopListIds.delete(btn.dataset.id);
           await removeFromShoppingList(btn.dataset.id);
           await loadShoppingList();
         } catch (err) {
@@ -564,6 +636,46 @@
         }
       });
     });
+    renderShopListSelectionBar();
+  }
+
+  // The action button's label/pay note changes for a Stocker specifically
+  // -- everyone else can still tick things off as bought (e.g. correcting
+  // the list by hand), it just doesn't trigger a delivery payment.
+  function renderShopListSelectionBar() {
+    const bar = document.getElementById('shopSelectionBar');
+    if (selectedShopListIds.size === 0) { bar.innerHTML = ''; return; }
+    const isStocker = session?.role === 'stocker';
+    const label = isStocker
+      ? `Mark ${selectedShopListIds.size} item${selectedShopListIds.size === 1 ? '' : 's'} delivered (+${formatMoney(DELIVERY_PAY_AMOUNT)})`
+      : `Mark ${selectedShopListIds.size} item${selectedShopListIds.size === 1 ? '' : 's'} as bought`;
+    bar.innerHTML = `<button type="button" class="btn" id="commitSelectionBtn">${label}</button>`;
+    document.getElementById('commitSelectionBtn').addEventListener('click', commitShopListSelection);
+  }
+
+  async function commitShopListSelection() {
+    const ids = Array.from(selectedShopListIds);
+    if (ids.length === 0) return;
+    const btn = document.getElementById('commitSelectionBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    try {
+      for (const id of ids) {
+        await setShoppingListItemBought(id, true, session?.id);
+      }
+      if (session?.role === 'stocker') {
+        await recordDelivery(session.id, `Delivered ${ids.length} shopping-list item${ids.length === 1 ? '' : 's'}`);
+        logActivity({
+          actorId: session?.id, action: 'delivery_completed', entityType: 'payroll_ledger', entityId: session.id,
+          summary: `${session?.employee_name || 'Someone'} delivered ${ids.length} shopping-list item${ids.length === 1 ? '' : 's'} (+${formatMoney(DELIVERY_PAY_AMOUNT)})`
+        });
+      }
+      selectedShopListIds.clear();
+      await loadShoppingList();
+    } catch (err) {
+      alert(`Failed to update: ${err.message}`);
+      btn.disabled = false;
+    }
   }
 
   // ---- Add item to shopping list by search ----
