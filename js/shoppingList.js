@@ -51,6 +51,11 @@ async function addJobItemsToShoppingList(jobItems, performedBy) {
   }
 }
 
+async function updateShoppingListItemQuantity(id, quantity) {
+  const { error } = await sb.from('shopping_list_items').update({ quantity }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 async function setShoppingListItemBought(id, bought, performedBy) {
   const { error } = await sb
     .from('shopping_list_items')

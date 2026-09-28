@@ -132,6 +132,9 @@
   .shop-row .sr-name { flex: 1; min-width: 0; }
   .shop-row.bought .sr-name { text-decoration: line-through; color: var(--text-dim); }
   .shop-row .sr-qty { color: var(--text-dim); flex: 0 0 auto; }
+  .shop-row .sr-qty-stepper { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+  .shop-row .sr-qty-stepper button { width: 20px; height: 20px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; cursor: pointer; font-size: 12px; line-height: 1; }
+  .shop-row .sr-qty-stepper span { min-width: 24px; text-align: center; color: var(--text); }
   .shop-row .sr-remove { background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 0 2px; flex: 0 0 auto; }
   .shop-row .sr-remove:hover { color: var(--red); }
 
@@ -611,7 +614,13 @@
           <input type="checkbox" class="sr-bought" data-id="${r.id}"
             ${r.bought ? 'checked disabled' : (selectedShopListIds.has(r.id) ? 'checked' : '')} />
           <span class="sr-name">${r.catalogue_items?.name || 'Unknown item'}</span>
-          <span class="sr-qty">${r.quantity}x</span>
+          ${r.bought
+            ? `<span class="sr-qty">${r.quantity}x</span>`
+            : `<div class="sr-qty-stepper" data-id="${r.id}">
+                 <button type="button" class="sr-qty-dec">−</button>
+                 <span>${r.quantity}</span>
+                 <button type="button" class="sr-qty-inc">+</button>
+               </div>`}
           <button type="button" class="sr-remove" data-id="${r.id}">✕</button>
         </div>
       `).join('');
@@ -623,6 +632,41 @@
         if (cb.checked) selectedShopListIds.add(cb.dataset.id);
         else selectedShopListIds.delete(cb.dataset.id);
         renderShopListSelectionBar();
+      });
+    });
+    // Quantity while still unbought -- how much to bring, not what actually
+    // got bought (that's the editable field in the convert-to-stock modal,
+    // for whenever a stocker brings back more or less than this asked for).
+    container.querySelectorAll('.sr-qty-stepper').forEach((stepper) => {
+      const id = stepper.dataset.id;
+      const row = rows.find((r) => r.id === id);
+      const countEl = stepper.querySelector('span');
+      stepper.querySelector('.sr-qty-inc').addEventListener('click', async () => {
+        try {
+          const newQty = Number(row.quantity) + 1;
+          await updateShoppingListItemQuantity(id, newQty);
+          row.quantity = newQty;
+          countEl.textContent = newQty;
+          renderShopListTotal(rows);
+        } catch (err) {
+          alert(`Failed to update quantity: ${err.message}`);
+        }
+      });
+      stepper.querySelector('.sr-qty-dec').addEventListener('click', async () => {
+        const newQty = Number(row.quantity) - 1;
+        try {
+          if (newQty <= 0) {
+            await removeFromShoppingList(id);
+            await loadShoppingList();
+          } else {
+            await updateShoppingListItemQuantity(id, newQty);
+            row.quantity = newQty;
+            countEl.textContent = newQty;
+            renderShopListTotal(rows);
+          }
+        } catch (err) {
+          alert(`Failed to update quantity: ${err.message}`);
+        }
       });
     });
     container.querySelectorAll('.sr-remove').forEach((btn) => {
