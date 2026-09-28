@@ -26,6 +26,7 @@ const TRANSACTION_TYPES = [
 // price, so it's tracked per-purchase rather than as a fixed item field.
 const PURCHASE_SOURCE_TYPES = [
   { value: 'autoparts_store', label: 'Autoparts Store' },
+  { value: 'scrapyard', label: 'Scrapyard' },
   { value: 'private_citizen', label: 'Private Citizen Sale' }
 ];
 

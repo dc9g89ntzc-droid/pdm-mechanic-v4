@@ -87,6 +87,64 @@
   .cart-status { font-size: 12px; margin-top: 10px; padding: 8px 10px; border-radius: 8px; display: none; }
   .cart-status.success { display: block; background: rgba(34,197,94,0.12); color: var(--green); }
   .cart-status.error { display: block; background: rgba(216,31,39,0.12); color: #f0888c; }
+
+  .tabs { display: flex; gap: 8px; padding: 0 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); }
+  .tab-btn {
+    background: transparent; border: none; color: var(--text-dim); padding: 12px 4px; margin: 0 12px 0 0;
+    font-size: 13px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent;
+  }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--red); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .shop-list-layout { padding: 20px 24px 60px; max-width: 900px; margin: 0 auto; }
+  .shop-list-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
+  .shop-list-toolbar .suggest-wrap { position: relative; flex: 1 1 320px; }
+  .shop-list-toolbar input[type="text"] {
+    width: 100%; background: var(--panel); border: 1px solid var(--panel-border); color: var(--text);
+    padding: 10px 12px; border-radius: 8px; font-size: 13px; font-family: inherit;
+  }
+  .shop-list-toolbar input:focus { outline: none; border-color: var(--red); }
+  .shop-suggest-list {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 5; margin-top: 4px;
+    background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px;
+    max-height: 240px; overflow-y: auto;
+  }
+  .shop-suggest-item { padding: 8px 12px; font-size: 13px; cursor: pointer; }
+  .shop-suggest-item:hover { background: rgba(216,31,39,0.08); }
+  .shop-suggest-item .sub { color: var(--text-dim); font-size: 11px; }
+
+  .shop-section { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .shop-section h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 0 0 12px; }
+  .shop-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--panel-border); font-size: 13px; }
+  .shop-row:last-child { border-bottom: none; }
+  .shop-row input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 auto; cursor: pointer; }
+  .shop-row .sr-name { flex: 1; min-width: 0; }
+  .shop-row.bought .sr-name { text-decoration: line-through; color: var(--text-dim); }
+  .shop-row .sr-qty { color: var(--text-dim); flex: 0 0 auto; }
+  .shop-row .sr-remove { background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 0 2px; flex: 0 0 auto; }
+  .shop-row .sr-remove:hover { color: var(--red); }
+
+  .shop-list-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+  .shop-list-actions .btn.secondary { flex: 0 0 auto; }
+
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); align-items: flex-start; justify-content: center; z-index: 10; overflow-y: auto; padding: 40px 16px; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px; width: 100%; max-width: 560px; }
+  .modal h2 { font-size: 16px; margin: 0 0 6px; }
+  .modal .hint { color: var(--text-dim); font-size: 12px; margin: 0 0 16px; }
+  .convert-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--panel-border); font-size: 13px; }
+  .convert-row .cr-name { flex: 1; min-width: 0; }
+  .convert-row .cr-qty { color: var(--text-dim); flex: 0 0 auto; font-size: 12px; }
+  .convert-row select, .convert-row input {
+    background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 6px;
+    padding: 6px 8px; font-size: 12px; flex: 0 0 auto;
+  }
+  .convert-row input { width: 72px; text-align: right; }
+  .modal .actions { display: flex; gap: 10px; margin-top: 20px; }
+  .modal .actions button { flex: 1; padding: 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .modal .actions .save { background: var(--red); border: none; color: white; font-weight: 600; }
+  .modal .actions .cancel { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
 </style>
 </head>
 <body>
@@ -115,25 +173,63 @@
     <div class="page-sub">Browse the catalogue, add what you're buying, then log it as one purchase from the Autoparts Store or a private citizen.</div>
   </div>
 
-  <div class="breadcrumb" id="breadcrumb"></div>
+  <div class="tabs">
+    <button type="button" class="tab-btn active" id="tabBuyBtn">Buy Parts</button>
+    <button type="button" class="tab-btn" id="tabShopListBtn">Shopping List</button>
+  </div>
 
-  <div class="layout">
-    <main id="mainArea"></main>
-    <aside class="cart-panel">
-      <h2>Purchase Cart</h2>
-      <div class="cart-field">
-        <label for="purchaseSource">Buying from</label>
-        <select id="purchaseSource"></select>
+  <div class="tab-panel active" id="tabBuyPanel">
+    <div class="breadcrumb" id="breadcrumb"></div>
+
+    <div class="layout">
+      <main id="mainArea"></main>
+      <aside class="cart-panel">
+        <h2>Purchase Cart</h2>
+        <div class="cart-field">
+          <label for="purchaseSource">Buying from</label>
+          <select id="purchaseSource"></select>
+        </div>
+        <div class="cart-field">
+          <label for="purchaseNotes">Notes (optional — e.g. citizen name)</label>
+          <input type="text" id="purchaseNotes" placeholder="Notes" />
+        </div>
+        <div class="cart-lines" id="cartLines"></div>
+        <div class="cart-total"><span>Total</span><span id="cartTotal">$0.00</span></div>
+        <button class="btn" id="completePurchaseBtn">Complete Purchase</button>
+        <div class="cart-status" id="cartStatus"></div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabShopListPanel">
+    <div class="shop-list-layout">
+      <div class="shop-list-toolbar">
+        <div class="suggest-wrap">
+          <input type="text" id="shopAddInput" placeholder="Add an item by name…" autocomplete="off" />
+          <div class="shop-suggest-list" id="shopSuggestList" style="display:none;"></div>
+        </div>
       </div>
-      <div class="cart-field">
-        <label for="purchaseNotes">Notes (optional — e.g. citizen name)</label>
-        <input type="text" id="purchaseNotes" placeholder="Notes" />
+
+      <div id="shopListSections"></div>
+
+      <div class="shop-list-actions">
+        <button type="button" class="btn secondary" id="shopExportBtn">Export as .txt</button>
+        <button type="button" class="btn secondary" id="shopConvertBtn" style="display:none;">Add bought items to stock</button>
       </div>
-      <div class="cart-lines" id="cartLines"></div>
-      <div class="cart-total"><span>Total</span><span id="cartTotal">$0.00</span></div>
-      <button class="btn" id="completePurchaseBtn">Complete Purchase</button>
-      <div class="cart-status" id="cartStatus"></div>
-    </aside>
+    </div>
+  </div>
+
+  <!-- Convert-to-stock modal -->
+  <div class="modal-backdrop" id="convertModalBackdrop">
+    <div class="modal">
+      <h2>Add bought items to stock</h2>
+      <p class="hint">Confirm what was actually paid for each — defaults to the last price on file, but adjust anything that was different this time.</p>
+      <div id="convertRows"></div>
+      <div class="actions">
+        <button class="cancel" id="convertCancelBtn">Not yet</button>
+        <button class="save" id="convertConfirmBtn">Confirm &amp; add to stock</button>
+      </div>
+    </div>
   </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -142,6 +238,7 @@
 <script src="js/workshop.js"></script>
 <script src="js/shift.js"></script>
 <script src="js/catalogue.js"></script>
+<script src="js/shoppingList.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -381,11 +478,244 @@
     }
   });
 
+  // ---- Tabs ----
+  document.getElementById('tabBuyBtn').addEventListener('click', () => switchTab('buy'));
+  document.getElementById('tabShopListBtn').addEventListener('click', () => switchTab('shopList'));
+  function switchTab(tab) {
+    document.getElementById('tabBuyBtn').classList.toggle('active', tab === 'buy');
+    document.getElementById('tabShopListBtn').classList.toggle('active', tab === 'shopList');
+    document.getElementById('tabBuyPanel').classList.toggle('active', tab === 'buy');
+    document.getElementById('tabShopListPanel').classList.toggle('active', tab === 'shopList');
+    if (tab === 'shopList') loadShoppingList();
+  }
+
+  // ---- Shopping list ----
+  // An item sold at both stores defaults into the Autoparts section (same
+  // "Autoparts is the cheaper default" convention as purchase_cost itself,
+  // sql/033/041) -- Scrapyard-availability is still there to see via the
+  // item's own tag if she picks that section's source when converting.
+  function shopListSection(item) {
+    if (item.available_autoparts) return 'autoparts';
+    if (item.available_scrapyard) return 'scrapyard';
+    return 'unspecified';
+  }
+
+  let wasFullyBought = false; // tracks the auto-popup transition, so it only fires once per completion, not on every render
+
+  async function loadShoppingList() {
+    const container = document.getElementById('shopListSections');
+    try {
+      const rows = await listShoppingList();
+      renderShopListSections(rows);
+      const convertBtn = document.getElementById('shopConvertBtn');
+      const boughtRows = rows.filter((r) => r.bought);
+      convertBtn.style.display = boughtRows.length > 0 ? 'inline-block' : 'none';
+
+      const fullyBought = rows.length > 0 && boughtRows.length === rows.length;
+      if (fullyBought && !wasFullyBought) {
+        openConvertModal(boughtRows);
+      }
+      wasFullyBought = fullyBought;
+    } catch (err) {
+      container.innerHTML = `<div class="empty-msg">Failed to load shopping list: ${err.message}</div>`;
+    }
+  }
+
+  function renderShopListSections(rows) {
+    const container = document.getElementById('shopListSections');
+    if (rows.length === 0) {
+      container.innerHTML = '<div class="empty-msg">Nothing on the shopping list yet -- add items above, or from a job\'s materials-required panel.</div>';
+      return;
+    }
+    const sections = { autoparts: [], scrapyard: [], unspecified: [] };
+    rows.forEach((r) => sections[shopListSection(r.catalogue_items)].push(r));
+
+    const titles = { autoparts: 'Autoparts Store', scrapyard: 'Scrapyard', unspecified: 'Source not set' };
+    container.innerHTML = ['autoparts', 'scrapyard', 'unspecified'].map((key) => {
+      if (sections[key].length === 0) return '';
+      const rowsHtml = sections[key].map((r) => `
+        <div class="shop-row ${r.bought ? 'bought' : ''}" data-id="${r.id}">
+          <input type="checkbox" class="sr-bought" data-id="${r.id}" ${r.bought ? 'checked' : ''} />
+          <span class="sr-name">${r.catalogue_items?.name || 'Unknown item'}</span>
+          <span class="sr-qty">${r.quantity}x</span>
+          <button type="button" class="sr-remove" data-id="${r.id}">✕</button>
+        </div>
+      `).join('');
+      return `<div class="shop-section"><h3>${titles[key]}</h3>${rowsHtml}</div>`;
+    }).join('');
+
+    container.querySelectorAll('.sr-bought').forEach((cb) => {
+      cb.addEventListener('change', async () => {
+        try {
+          await setShoppingListItemBought(cb.dataset.id, cb.checked, session?.id);
+          await loadShoppingList();
+        } catch (err) {
+          alert(`Failed to update: ${err.message}`);
+        }
+      });
+    });
+    container.querySelectorAll('.sr-remove').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        try {
+          await removeFromShoppingList(btn.dataset.id);
+          await loadShoppingList();
+        } catch (err) {
+          alert(`Failed to remove: ${err.message}`);
+        }
+      });
+    });
+  }
+
+  // ---- Add item to shopping list by search ----
+  const shopAddInput = document.getElementById('shopAddInput');
+  const shopSuggestList = document.getElementById('shopSuggestList');
+  shopAddInput.addEventListener('input', () => {
+    clearTimeout(shopAddInput._t);
+    const q = shopAddInput.value.trim();
+    if (!q) { shopSuggestList.style.display = 'none'; return; }
+    shopAddInput._t = setTimeout(async () => {
+      try {
+        const results = await listCatalogueItems({ search: q, activeOnly: true });
+        if (results.length === 0) { shopSuggestList.style.display = 'none'; return; }
+        shopSuggestList.innerHTML = '';
+        results.slice(0, 10).forEach((item) => {
+          const el = document.createElement('div');
+          el.className = 'shop-suggest-item';
+          el.innerHTML = `${item.name}<div class="sub">${sourceStoreLabel(item) || 'Source not set'}</div>`;
+          el.addEventListener('click', async () => {
+            shopSuggestList.style.display = 'none';
+            shopAddInput.value = '';
+            try {
+              await addToShoppingList(item.id, 1, session?.id);
+              await loadShoppingList();
+            } catch (err) {
+              alert(`Failed to add: ${err.message}`);
+            }
+          });
+          shopSuggestList.appendChild(el);
+        });
+        shopSuggestList.style.display = 'block';
+      } catch (err) { /* live-suggest failure is silent */ }
+    }, 200);
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.suggest-wrap')) shopSuggestList.style.display = 'none';
+  });
+
+  // ---- Export as .txt ----
+  document.getElementById('shopExportBtn').addEventListener('click', async () => {
+    try {
+      const rows = await listShoppingList();
+      if (rows.length === 0) { alert('Nothing on the shopping list yet.'); return; }
+      const sections = { autoparts: [], scrapyard: [], unspecified: [] };
+      rows.forEach((r) => sections[shopListSection(r.catalogue_items)].push(r));
+      const titles = { autoparts: 'Autoparts Store', scrapyard: 'Scrapyard', unspecified: 'Source not set' };
+      const lines = [`Shopping list — ${new Date().toLocaleDateString('en-GB')}`, ''];
+      ['autoparts', 'scrapyard', 'unspecified'].forEach((key) => {
+        if (sections[key].length === 0) return;
+        lines.push(titles[key] + ':');
+        sections[key].forEach((r) => {
+          lines.push(`  ${r.bought ? '[x]' : '[ ]'} ${r.quantity} x ${r.catalogue_items?.name || 'Unknown item'}`);
+        });
+        lines.push('');
+      });
+      const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `shopping-list-${new Date().toISOString().slice(0, 10)}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Failed to export: ${err.message}`);
+    }
+  });
+
+  // ---- Convert bought items to stock ----
+  const convertModalBackdrop = document.getElementById('convertModalBackdrop');
+  let convertRowsData = [];
+
+  function openConvertModal(boughtRows) {
+    convertRowsData = boughtRows;
+    const container = document.getElementById('convertRows');
+    container.innerHTML = boughtRows.map((r, idx) => {
+      const item = r.catalogue_items;
+      const defaultSource = shopListSection(item) === 'scrapyard' ? 'scrapyard' : 'autoparts_store';
+      const sourceOptions = PURCHASE_SOURCE_TYPES
+        .filter((s) => s.value !== 'private_citizen')
+        .map((s) => `<option value="${s.value}" ${s.value === defaultSource ? 'selected' : ''}>${s.label}</option>`).join('');
+      return `
+        <div class="convert-row" data-idx="${idx}">
+          <span class="cr-name">${item?.name || 'Unknown item'}</span>
+          <span class="cr-qty">${r.quantity}x</span>
+          <select class="cr-source">${sourceOptions}</select>
+          <input type="number" class="cr-cost" min="0" step="1" value="${item?.purchase_cost ?? ''}" placeholder="Price each" />
+        </div>
+      `;
+    }).join('');
+    convertModalBackdrop.classList.add('open');
+  }
+
+  document.getElementById('shopConvertBtn').addEventListener('click', async () => {
+    const rows = await listShoppingList();
+    const boughtRows = rows.filter((r) => r.bought);
+    if (boughtRows.length === 0) { alert('No bought items to convert yet.'); return; }
+    openConvertModal(boughtRows);
+  });
+
+  document.getElementById('convertCancelBtn').addEventListener('click', () => {
+    convertModalBackdrop.classList.remove('open');
+  });
+  convertModalBackdrop.addEventListener('click', (e) => { if (e.target === convertModalBackdrop) convertModalBackdrop.classList.remove('open'); });
+
+  document.getElementById('convertConfirmBtn').addEventListener('click', async () => {
+    const rowEls = document.querySelectorAll('#convertRows .convert-row');
+    const entries = Array.from(rowEls).map((el) => ({
+      idx: Number(el.dataset.idx),
+      source: el.querySelector('.cr-source').value,
+      cost: el.querySelector('.cr-cost').value
+    }));
+    for (const e of entries) {
+      if (e.cost === '' || isNaN(Number(e.cost)) || Number(e.cost) < 0) {
+        alert(`Enter the price paid for "${convertRowsData[e.idx].catalogue_items?.name}".`);
+        return;
+      }
+    }
+    const btn = document.getElementById('convertConfirmBtn');
+    btn.disabled = true;
+    btn.textContent = 'Adding to stock…';
+    try {
+      for (const e of entries) {
+        const row = convertRowsData[e.idx];
+        await recordPurchase({
+          itemId: row.catalogue_items.id, quantity: Number(row.quantity), unitCost: Number(e.cost),
+          sourceType: e.source, performedBy: session?.id, notes: 'Converted from shopping list'
+        });
+      }
+      logActivity({
+        actorId: session?.id, action: 'shopping_list_converted', entityType: 'catalogue_item', entityId: null,
+        summary: `${session?.employee_name || 'Someone'} converted ${convertRowsData.length} shopping-list item type${convertRowsData.length === 1 ? '' : 's'} into stock`
+      });
+      await clearShoppingListItems(convertRowsData.map((r) => r.id));
+      convertModalBackdrop.classList.remove('open');
+      wasFullyBought = false;
+      await loadShoppingList();
+    } catch (err) {
+      alert(`Failed to add to stock: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Confirm & add to stock';
+    }
+  });
+
   // hasAreaAccess is DB-backed (role_permissions, sql/027) -- real
   // enforcement is RLS, this just decides what to render.
   (async () => {
     if (!(await hasAreaAccess(session, 'purchasing'))) {
-      document.querySelector('.layout').innerHTML = '<div class="empty-msg" style="padding:60px; text-align:center;">This page is restricted to your role.</div>';
+      document.querySelector('.tabs').style.display = 'none';
+      document.querySelector('.tab-panel.active').innerHTML = '<div class="empty-msg" style="padding:60px; text-align:center;">This page is restricted to your role.</div>';
       return;
     }
     showCategories();

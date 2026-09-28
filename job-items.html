@@ -295,6 +295,7 @@
 <script src="js/shift.js"></script>
 <script src="js/catalogue.js"></script>
 <script src="js/services.js"></script>
+<script src="js/shoppingList.js"></script>
 <script src="js/performanceBuild.js"></script>
 <script>
   const session = requireSession();
@@ -555,31 +556,35 @@
   const MATERIALS_REQUIRED_STATUSES = ['approved', 'work_in_progress', 'waiting_for_parts'];
   let lastQuoteLines = [];
 
-  function exportMaterialsAsTxt() {
-    const lines = lastQuoteLines.map((line) => {
-      const name = line.catalogue_items?.name || 'Unknown item';
-      const store = line.catalogue_items ? sourceStoreLabel(line.catalogue_items) : '';
-      return `${line.quantity} x ${name}${store ? ` (${store})` : ''}`;
-    });
-    const header = `Job #${job?.job_number ?? ''} materials required — ${new Date().toLocaleDateString('en-GB')}`;
-    const text = [header, '', ...lines].join('\n') + '\n';
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `job-${job?.job_number ?? jobId}-materials.txt`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+  // Sends this leg's materials to the shopping list (purchasing.html),
+  // conglomerating quantities with anything already there from other jobs
+  // -- the .txt export itself now lives on that list (more useful to a
+  // stocker as one combined list than one job's worth at a time).
+  async function addMaterialsToShoppingList() {
+    const btn = document.getElementById('addToShopListBtn');
+    btn.disabled = true;
+    btn.textContent = 'Adding…';
+    try {
+      await addJobItemsToShoppingList(lastQuoteLines, session?.id);
+      logActivity({
+        actorId: session?.id, action: 'materials_added_to_shopping_list', entityType: 'job', entityId: jobId,
+        summary: `${session?.employee_name || 'Someone'} added Job #${job?.job_number}'s materials to the shopping list`
+      });
+      btn.textContent = 'Added ✓';
+      setTimeout(() => { btn.textContent = 'Add to shopping list'; btn.disabled = false; }, 1500);
+    } catch (err) {
+      alert(`Failed to add to shopping list: ${err.message}`);
+      btn.disabled = false;
+      btn.textContent = 'Add to shopping list';
+    }
   }
 
   function renderExportButton() {
     const area = document.getElementById('exportBtnArea');
     const inMaterialsMode = currentLeg && MATERIALS_REQUIRED_STATUSES.includes(currentLeg.status);
     if (inMaterialsMode && lastQuoteLines.length > 0) {
-      area.innerHTML = '<button type="button" class="export-txt-btn" id="exportTxtBtn">Export as .txt</button>';
-      document.getElementById('exportTxtBtn').addEventListener('click', exportMaterialsAsTxt);
+      area.innerHTML = '<button type="button" class="export-txt-btn" id="addToShopListBtn">Add to shopping list</button>';
+      document.getElementById('addToShopListBtn').addEventListener('click', addMaterialsToShoppingList);
     } else {
       area.innerHTML = '';
     }
