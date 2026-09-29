@@ -54,6 +54,16 @@ function staffRoleLabel(value) {
   return STAFF_ROLES.find((r) => r.value === value)?.label || value;
 }
 
+// "Manager and above" -- the app has no ordinal rank field on STAFF_ROLES
+// (roles are gated per-area via role_permissions, not by a hierarchy
+// comparison), so this is a plain explicit list for the one place that
+// genuinely does need a tier check: customers.html gating retire/transfer
+// to management, everyone else keeps read-only access to the same page.
+const MANAGEMENT_ROLES = ['manager', 'boss'];
+function isManagementRole(role) {
+  return MANAGEMENT_ROLES.includes(role);
+}
+
 // Which areas exist as gated pages, and (for nav hiding) which page each
 // one is. Access per role is configurable from the Staff page's permissions
 // matrix (role_permissions table, sql/027) rather than hardcoded -- these
@@ -159,6 +169,63 @@ async function createCustomer({ name, phone, notes }) {
     .single();
   if (error) throw new Error(error.message);
   return data;
+}
+
+// Full browsable list for customers.html -- unlike searchCustomers() (which
+// requires a query and caps at 10 for the check-in autocomplete), this
+// supports an empty search (browse everything) and an includeInactive
+// toggle so a retired/merged customer can still be found and reviewed.
+async function listAllCustomers({ search, includeInactive } = {}) {
+  let query = sb.from('customers').select('customer_id, customer_name, phone, notes, active').order('customer_name');
+  if (!includeInactive) query = query.eq('active', true);
+  const q = (search || '').trim();
+  if (q) query = query.or(`customer_name.ilike.%${q}%,phone.ilike.%${q}%`);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function updateCustomer(customerId, { name, phone, notes }) {
+  const { error } = await sb
+    .from('customers')
+    .update({ customer_name: name, phone: phone || null, notes: notes || null })
+    .eq('customer_id', customerId);
+  if (error) throw new Error(error.message);
+}
+
+// Retire, never delete -- same convention as jobs/catalogue_items/services
+// elsewhere in this app (there's no delete grant on customers at all).
+async function setCustomerActive(customerId, active) {
+  const { error } = await sb.from('customers').update({ active }).eq('customer_id', customerId);
+  if (error) throw new Error(error.message);
+}
+
+// Moves every vehicle and job from one customer onto another (the
+// "vehicle got checked in under the wrong customer record" case) and
+// retires the now-empty source, mirroring the one-off merge
+// sql/036_customer_name_cleanup.sql did by hand for duplicate customers.
+// Returns counts so the caller can show what actually moved.
+async function transferCustomerContents(fromId, toId) {
+  if (fromId === toId) throw new Error('Cannot transfer a customer to themselves.');
+
+  const { data: vehiclesMoved, error: vErr } = await sb
+    .from('owned_vehicles')
+    .update({ owner_id: toId })
+    .eq('owner_id', fromId)
+    .select('owned_vehicle_id');
+  if (vErr) throw new Error(vErr.message);
+
+  const { data: jobsMoved, error: jErr } = await sb
+    .from('jobs')
+    .update({ customer_id: toId })
+    .eq('customer_id', fromId)
+    .select('id');
+  if (jErr) throw new Error(jErr.message);
+
+  const { error: retireError } = await sb.from('customers').update({ active: false }).eq('customer_id', fromId);
+  if (retireError) throw new Error(retireError.message);
+
+  return { vehiclesMoved: vehiclesMoved.length, jobsMoved: jobsMoved.length };
 }
 
 async function searchVehicleByRegistration(registration) {

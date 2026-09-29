@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Customers</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; flex-wrap: wrap; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary, .btn.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+
+  .actions-row { padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; }
+  .search-group { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 240px; }
+  .search-group input[type="text"] { flex: 1; max-width: 320px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); padding: 9px 12px; border-radius: 8px; font-size: 13px; }
+  .search-group label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+
+  main { padding: 24px; max-width: 900px; margin: 0 auto; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden; font-size: 13px; }
+  thead th { text-align: left; padding: 10px 14px; color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--panel-border); }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid var(--panel-border); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.03); cursor: pointer; }
+  tbody tr.inactive { opacity: 0.5; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .badge.active { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.inactive { background: rgba(156,150,145,0.15); color: var(--text-dim); }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 40px; text-align: center; }
+
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 10; padding: 24px; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px; width: 100%; max-width: 460px; max-height: 88vh; overflow-y: auto; }
+  .modal h2 { font-size: 16px; margin: 0 0 4px; }
+  .modal h3 { font-size: 12px; margin: 20px 0 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; border-top: 1px solid var(--panel-border); padding-top: 16px; }
+  .modal label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; margin-top: 12px; }
+  .modal label:first-of-type { margin-top: 0; }
+  .modal input, .modal textarea { width: 100%; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); padding: 10px; border-radius: 8px; font-size: 14px; font-family: inherit; }
+  .modal textarea { resize: vertical; min-height: 60px; }
+  .modal .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .modal .checkbox-row input { width: auto; }
+  .modal .actions { display: flex; gap: 10px; margin-top: 22px; }
+  .modal .actions button { flex: 1; padding: 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .modal .actions .save { background: var(--red); border: none; color: white; font-weight: 600; }
+  .modal .actions .cancel { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
+  .hint { color: var(--text-dim); font-size: 12px; margin: 4px 0 0; }
+
+  .detail-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--panel-border); }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-row .main { color: var(--text); }
+  .detail-row .sub { color: var(--text-dim); font-size: 12px; }
+  .detail-empty { color: var(--text-dim); font-size: 12px; padding: 6px 0; }
+  .more-note { color: var(--text-dim); font-size: 12px; padding: 6px 0 0; }
+
+  .danger-zone { margin-top: 6px; border: 1px solid rgba(216,31,39,0.3); background: rgba(216,31,39,0.06); border-radius: 10px; padding: 4px 14px 14px; }
+  .danger-zone h3 { border-top: none; padding-top: 0; margin-top: 14px; color: #f0888c; }
+
+  .transfer-results { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; max-height: 140px; overflow-y: auto; }
+  .transfer-result-row { background: var(--bg); border: 1px solid var(--panel-border); border-radius: 8px; padding: 8px 10px; font-size: 13px; cursor: pointer; }
+  .transfer-result-row:hover { border-color: var(--red); }
+  .transfer-selected { margin-top: 10px; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); border-radius: 8px; padding: 10px 12px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .transfer-selected button { background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 12px; text-decoration: underline; }
+  #transferConfirmBtn { width: 100%; margin-top: 12px; background: var(--red); border: none; color: white; padding: 10px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  #transferConfirmBtn:disabled { opacity: 0.5; cursor: default; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="my-dashboard.html">Home</a>
+      <a href="dashboard.html?area=repair">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="customers.html" class="active">Customers</a>
+      <a href="configure.html">Configure</a>
+      <a href="purchasing.html">Purchasing</a>
+      <a href="reports.html">Reports</a>
+      <a href="logs.html">Logs</a>
+      <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
+      <a href="accounts.html">Accounts</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <div class="actions-row">
+    <div class="search-group">
+      <input type="text" id="searchInput" placeholder="Search by name or phone…" />
+      <label><input type="checkbox" id="includeInactiveToggle" /> Show retired</label>
+    </div>
+    <button class="btn" id="newCustomerBtn">+ New Customer</button>
+  </div>
+
+  <main>
+    <table>
+      <thead><tr><th>Name</th><th>Phone</th><th>Notes</th><th>Status</th></tr></thead>
+      <tbody id="customersBody"></tbody>
+    </table>
+  </main>
+
+  <!-- New customer modal -->
+  <div class="modal-backdrop" id="newModalBackdrop">
+    <div class="modal">
+      <h2>New customer</h2>
+      <label>Name</label>
+      <input type="text" id="nName" />
+      <label>Phone</label>
+      <input type="text" id="nPhone" />
+      <label>Notes</label>
+      <textarea id="nNotes"></textarea>
+      <div class="actions">
+        <button class="cancel" id="newCancelBtn">Cancel</button>
+        <button class="save" id="newSaveBtn">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit customer modal -->
+  <div class="modal-backdrop" id="editModalBackdrop">
+    <div class="modal">
+      <h2 id="editModalTitle">Edit customer</h2>
+      <label>Name</label>
+      <input type="text" id="eName" />
+      <label>Phone</label>
+      <input type="text" id="ePhone" />
+      <label>Notes</label>
+      <textarea id="eNotes"></textarea>
+      <div class="actions">
+        <button class="cancel" id="editCancelBtn">Cancel</button>
+        <button class="save" id="editSaveBtn">Save</button>
+      </div>
+
+      <h3>Vehicles</h3>
+      <div id="eVehiclesList"></div>
+
+      <h3>Recent jobs</h3>
+      <div id="eJobsList"></div>
+
+      <div id="managementSection" class="danger-zone" style="display:none;">
+        <h3>Retire this customer</h3>
+        <div class="checkbox-row">
+          <input type="checkbox" id="eActive" />
+          <label style="margin:0;">Active</label>
+        </div>
+        <p class="hint">Unchecking and saving retires this customer (soft delete — nothing is ever permanently removed). Their vehicles and job history stay exactly as they are.</p>
+
+        <h3>Transfer vehicles &amp; jobs to another customer</h3>
+        <p class="hint">Use this when a vehicle (or several) was checked in under the wrong customer record. Moves every vehicle and job from this customer onto the one you pick, then retires this one.</p>
+        <input type="text" id="transferSearch" placeholder="Search for the correct customer…" />
+        <div class="transfer-results" id="transferResults"></div>
+        <div class="transfer-selected" id="transferSelected" style="display:none;">
+          <span id="transferSelectedName"></span>
+          <button type="button" id="transferClearBtn">change</button>
+        </div>
+        <button type="button" id="transferConfirmBtn" disabled>Transfer</button>
+      </div>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  // Whole page is viewable by every role (no hasAreaAccess gate) -- only
+  // the retire/transfer controls inside the edit modal are restricted,
+  // per "everybody can view, manager+ can delete or transfer".
+  const canManage = isManagementRole(session ? session.role : null);
+
+  function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  let customersList = [];
+  let editingId = null;
+  let transferTargetId = null;
+  let transferTargetName = null;
+  let searchDebounce = null;
+
+  async function loadCustomers() {
+    const search = document.getElementById('searchInput').value;
+    const includeInactive = document.getElementById('includeInactiveToggle').checked;
+    customersList = await listAllCustomers({ search, includeInactive });
+    const body = document.getElementById('customersBody');
+    if (customersList.length === 0) {
+      body.innerHTML = '<tr><td colspan="4"><div class="empty-msg">No customers found.</div></td></tr>';
+      return;
+    }
+    body.innerHTML = '';
+    customersList.forEach((c) => {
+      const tr = document.createElement('tr');
+      if (!c.active) tr.className = 'inactive';
+      tr.innerHTML = `
+        <td>${escapeHtml(c.customer_name)}</td>
+        <td>${escapeHtml(c.phone) || '—'}</td>
+        <td>${c.notes ? escapeHtml(c.notes.length > 60 ? c.notes.slice(0, 60) + '…' : c.notes) : ''}</td>
+        <td><span class="badge ${c.active ? 'active' : 'inactive'}">${c.active ? 'Active' : 'Retired'}</span></td>
+      `;
+      tr.addEventListener('click', () => openEditModal(c));
+      body.appendChild(tr);
+    });
+  }
+  document.getElementById('searchInput').addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(loadCustomers, 250);
+  });
+  document.getElementById('includeInactiveToggle').addEventListener('change', loadCustomers);
+
+  // ---- New customer modal ----
+  const newModalBackdrop = document.getElementById('newModalBackdrop');
+  document.getElementById('newCustomerBtn').addEventListener('click', () => {
+    document.getElementById('nName').value = '';
+    document.getElementById('nPhone').value = '';
+    document.getElementById('nNotes').value = '';
+    newModalBackdrop.classList.add('open');
+  });
+  document.getElementById('newCancelBtn').addEventListener('click', () => newModalBackdrop.classList.remove('open'));
+  newModalBackdrop.addEventListener('click', (e) => { if (e.target === newModalBackdrop) newModalBackdrop.classList.remove('open'); });
+
+  document.getElementById('newSaveBtn').addEventListener('click', async () => {
+    const name = document.getElementById('nName').value.trim();
+    const phone = document.getElementById('nPhone').value.trim();
+    const notes = document.getElementById('nNotes').value.trim();
+    if (!name) { alert('Name is required.'); return; }
+    try {
+      const created = await createCustomer({ name, phone, notes });
+      logActivity({
+        actorId: session?.id, action: 'customer_created', entityType: 'customer', entityId: created?.customer_id,
+        summary: `${session?.employee_name || 'Someone'} added customer "${name}"`
+      });
+      newModalBackdrop.classList.remove('open');
+      await loadCustomers();
+    } catch (err) {
+      alert(`Failed to create customer: ${err.message}`);
+    }
+  });
+
+  // ---- Edit customer modal ----
+  const editModalBackdrop = document.getElementById('editModalBackdrop');
+
+  async function openEditModal(c) {
+    editingId = c.customer_id;
+    transferTargetId = null;
+    transferTargetName = null;
+    document.getElementById('editModalTitle').textContent = c.customer_name;
+    document.getElementById('eName').value = c.customer_name || '';
+    document.getElementById('ePhone').value = c.phone || '';
+    document.getElementById('eNotes').value = c.notes || '';
+    document.getElementById('eActive').checked = c.active;
+    document.getElementById('transferSearch').value = '';
+    document.getElementById('transferResults').innerHTML = '';
+    document.getElementById('transferSelected').style.display = 'none';
+    document.getElementById('transferConfirmBtn').disabled = true;
+    document.getElementById('managementSection').style.display = canManage ? 'block' : 'none';
+    document.getElementById('eVehiclesList').innerHTML = '<div class="detail-empty">Loading…</div>';
+    document.getElementById('eJobsList').innerHTML = '<div class="detail-empty">Loading…</div>';
+    editModalBackdrop.classList.add('open');
+
+    try {
+      const [vehicles, jobs] = await Promise.all([listVehiclesForCustomer(c.customer_id), listJobsForCustomer(c.customer_id)]);
+      const vList = document.getElementById('eVehiclesList');
+      vList.innerHTML = vehicles.length === 0
+        ? '<div class="detail-empty">No vehicles on file.</div>'
+        : vehicles.map((v) => `
+          <div class="detail-row">
+            <span class="main">${escapeHtml(v.registration || 'No plate')}</span>
+            <span class="sub">${escapeHtml([v.make, v.model].filter(Boolean).join(' ') || 'Unknown')} ${v.class ? '· ' + escapeHtml(v.class) : ''}</span>
+          </div>
+        `).join('');
+
+      const jList = document.getElementById('eJobsList');
+      if (jobs.length === 0) {
+        jList.innerHTML = '<div class="detail-empty">No job history.</div>';
+      } else {
+        jList.innerHTML = jobs.slice(0, 10).map((j) => `
+          <div class="detail-row">
+            <span class="main">Job #${j.job_number} — ${escapeHtml(jobStageLabel(j.stage))}</span>
+            <span class="sub">${formatMoney(j.quoted_total)}</span>
+          </div>
+        `).join('') + (jobs.length > 10 ? `<div class="more-note">+${jobs.length - 10} more</div>` : '');
+      }
+    } catch (err) {
+      document.getElementById('eVehiclesList').innerHTML = `<div class="detail-empty">Failed to load: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  document.getElementById('editCancelBtn').addEventListener('click', () => editModalBackdrop.classList.remove('open'));
+  editModalBackdrop.addEventListener('click', (e) => { if (e.target === editModalBackdrop) editModalBackdrop.classList.remove('open'); });
+
+  document.getElementById('editSaveBtn').addEventListener('click', async () => {
+    if (!editingId) return;
+    const name = document.getElementById('eName').value.trim();
+    const phone = document.getElementById('ePhone').value.trim();
+    const notes = document.getElementById('eNotes').value.trim();
+    if (!name) { alert('Name is required.'); return; }
+    const activeChecked = document.getElementById('eActive').checked;
+    const customer = customersList.find((c) => c.customer_id === editingId);
+    const retiring = canManage && customer && customer.active && !activeChecked;
+    if (retiring && !confirm(`Retire "${customer.customer_name}"? Their vehicles and job history stay on record, but they'll stop showing up in customer search.`)) {
+      return;
+    }
+    try {
+      await updateCustomer(editingId, { name, phone, notes });
+      if (canManage && customer && customer.active !== activeChecked) {
+        await setCustomerActive(editingId, activeChecked);
+      }
+      logActivity({
+        actorId: session?.id, action: 'customer_updated', entityType: 'customer', entityId: editingId,
+        summary: `${session?.employee_name || 'Someone'} updated customer "${name}"${retiring ? ' and retired them' : ''}`
+      });
+      editModalBackdrop.classList.remove('open');
+      await loadCustomers();
+    } catch (err) {
+      alert(`Failed to save customer: ${err.message}`);
+    }
+  });
+
+  // ---- Transfer (management only) ----
+  document.getElementById('transferSearch').addEventListener('input', async (e) => {
+    const q = e.target.value;
+    const results = document.getElementById('transferResults');
+    if (!q.trim()) { results.innerHTML = ''; return; }
+    try {
+      const matches = (await searchCustomers(q)).filter((m) => m.customer_id !== editingId);
+      results.innerHTML = matches.length === 0
+        ? '<div class="detail-empty">No matches.</div>'
+        : matches.map((m) => `<div class="transfer-result-row" data-id="${m.customer_id}" data-name="${escapeHtml(m.customer_name)}">${escapeHtml(m.customer_name)}${m.phone ? ' · ' + escapeHtml(m.phone) : ''}</div>`).join('');
+      results.querySelectorAll('.transfer-result-row').forEach((row) => {
+        row.addEventListener('click', () => {
+          transferTargetId = row.dataset.id;
+          transferTargetName = row.dataset.name;
+          document.getElementById('transferSelectedName').textContent = `Transfer into: ${transferTargetName}`;
+          document.getElementById('transferSelected').style.display = 'flex';
+          document.getElementById('transferConfirmBtn').disabled = false;
+          document.getElementById('transferSearch').value = '';
+          results.innerHTML = '';
+        });
+      });
+    } catch (err) {
+      results.innerHTML = `<div class="detail-empty">${escapeHtml(err.message)}</div>`;
+    }
+  });
+
+  document.getElementById('transferClearBtn').addEventListener('click', () => {
+    transferTargetId = null;
+    transferTargetName = null;
+    document.getElementById('transferSelected').style.display = 'none';
+    document.getElementById('transferConfirmBtn').disabled = true;
+  });
+
+  document.getElementById('transferConfirmBtn').addEventListener('click', async () => {
+    if (!editingId || !transferTargetId) return;
+    const source = customersList.find((c) => c.customer_id === editingId);
+    const sourceName = source ? source.customer_name : 'this customer';
+    let vehicles, jobs;
+    try {
+      [vehicles, jobs] = await Promise.all([listVehiclesForCustomer(editingId), listJobsForCustomer(editingId)]);
+    } catch (err) {
+      alert(`Failed to load what would move: ${err.message}`);
+      return;
+    }
+    const msg = `Transfer ${vehicles.length} vehicle(s) and ${jobs.length} job(s) from "${sourceName}" to "${transferTargetName}"?\n\n"${sourceName}" will be retired afterward. This cannot be undone.`;
+    if (!confirm(msg)) return;
+    const btn = document.getElementById('transferConfirmBtn');
+    btn.disabled = true;
+    try {
+      const result = await transferCustomerContents(editingId, transferTargetId);
+      logActivity({
+        actorId: session?.id, action: 'customer_transferred', entityType: 'customer', entityId: editingId,
+        summary: `${session?.employee_name || 'Someone'} transferred ${result.vehiclesMoved} vehicle(s) and ${result.jobsMoved} job(s) from "${sourceName}" to "${transferTargetName}", then retired "${sourceName}"`
+      });
+      alert(`Transferred ${result.vehiclesMoved} vehicle(s) and ${result.jobsMoved} job(s) to ${transferTargetName}.`);
+      editModalBackdrop.classList.remove('open');
+      await loadCustomers();
+    } catch (err) {
+      alert(`Failed to transfer: ${err.message}`);
+      btn.disabled = false;
+    }
+  });
+
+  loadCustomers();
+</script>
+</body>
+</html>
