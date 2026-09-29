@@ -175,6 +175,49 @@
   .zone-panel { flex: 1; min-width: 220px; }
   .zone-panel .hint { color: var(--text-dim); font-size: 13px; }
   .zone-panel h3 { font-size: 14px; margin: 0 0 10px; }
+
+  /* Cursor-anchored popup opened by clicking a zone on the diagram -- this
+     is the actual mechanism for billing a zone's part(s) (see
+     openZonePopup below), not just a severity picker, so it carries both
+     the severity buttons (documentation, for the inspection report) and
+     the part + quantity + confirm controls (billing). Positioned via
+     inline left/top set from the click's clientX/clientY in JS; fixed so
+     it stays put regardless of page scroll. */
+  .zone-popup {
+    position: fixed;
+    z-index: 1000;
+    width: 300px;
+    max-width: calc(100vw - 24px);
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+  }
+  .zone-popup[hidden] { display: none; }
+  .zone-popup h3 { font-size: 14px; margin: 0 22px 10px 0; }
+  .zone-popup .popup-close {
+    position: absolute; top: 10px; right: 10px; background: none; border: none;
+    color: var(--text-dim); font-size: 18px; line-height: 1; cursor: pointer; padding: 4px;
+  }
+  .zone-popup .popup-close:hover { color: var(--text); }
+  .zone-popup .severity-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .zone-popup .severity-buttons button { padding: 7px 10px; font-size: 12px; flex: 1 1 auto; }
+  .zone-popup hr { border: none; border-top: 1px dashed var(--panel-border); margin: 14px 0; }
+  .zone-popup .parts-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em;
+    color: var(--text-dim); margin-bottom: 8px;
+  }
+  .zone-popup .parts-row { display: flex; gap: 8px; align-items: center; }
+  .zone-popup .parts-row select { flex: 1; min-width: 0; }
+  .zone-popup .parts-row input[type="number"] { width: 62px; flex: none; text-align: center; }
+  .zone-popup .confirm-add-btn {
+    margin-top: 10px; width: 100%; background: var(--red); border: none; color: white;
+    padding: 10px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .zone-popup .confirm-add-btn:hover { background: var(--red-dim); }
+  .zone-popup .no-parts-note { font-size: 12px; color: var(--text-dim); }
+  .zone-popup .flash-ok { color: var(--green); font-size: 12px; margin-top: 8px; }
   .body-overall-btn {
     background: var(--bg); border: 1px solid var(--panel-border); color: var(--text);
     padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; margin-bottom: 14px;
@@ -321,10 +364,11 @@
         </svg>
         <div class="zone-panel" id="zonePanel">
           <button type="button" class="body-overall-btn" id="bodyOverallBtn">Body (overall condition)</button>
-          <p class="hint">Click a zone on the diagram, or the button above, to record damage.</p>
+          <p class="hint">Click a zone on the diagram, or the button above, to record damage and add the part(s) needed to the bill.</p>
         </div>
       </div>
       <div class="findings-list" id="bodyFindingsList"></div>
+      <div class="zone-popup" id="zonePopup" hidden></div>
     </div>
 
     <div class="section">
@@ -381,7 +425,7 @@
 
     <div class="section" id="suggestedPartsSection" style="display:none;">
       <h2>Suggested parts</h2>
-      <p style="margin:0 0 14px; color:var(--text-dim); font-size:13px;">Anything the checklist marked below its best condition. Fail-tier items are added to the job automatically; advisory items are one click away.</p>
+      <p style="margin:0 0 14px; color:var(--text-dim); font-size:13px;">Anything the mechanical checklist marked below its best condition. Fail-tier items are added to the job automatically; advisory items are one click away. (Body/glass/lighting parts from the diagram above are added via the zone popup instead.)</p>
       <div id="suggestedPartsList"></div>
     </div>
 
@@ -479,27 +523,60 @@
     // the page -- only the zones (which change colour as findings are
     // tagged) get redrawn, so the silhouette is never at risk of being
     // wiped by an innerHTML reset.
-    renderBodyZones(document.getElementById('zonesGroup'), findings, openZonePanel);
+    renderBodyZones(document.getElementById('zonesGroup'), findings, (zone, evt) => {
+      openZonePopup(zone, evt ? evt.clientX : window.innerWidth / 2, evt ? evt.clientY : window.innerHeight / 2);
+    });
   }
 
-  document.getElementById('bodyOverallBtn').addEventListener('click', () => {
-    openZonePanel(BODY_ZONES.find((z) => z.key === 'body_overall'));
+  document.getElementById('bodyOverallBtn').addEventListener('click', (evt) => {
+    const rect = evt.currentTarget.getBoundingClientRect();
+    openZonePopup(BODY_ZONES.find((z) => z.key === 'body_overall'), rect.left, rect.bottom);
   });
 
-  function openZonePanel(zone) {
-    const finding = findings.find((f) => f.finding_type === 'body_area' && f.area === zone.key);
-    const panel = document.getElementById('zonePanel');
-    panel.innerHTML = `
-      <button type="button" class="body-overall-btn" id="bodyOverallBtn">Body (overall condition)</button>
-      <h3>${zone.label}</h3>
-      <div class="severity-buttons" id="severityButtons"></div>
-      ${finding ? '<button class="remove-finding" id="removeFindingBtn">Remove finding</button>' : ''}
-    `;
-    document.getElementById('bodyOverallBtn').addEventListener('click', () => {
-      openZonePanel(BODY_ZONES.find((z) => z.key === 'body_overall'));
-    });
+  // --- Zone popup: the cursor-anchored popover opened by clicking a zone
+  // (or the overall-body button). Carries the severity picker (for the
+  // inspection record) and, below it, the actual part + quantity + confirm
+  // controls -- clicking Confirm is what adds that part to the job's bill
+  // for this zone. Replaces the old approach of auto-adding on a 'severe'
+  // severity tag with an explicit, mechanic-driven choice every time.
+  function closeZonePopup() {
+    const popup = document.getElementById('zonePopup');
+    popup.hidden = true;
+    popup.innerHTML = '';
+  }
 
-    const btnWrap = document.getElementById('severityButtons');
+  function positionPopup(popup, x, y) {
+    popup.hidden = false;
+    const rect = popup.getBoundingClientRect();
+    const margin = 12;
+    let left = x + 14;
+    let top = y + 14;
+    if (left + rect.width + margin > window.innerWidth) left = x - rect.width - 14;
+    if (left < margin) left = margin;
+    if (top + rect.height + margin > window.innerHeight) top = window.innerHeight - rect.height - margin;
+    if (top < margin) top = margin;
+    popup.style.left = left + 'px';
+    popup.style.top = top + 'px';
+  }
+
+  async function openZonePopup(zone, anchorX, anchorY) {
+    const finding = findings.find((f) => f.finding_type === 'body_area' && f.area === zone.key);
+    const popup = document.getElementById('zonePopup');
+
+    popup.innerHTML = `
+      <button type="button" class="popup-close" id="popupCloseBtn">&times;</button>
+      <h3>${zone.label}</h3>
+      <div class="severity-buttons" id="popupSeverityButtons"></div>
+      ${finding ? '<button class="remove-finding" id="popupRemoveFindingBtn">Remove finding</button>' : ''}
+      <hr />
+      <div class="parts-label">Part(s) needed for repair</div>
+      <div id="popupPartsBody">Loading parts&hellip;</div>
+    `;
+    positionPopup(popup, anchorX, anchorY);
+
+    document.getElementById('popupCloseBtn').addEventListener('click', closeZonePopup);
+
+    const sevWrap = document.getElementById('popupSeverityButtons');
     SEVERITIES.forEach((sev) => {
       const btn = document.createElement('button');
       btn.textContent = sev.label;
@@ -511,16 +588,15 @@
           findings = await listFindings(inspection.id);
           renderDiagram();
           renderBodyFindings();
-          renderSuggestedParts();
-          openZonePanel(zone);
+          openZonePopup(zone, anchorX, anchorY);
         } catch (err) {
           showError(err.message);
         }
       });
-      btnWrap.appendChild(btn);
+      sevWrap.appendChild(btn);
     });
 
-    const removeBtn = document.getElementById('removeFindingBtn');
+    const removeBtn = document.getElementById('popupRemoveFindingBtn');
     if (removeBtn) {
       removeBtn.addEventListener('click', async () => {
         try {
@@ -528,14 +604,81 @@
           findings = await listFindings(inspection.id);
           renderDiagram();
           renderBodyFindings();
-          renderSuggestedParts();
-          openZonePanel(zone);
+          openZonePopup(zone, anchorX, anchorY);
         } catch (err) {
           showError(err.message);
         }
       });
     }
+
+    await renderPopupParts(zone);
+    // Re-clamp now that the parts body has replaced the "Loading…"
+    // placeholder and the popup's real height is known.
+    positionPopup(popup, anchorX, anchorY);
   }
+
+  async function renderPopupParts(zone) {
+    const serviceName = BODY_ZONE_SERVICE[zone.key];
+    const body = document.getElementById('popupPartsBody');
+    if (!serviceName) {
+      if (body) body.innerHTML = `<div class="no-parts-note">No catalogue part linked to this panel yet — add one manually from Job Items.</div>`;
+      return;
+    }
+    const materials = await getServiceMaterialsByName(serviceName);
+    // The popup may have been closed or moved to a different zone while
+    // this was in flight -- bail rather than write into a stale/gone node.
+    const stillOpen = document.getElementById('popupPartsBody');
+    if (!stillOpen) return;
+    if (materials.length === 0) {
+      stillOpen.innerHTML = `<div class="no-parts-note">No catalogue part linked to this panel yet — add one manually from Job Items.</div>`;
+      return;
+    }
+    stillOpen.innerHTML = `
+      <div class="parts-row">
+        <select id="popupPartSelect">
+          ${materials.map((m, i) => `<option value="${i}" data-qty="${m.quantity}">${m.catalogue_items?.name || 'Item'}${stockNoteText(m.catalogue_items)}</option>`).join('')}
+        </select>
+        <input type="number" id="popupPartQty" min="1" step="1" value="${materials[0].quantity}" />
+      </div>
+      <button type="button" class="confirm-add-btn" id="popupConfirmAddBtn">+ Add to job</button>
+      <div id="popupFlash"></div>
+    `;
+    const select = document.getElementById('popupPartSelect');
+    const qtyInput = document.getElementById('popupPartQty');
+    select.addEventListener('change', () => {
+      qtyInput.value = select.selectedOptions[0].dataset.qty;
+    });
+    document.getElementById('popupConfirmAddBtn').addEventListener('click', async () => {
+      clearError();
+      const m = materials[Number(select.value)];
+      const qty = Number(qtyInput.value);
+      if (!qty || qty <= 0) { showError('Enter a valid quantity.'); return; }
+      try {
+        const full = await getCatalogueItem(m.catalogue_item_id);
+        await addJobItem({
+          jobId, catalogueItem: full, quantity: qty,
+          sourcingChoice: null, performedBy: session ? session.id : null, jobType: 'repair'
+        });
+        jobItemsForLeg = await listJobItems(jobId, 'repair');
+        const flash = document.getElementById('popupFlash');
+        if (flash) flash.innerHTML = `<div class="flash-ok">&#10003; Added ${qty}x ${full.name} to the bill.</div>`;
+      } catch (err) {
+        showError(err.message);
+      }
+    });
+  }
+
+  document.addEventListener('click', (evt) => {
+    const popup = document.getElementById('zonePopup');
+    if (popup.hidden) return;
+    if (popup.contains(evt.target)) return;
+    if (evt.target.closest('.zone')) return; // the zone's own handler opens/repositions instead
+    if (evt.target.closest('#bodyOverallBtn')) return;
+    closeZonePopup();
+  });
+  document.addEventListener('keydown', (evt) => {
+    if (evt.key === 'Escape') closeZonePopup();
+  });
 
   function renderBodyFindings() {
     const list = document.getElementById('bodyFindingsList');
@@ -635,6 +778,10 @@
     const section = document.getElementById('suggestedPartsSection');
     const list = document.getElementById('suggestedPartsList');
 
+    // Body/glass/lighting zones (BODY_ZONES) are deliberately left out here
+    // -- billing those goes through the diagram's own zone popup now
+    // (openZonePopup), which adds the mechanic's chosen part + quantity
+    // directly rather than this section auto-adding/suggesting by tier.
     const candidates = [];
     findings.forEach((f) => {
       if (f.finding_type === 'mechanical' && f.item_label && (f.pass_status === 'advisory' || f.pass_status === 'fail')) {
@@ -643,14 +790,6 @@
         const serviceName = item && CHECKLIST_ITEM_SERVICE[item.key];
         if (item && serviceName) {
           candidates.push({ key: item.key, label: item.label, conditionText: f.condition, tier: f.pass_status, serviceName });
-        }
-      } else if (f.finding_type === 'body_area') {
-        const serviceName = BODY_ZONE_SERVICE[f.area];
-        if (serviceName) {
-          candidates.push({
-            key: f.area, label: bodyZoneLabel(f.area), conditionText: severityLabel(f.severity),
-            tier: bodyZoneTierFromSeverity(f.severity), serviceName
-          });
         }
       }
     });
@@ -713,6 +852,19 @@
     const threshold = catalogueItem?.reorder_threshold;
     if (threshold !== null && threshold !== undefined && stock <= threshold) {
       return ` <span style="color:var(--amber);">(low stock: ${stock} left)</span>`;
+    }
+    return '';
+  }
+
+  // Plain-text equivalent of stockNote() for use inside <option> labels,
+  // where HTML tags aren't parsed and would otherwise show up literally.
+  function stockNoteText(catalogueItem) {
+    const stock = catalogueItem?.stock_quantity;
+    if (stock === null || stock === undefined) return '';
+    if (stock <= 0) return ' (out of stock)';
+    const threshold = catalogueItem?.reorder_threshold;
+    if (threshold !== null && threshold !== undefined && stock <= threshold) {
+      return ` (low stock: ${stock} left)`;
     }
     return '';
   }

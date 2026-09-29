@@ -245,11 +245,12 @@ const CHECKLIST_ITEM_SERVICE = {
   rear_differential: 'Rear Differential Rebuild'
 };
 
-// Same idea for the vehicle diagram (BODY_ZONES) -- a tagged zone is
-// always a defect (there's no "pristine" finding, only the absence of
-// one), so every tagged zone is a candidate; severity decides suggest vs.
-// auto-add the same way pass_status does for the checklist (see
-// bodyZoneTierFromSeverity below). "Rear Window" is the existing service
+// Same idea for the vehicle diagram (BODY_ZONES) -- clicking a zone opens
+// a popup (inspection.html's openZonePopup) anchored at the cursor, which
+// looks up the mapped service's materials here and lets the mechanic pick
+// one, set a quantity, and confirm it onto the job's bill directly (no
+// separate auto-add/suggest step for body zones -- the popup click *is*
+// the confirmation). "Rear Window" is the existing service
 // for the rear windshield specifically (sql/030 links it to the same
 // 'Windshield' catalogue item as the front "Windshield" service) -- the
 // two rear side windows get their own new services instead (sql/034),
@@ -280,12 +281,6 @@ const BODY_ZONE_SERVICE = {
   left_taillight: 'Light Repair',
   right_taillight: 'Light Repair'
 };
-
-// minor/moderate -> suggest (one-click add); severe/replacement_required
-// -> auto-add, matching the checklist's advisory/fail split.
-function bodyZoneTierFromSeverity(severity) {
-  return (severity === 'severe' || severity === 'replacement_required') ? 'fail' : 'advisory';
-}
 
 // Cached per service name for the life of the page -- the mapping above is
 // static, so there's no reason to re-fetch a service's materials every
@@ -475,7 +470,7 @@ function renderBodyZones(zonesGroupEl, findings, onZoneClick) {
       el.style.strokeWidth = '1.5';
     }
     el.dataset.zone = zone.key;
-    if (onZoneClick) el.addEventListener('click', () => onZoneClick(zone));
+    if (onZoneClick) el.addEventListener('click', (evt) => onZoneClick(zone, evt));
     zonesGroupEl.appendChild(el);
   });
 }
