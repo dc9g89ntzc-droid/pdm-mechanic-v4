@@ -278,7 +278,7 @@
         <div id="quoteLines"></div>
         <div id="exportBtnArea"></div>
         <div class="quote-total"><span>Total</span><span id="quoteTotal">To confirm</span></div>
-        <div class="quote-total" id="estLabourRow" title="Rough preview based on each part's typical install time -- the real labour bill is based on actual hours worked and only exists once the job's complete." style="display:none; font-weight:400; font-size:12px; color:var(--text-dim); padding-top:2px;">
+        <div class="quote-total" id="estLabourRow" style="display:none; font-weight:400; font-size:12px; color:var(--text-dim); padding-top:2px;">
           <span>Est. labour</span><span id="estLabourValue"></span>
         </div>
         <div id="legActionArea" style="margin-top: 14px;"></div>
@@ -420,7 +420,16 @@
     renderBreadcrumb();
     mainArea.innerHTML = '<div class="empty-msg">Loading categories…</div>';
     try {
-      const categories = await listDistinctCategories();
+      let categories = await listDistinctCategories();
+      // Scoped to the categories that actually belong on this leg, plus
+      // Tools/Scrap Material which aren't leg-specific -- keeps a part from
+      // ending up added under the wrong job_type (and billed at the wrong
+      // install-charge rate). Falls back to showing everything if this
+      // leg's job_type has no mapped category, rather than showing nothing.
+      const relevantCategory = CATEGORY_FOR_JOB_TYPE[jobType];
+      if (relevantCategory) {
+        categories = categories.filter((c) => c === relevantCategory || ALWAYS_SHOWN_CATEGORIES.includes(c));
+      }
       if (categories.length === 0) { mainArea.innerHTML = '<div class="empty-msg">No catalogue categories yet.</div>'; return; }
       const grid = document.createElement('div');
       grid.className = 'tile-grid';
@@ -597,24 +606,24 @@
       lastQuoteLines = lines;
       renderExportButton();
       // Prefer the real flat fee from attached services (sql/043) once one
-      // exists -- it's an actual committed number, not a guess. Only falls
-      // back to the rough install-time preview when no service is attached
-      // to this leg at all.
+      // exists -- a hand-picked price for a named job. Otherwise the
+      // per-component install charge (sql/046/047) -- also a real,
+      // deterministic number, not a guess, the moment any part's added.
       const estLabourRow = document.getElementById('estLabourRow');
       const jobServicesForLeg = await listJobServices(jobId, jobType);
       const svcFee = serviceLabourFeeForType(jobServicesForLeg, jobType);
       const estLabourLabel = estLabourRow.querySelector('span');
       if (svcFee !== undefined) {
-        estLabourLabel.textContent = 'Labour (services)';
+        estLabourLabel.textContent = 'Labour (service)';
         estLabourRow.title = 'Flat labour fee from the service(s) attached to this leg.';
         document.getElementById('estLabourValue').textContent = svcFee !== null ? formatMoney(svcFee) : 'To confirm';
         estLabourRow.style.display = 'flex';
       } else {
-        const est = estimatedLabourFeeForItems(lines);
-        estLabourLabel.textContent = 'Est. labour';
-        estLabourRow.title = "Rough preview based on each part's typical install time -- the real labour bill is based on actual hours worked and only exists once the job's complete.";
-        if (est !== null) {
-          document.getElementById('estLabourValue').textContent = `~${formatMoney(est)}`;
+        const charge = installChargeForType(lines, jobType);
+        estLabourLabel.textContent = 'Labour (install charge)';
+        estLabourRow.title = `${INSTALL_CHARGE_BY_JOB_TYPE[jobType] != null ? formatMoney(INSTALL_CHARGE_BY_JOB_TYPE[jobType]) : '?'} per distinct component installed under this work type.`;
+        if (charge !== null) {
+          document.getElementById('estLabourValue').textContent = formatMoney(charge);
           estLabourRow.style.display = 'flex';
         } else {
           estLabourRow.style.display = 'none';

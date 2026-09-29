@@ -398,16 +398,15 @@
 
     const subtotal = combinedHasUnknown ? null : combinedSubtotal;
     document.getElementById('sheetSubtotal').textContent = formatMoney(subtotal);
-    // A leg with one or more attached services (sql/043) has a real flat
-    // labour figure even at quote time -- work hasn't started, but the
-    // price is already known, which is the whole point of the flat-rate
-    // model. A leg with no service attached still can't show anything
-    // (real hours genuinely don't exist yet), same as before.
+    // A leg with one or more attached services (sql/043) bills their flat
+    // fee; otherwise it's the per-component install charge (sql/046/047)
+    // -- both are real numbers known the moment a part's added, not
+    // something that has to wait for work to start or finish.
     const jobServices = await listJobServices(jobId);
-    const labourFee = totalLabourFee(legs, jobServices);
+    const labourFee = totalLabourFee(legs, jobServices, allLines);
     document.getElementById('sheetLabourFee').textContent = labourFee !== null
       ? formatMoney(labourFee)
-      : 'To confirm (billed on completion)';
+      : 'To confirm (add a part or a service)';
     document.getElementById('sheetTotal').textContent = (subtotal !== null && labourFee !== null)
       ? formatMoney(subtotal + labourFee)
       : 'To confirm';

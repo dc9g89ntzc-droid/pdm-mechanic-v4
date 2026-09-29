@@ -838,45 +838,69 @@ function formatMoney(value) {
   return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Shop policy (replacing the old flat-10%-of-parts model): labour is
-// billed as real hours worked on the job x a flat shop rate, the way real
-// shops price labour -- hours x rate, not a cut of the parts bill. The
-// rate sits comfortably above the mechanic's own guaranteed
-// SHIFT_PAY_RATE_PER_HOUR wage so the difference is the shop's own margin
-// on the labour line, separate from parts margin entirely.
+// Shop policy: labour is a flat charge per distinct component actually
+// installed, not time-based. Real hours worked (job_legs.work_started_at ->
+// completed_at) used to be the fallback for a leg with no Service attached,
+// but that penalised RP pacing rather than measuring what was actually
+// done -- a big multi-part build assembled in one focused sitting could
+// show LESS billable time than a quick repair left "in progress" while the
+// mechanic stepped away. LABOUR_RATE_PER_HOUR stays defined (only) as the
+// basis for the mechanic's commission-margin ratio below; it no longer
+// drives any bill directly.
 const LABOUR_RATE_PER_HOUR = 12500;
 
-// job_legs.work_started_at/completed_at are already recorded on every real
-// status transition (updateLegStatus below) -- this is genuine elapsed
-// time on that specific leg, not inferred from anything.
-function hoursForLeg(leg) {
-  if (!leg || !leg.work_started_at || !leg.completed_at) return 0;
-  const hours = (new Date(leg.completed_at) - new Date(leg.work_started_at)) / 3600000;
-  return hours > 0 ? hours : 0;
-}
+// Rate per distinct catalogue item added under that job_type -- quantity
+// doesn't matter (64 tappet sets on one Engine Building leg is still one
+// charge). Confirmed with Joanna directly; Engine Building is its own rate,
+// not tied to Performance's.
+const INSTALL_CHARGE_BY_JOB_TYPE = {
+  repair: 100,
+  customisation: 250,
+  performance: 450,
+  engine_building: 1000
+};
 
-// A job can have more than one leg (repair/customisation/performance/
-// engine_building), each with its own start/complete times -- the bill
-// covers every completed leg, not just one.
-function totalBillableHours(legs) {
-  return (legs || []).reduce((sum, leg) => sum + hoursForLeg(leg), 0);
+// Maps a leg's job_type to the matching catalogue_items.categories tag
+// (sql/046 synced these from Joanna's own master list) -- used to filter
+// the item picker to the categories that actually belong on this leg, so a
+// part doesn't end up added under the wrong job_type and billed at the
+// wrong install-charge rate. Tools/Scrap Material aren't leg-specific, so
+// they show regardless of which leg is open.
+const CATEGORY_FOR_JOB_TYPE = {
+  repair: 'Repair/Service',
+  customisation: 'Customisation',
+  performance: 'Performance',
+  engine_building: 'Engine Manufacture'
+};
+const ALWAYS_SHOWN_CATEGORIES = ['Tools', 'Scrap Material'];
+
+// jobItems is listJobItems()'s shape (job_type + catalogue_item_id present
+// on every row, no jobType filter applied when fetching -- this needs every
+// leg's items to bucket them itself). null (not 0) when nothing's been
+// added under this job_type yet, matching this app's "unknown stays null"
+// convention -- a job with genuinely zero components isn't a $0 charge, it's
+// not started.
+function installChargeForType(jobItems, jobType) {
+  const distinctIds = new Set(
+    (jobItems || []).filter((i) => i.job_type === jobType).map((i) => i.catalogue_item_id)
+  );
+  if (distinctIds.size === 0) return null;
+  const rate = INSTALL_CHARGE_BY_JOB_TYPE[jobType];
+  return rate != null ? distinctIds.size * rate : null;
 }
 
 // ---- Flat per-service labour (sql/043) ----
 //
-// Real-hours billing (above) penalises RP pacing rather than measuring
-// actual mechanic effort, so a leg with one or more attached services now
-// bills a flat sum of those services' own labour_fee instead -- the way a
-// real shop's flat-rate/book-time system works. A leg with no attached
-// service still falls back to hours-worked exactly as before, so nothing
-// changes for freeform performance/customisation builds that don't go
-// through a formal Service.
+// A leg with one or more attached services bills a flat sum of those
+// services' own labour_fee instead of the component count below -- a
+// hand-picked price for a named job (Turbo Install, Oil Change, ...) takes
+// priority over the generic per-component charge when one's been set up.
 //
 // Returns: undefined = no services attached to this leg (caller should
-// fall back to hours-based); null = services attached but at least one has
-// no labour_fee set yet ("To confirm", same convention as everywhere else
-// -- a partial number would misrepresent the real total); a number = the
-// known flat total.
+// fall back to the component-count install charge); null = services
+// attached but at least one has no labour_fee set yet ("To confirm", same
+// convention as everywhere else -- a partial number would misrepresent the
+// real total); a number = the known flat total.
 function serviceLabourFeeForType(jobServices, jobType) {
   const matching = (jobServices || []).filter((js) => js.job_type === jobType);
   if (matching.length === 0) return undefined;
@@ -885,19 +909,19 @@ function serviceLabourFeeForType(jobServices, jobType) {
 }
 
 // One total across every leg on the job: each leg independently prefers
-// its own attached services' flat fee, falling back to real hours worked
-// only for legs with no service attached. null once any leg's total is
-// genuinely unconfirmed (an unpriced service, or the whole job has neither
-// services nor any completed hours yet).
-function totalLabourFee(legs, jobServices) {
+// its own attached services' flat fee, falling back to the per-component
+// install charge for legs with no service attached. null once any leg's
+// total is genuinely unconfirmed (an unpriced service, or a leg with
+// neither a service nor any components added yet).
+function totalLabourFee(legs, jobServices, jobItems) {
   let total = 0;
   let anyUnknown = false;
   let anyKnown = false;
   (legs || []).forEach((leg) => {
     const svcFee = serviceLabourFeeForType(jobServices, leg.job_type);
     if (svcFee === undefined) {
-      const hours = hoursForLeg(leg);
-      if (hours > 0) { total += hours * LABOUR_RATE_PER_HOUR; anyKnown = true; }
+      const charge = installChargeForType(jobItems, leg.job_type);
+      if (charge != null) { total += charge; anyKnown = true; }
     } else if (svcFee === null) {
       anyUnknown = true;
     } else {
@@ -919,23 +943,6 @@ function commissionForLabourFee(fee) {
   return Math.round(fee * LABOUR_MARGIN_SHARE * 100) / 100;
 }
 
-// Rough pre-completion estimate only, for a leg with no service attached --
-// a preview based on each item's catalogue install_time_minutes x
-// LABOUR_RATE_PER_HOUR. The real bill still only exists once a leg's
-// actually complete (totalLabourFee's hours-based fallback) -- this is
-// just a heads-up number so quoting doesn't have to guess blind.
-// jobItems is listJobItems()'s shape: catalogue_items.install_time_minutes
-// must be selected for this to see anything (defaults missing rows to 0,
-// not null, since a genuinely-missing time estimate on one item shouldn't
-// blank the whole estimate -- it just under-counts that line).
-function estimatedLabourFeeForItems(jobItems) {
-  const minutes = (jobItems || []).reduce((sum, item) => {
-    const perUnit = item.catalogue_items?.install_time_minutes;
-    return sum + (perUnit != null ? Number(perUnit) * Number(item.quantity) : 0);
-  }, 0);
-  if (minutes <= 0) return null;
-  return Math.round((minutes / 60) * LABOUR_RATE_PER_HOUR * 100) / 100;
-}
 
 function formatDateTime(value) {
   if (!value) return 'Unknown';

@@ -325,16 +325,16 @@
     document.getElementById('sheetCustomer').textContent = job.customers?.customer_name || 'Unknown customer';
     document.getElementById('sheetVehicle').textContent = `${vehicle} — ${reg}`;
     // Labour: a leg with one or more attached services (sql/043) bills
-    // their flat labour_fee; a leg with none falls back to real hours
-    // worked (work_started_at -> completed_at) x the shop rate. Not
-    // knowable until either a service is attached or at least one leg is
-    // actually complete, same "null = To confirm" convention as every
-    // other unset price in this app. Computed once here and reused as-is
-    // when the bill is actually generated below, so the number shown on
-    // the receipt image and the number persisted/paid out never diverge.
+    // their flat labour_fee; a leg with none bills the per-component
+    // install charge (sql/046/047) instead -- both are real numbers as
+    // soon as something's added, no need to wait for the leg to actually
+    // finish. Computed once here and reused as-is when the bill is
+    // actually generated below, so the number shown on the receipt image
+    // and the number persisted/paid out never diverge.
     const legs = await listJobLegs(jobId);
     const jobServices = await listJobServices(jobId);
-    finalLabourFee = totalLabourFee(legs, jobServices);
+    const jobItemsForLabour = await listJobItems(jobId);
+    finalLabourFee = totalLabourFee(legs, jobServices, jobItemsForLabour);
     document.getElementById('sheetSubtotal').textContent = formatMoney(job.quoted_total);
     document.getElementById('sheetLabourFee').textContent = finalLabourFee !== null ? formatMoney(finalLabourFee) : 'To confirm';
     document.getElementById('sheetTotal').textContent = finalLabourFee !== null
