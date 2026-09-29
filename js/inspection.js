@@ -255,13 +255,13 @@ const CHECKLIST_ITEM_SERVICE = {
 // 'Windshield' catalogue item as the front "Windshield" service) -- the
 // two rear side windows get their own new services instead (sql/034),
 // mirroring Front Left/Right Window rather than reusing the ambiguous
-// "Rear Window" name for them. Two zones are still left deliberately
-// unmapped, per this project's "flag, don't guess" convention -- neither
-// has a real service or catalogue item to point at:
+// "Rear Window" name for them. Wheels map to the existing "Change Tire —
+// <corner>" services (sql/030/034), whose material is 'Base Tire' -- the
+// shop's spare, not the aftermarket 'Street Tire' used by the performance
+// "Tire Set (install)" service. One zone is still left deliberately
+// unmapped, per this project's "flag, don't guess" convention -- it has
+// no real service or catalogue item to point at:
 //   front_bumper / rear_bumper -- no bumper service/catalogue item exists.
-//   left_front_wheel / left_rear_wheel / right_front_wheel /
-//     right_rear_wheel -- diagram wheel damage isn't the same thing as a
-//     tire-wear service.
 const BODY_ZONE_SERVICE = {
   body_overall: 'Body Repair',
   front_left_door: 'Front Left Door',
@@ -279,7 +279,11 @@ const BODY_ZONE_SERVICE = {
   left_headlight: 'Light Repair',
   right_headlight: 'Light Repair',
   left_taillight: 'Light Repair',
-  right_taillight: 'Light Repair'
+  right_taillight: 'Light Repair',
+  left_front_wheel: 'Change Tire — Front Left',
+  right_front_wheel: 'Change Tire — Front Right',
+  left_rear_wheel: 'Change Tire — Rear Left',
+  right_rear_wheel: 'Change Tire — Rear Right'
 };
 
 // Cached per service name for the life of the page -- the mapping above is
