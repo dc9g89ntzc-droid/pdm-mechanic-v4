@@ -891,46 +891,33 @@ function installChargeForType(jobItems, jobType) {
 
 // ---- Flat per-service labour (sql/043) ----
 //
-// A leg with one or more attached services bills a flat sum of those
-// services' own labour_fee instead of the component count below -- a
-// hand-picked price for a named job (Turbo Install, Oil Change, ...) takes
-// priority over the generic per-component charge when one's been set up.
-//
-// Returns: undefined = no services attached to this leg (caller should
-// fall back to the component-count install charge); null = services
-// attached but at least one has no labour_fee set yet ("To confirm", same
-// convention as everywhere else -- a partial number would misrepresent the
-// real total); a number = the known flat total.
+// A leg with one or more *priced* services bills their flat labour_fee
+// instead of the component count below -- a hand-picked price for a named
+// job (Turbo Install, Oil Change, ...) takes priority over the generic
+// per-component charge once one's been set up. An attached service with no
+// price yet (every seeded service starts this way until Joanna sets real
+// values on services.html) is treated the same as no service at all --
+// falls back to the install charge, rather than blanking out an otherwise
+// known number just because someone attached a placeholder service.
 function serviceLabourFeeForType(jobServices, jobType) {
-  const matching = (jobServices || []).filter((js) => js.job_type === jobType);
-  if (matching.length === 0) return undefined;
-  if (matching.some((js) => js.labour_fee == null)) return null;
-  return matching.reduce((sum, js) => sum + Number(js.labour_fee), 0);
+  const priced = (jobServices || []).filter((js) => js.job_type === jobType && js.labour_fee != null);
+  if (priced.length === 0) return undefined;
+  return priced.reduce((sum, js) => sum + Number(js.labour_fee), 0);
 }
 
 // One total across every leg on the job: each leg independently prefers
-// its own attached services' flat fee, falling back to the per-component
-// install charge for legs with no service attached. null once any leg's
-// total is genuinely unconfirmed (an unpriced service, or a leg with
-// neither a service nor any components added yet).
+// its own priced services' flat fee, falling back to the per-component
+// install charge otherwise. null only once a leg has neither a priced
+// service nor any components added yet -- genuinely nothing to charge.
 function totalLabourFee(legs, jobServices, jobItems) {
   let total = 0;
-  let anyUnknown = false;
   let anyKnown = false;
   (legs || []).forEach((leg) => {
     const svcFee = serviceLabourFeeForType(jobServices, leg.job_type);
-    if (svcFee === undefined) {
-      const charge = installChargeForType(jobItems, leg.job_type);
-      if (charge != null) { total += charge; anyKnown = true; }
-    } else if (svcFee === null) {
-      anyUnknown = true;
-    } else {
-      total += svcFee;
-      anyKnown = true;
-    }
+    const legFee = svcFee !== undefined ? svcFee : installChargeForType(jobItems, leg.job_type);
+    if (legFee != null) { total += legFee; anyKnown = true; }
   });
-  if (anyUnknown || !anyKnown) return null;
-  return Math.round(total * 100) / 100;
+  return anyKnown ? Math.round(total * 100) / 100 : null;
 }
 
 // Commission is always the same shop-margin-share cut, whichever path

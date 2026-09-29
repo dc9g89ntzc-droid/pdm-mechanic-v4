@@ -616,7 +616,7 @@
       if (svcFee !== undefined) {
         estLabourLabel.textContent = 'Labour (service)';
         estLabourRow.title = 'Flat labour fee from the service(s) attached to this leg.';
-        document.getElementById('estLabourValue').textContent = svcFee !== null ? formatMoney(svcFee) : 'To confirm';
+        document.getElementById('estLabourValue').textContent = formatMoney(svcFee);
         estLabourRow.style.display = 'flex';
       } else {
         const charge = installChargeForType(lines, jobType);
