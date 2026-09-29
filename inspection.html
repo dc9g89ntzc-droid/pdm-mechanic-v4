@@ -660,6 +660,7 @@
           sourcingChoice: null, performedBy: session ? session.id : null, jobType: 'repair'
         });
         jobItemsForLeg = await listJobItems(jobId, 'repair');
+        renderBodyFindings();
         const flash = document.getElementById('popupFlash');
         if (flash) flash.innerHTML = `<div class="flash-ok">&#10003; Added ${qty}x ${full.name} to the bill.</div>`;
       } catch (err) {
@@ -680,24 +681,44 @@
     if (evt.key === 'Escape') closeZonePopup();
   });
 
-  function renderBodyFindings() {
+  // Cross-references each tagged zone against the job's real repair-leg
+  // items (matched via the zone's mapped service's materials, same lookup
+  // openZonePopup uses to build its dropdown) so this list reflects what
+  // was actually added -- and at what quantity -- not just what's tagged.
+  async function renderBodyFindings() {
     const list = document.getElementById('bodyFindingsList');
     const bodyFindings = findings.filter((f) => f.finding_type === 'body_area');
     if (bodyFindings.length === 0) {
       list.innerHTML = '<div class="empty-msg">No damage tagged yet.</div>';
       return;
     }
-    list.innerHTML = bodyFindings.map((f) => {
+
+    const currentItems = await listJobItems(jobId, 'repair');
+    if (document.getElementById('bodyFindingsList') !== list) return; // page moved on
+
+    const rows = await Promise.all(bodyFindings.map(async (f) => {
       const zone = BODY_ZONES.find((z) => z.key === f.area);
-      return `
-        <div class="finding-row">
-          <div class="main">
-            <span class="severity-tag" style="background:${severityColor(f.severity)}22; color:${severityColor(f.severity)};">${severityLabel(f.severity)}</span>
-            <span class="area">${zone ? zone.label : f.area}</span>
-          </div>
+      const serviceName = BODY_ZONE_SERVICE[f.area];
+      let partsText = '';
+      if (serviceName) {
+        const materials = await getServiceMaterialsByName(serviceName);
+        const matched = materials
+          .map((m) => currentItems.find((ji) => ji.catalogue_item_id === m.catalogue_item_id))
+          .filter(Boolean);
+        partsText = matched.map((ji) => `${ji.quantity}x ${ji.catalogue_items?.name || 'Item'}`).join(', ');
+      }
+      return { f, zone, partsText };
+    }));
+
+    list.innerHTML = rows.map(({ f, zone, partsText }) => `
+      <div class="finding-row">
+        <div class="main">
+          <span class="severity-tag" style="background:${severityColor(f.severity)}22; color:${severityColor(f.severity)};">${severityLabel(f.severity)}</span>
+          <span class="area">${zone ? zone.label : f.area}</span>
+          <div class="detail">${partsText || 'No part added to the bill yet'}</div>
         </div>
-      `;
-    }).join('');
+      </div>
+    `).join('');
   }
 
   // --- Standard checklist (Engine Bay / Undercarriage / Drivetrain / Performance Parts) ---
