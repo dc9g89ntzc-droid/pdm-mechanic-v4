@@ -124,6 +124,7 @@
   .low-stock-banner .lsb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; }
   .low-stock-banner .lsb-add { background: transparent; border: 1px solid var(--panel-border); color: var(--text); border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
   .low-stock-banner .lsb-add:hover { border-color: var(--amber); color: var(--amber); }
+  .low-stock-banner .lsb-toggle { background: none; border: none; color: var(--amber); font-size: 12px; cursor: pointer; padding: 8px 0 0; text-decoration: underline; }
   .shop-section { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
   .shop-section h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 0 0 12px; }
   .shop-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--panel-border); font-size: 13px; }
@@ -556,6 +557,9 @@
     el.innerHTML = `Est. total: <span class="amount">${formatMoney(total)}</span>${anyUnknown ? ' (some items have no price on file)' : ''}`;
   }
 
+  const LOW_STOCK_COLLAPSED_COUNT = 5;
+  let lowStockExpanded = false;
+
   async function renderLowStockSuggestions(currentRows) {
     const container = document.getElementById('lowStockSuggestions');
     try {
@@ -563,15 +567,18 @@
       const onListIds = new Set(currentRows.map((r) => r.catalogue_items?.id));
       const missing = lowStock.filter((item) => !onListIds.has(item.id));
       if (missing.length === 0) { container.innerHTML = ''; return; }
+      const shown = lowStockExpanded ? missing : missing.slice(0, LOW_STOCK_COLLAPSED_COUNT);
+      const hiddenCount = missing.length - shown.length;
       container.innerHTML = `
         <div class="low-stock-banner">
           <div class="lsb-title">Running low (${missing.length}) -- not yet on the shopping list</div>
-          ${missing.map((item) => `
+          ${shown.map((item) => `
             <div class="lsb-row">
               <span>${item.name} <span style="color:var(--text-dim);">(${item.stock_quantity} left)</span></span>
               <button type="button" class="lsb-add" data-id="${item.id}">+ Add</button>
             </div>
           `).join('')}
+          ${hiddenCount > 0 || lowStockExpanded ? `<button type="button" class="lsb-toggle" id="lsbToggleBtn">${hiddenCount > 0 ? `Show ${hiddenCount} more` : 'Show less'}</button>` : ''}
         </div>
       `;
       container.querySelectorAll('.lsb-add').forEach((btn) => {
@@ -586,6 +593,13 @@
           }
         });
       });
+      const toggleBtn = document.getElementById('lsbToggleBtn');
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+          lowStockExpanded = !lowStockExpanded;
+          renderLowStockSuggestions(currentRows);
+        });
+      }
     } catch (err) {
       container.innerHTML = '';
     }
