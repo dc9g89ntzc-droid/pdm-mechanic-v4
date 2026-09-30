@@ -355,7 +355,7 @@
         card.innerHTML = `
           ${img}
           <div class="item-name">${item.name}</div>
-          <div class="item-price">${item.purchase_cost !== null ? `Last paid ${formatMoney(item.purchase_cost)}` : 'No price on file yet'}</div>
+          <div class="item-price">${item.shop_price !== null ? `Last paid ${formatMoney(item.shop_price)}` : 'No shop price on file yet'}</div>
           <div class="item-meta ${low ? 'low' : ''}">Stock: ${item.stock_quantity}</div>
           <div class="add-row">
             <input type="number" class="qty-input" min="1" step="1" value="1" />
@@ -385,8 +385,8 @@
         name: item.name,
         imageUrl: item.image_url,
         quantity: qty,
-        unitCost: item.purchase_cost !== null ? item.purchase_cost : '',
-        importPrice: item.import_price
+        unitCost: item.shop_price !== null ? item.shop_price : '',
+        importPrice: item.purchase_cost
       });
     }
     renderCart();
@@ -554,24 +554,24 @@
     }
   }
 
-  // Rough totals only -- based on each item's last known purchase_cost/
-  // import_price, not necessarily what it'll actually cost this trip (same
-  // caveat as the convert-to-stock price field, which is what actually
-  // gets recorded). Two figures, matching the real two-step buying process:
-  // deposit the import total to stock the Autoparts/Scrapyard store, then
-  // (once bought at shop price) withdraw the shop-register total to
-  // reimburse whoever paid out of pocket.
+  // Rough totals only -- based on each item's last known purchase_cost
+  // (import price)/shop_price, not necessarily what it'll actually cost
+  // this trip (same caveat as the convert-to-stock price field, which is
+  // what actually gets recorded). Two figures, matching the real two-step
+  // buying process: deposit the import total to stock the Autoparts/
+  // Scrapyard store, then (once bought at shop price) withdraw the
+  // shop-register total to reimburse whoever paid out of pocket.
   function renderShopListTotal(rows) {
     const el = document.getElementById('shopListTotal');
     if (rows.length === 0) { el.textContent = ''; return; }
     let shopTotal = 0, importTotal = 0;
     let anyShopUnknown = false, anyImportUnknown = false;
     rows.forEach((r) => {
-      const shopCost = r.catalogue_items?.purchase_cost;
+      const shopCost = r.catalogue_items?.shop_price;
       if (shopCost == null) anyShopUnknown = true;
       else shopTotal += Number(shopCost) * Number(r.quantity);
 
-      const importCost = r.catalogue_items?.import_price;
+      const importCost = r.catalogue_items?.purchase_cost;
       if (importCost == null) anyImportUnknown = true;
       else importTotal += Number(importCost) * Number(r.quantity);
     });
@@ -846,7 +846,7 @@
           <span class="cr-name">${item?.name || 'Unknown item'}</span>
           <input type="number" class="cr-qty" min="0.01" step="1" value="${r.quantity}" title="Quantity actually bought -- edit if you picked up more (or less) than the list asked for" />
           <select class="cr-source">${sourceOptions}</select>
-          <input type="number" class="cr-cost" min="0" step="1" value="${item?.purchase_cost ?? ''}" placeholder="Price each" />
+          <input type="number" class="cr-cost" min="0" step="1" value="${item?.shop_price ?? ''}" placeholder="Price each" />
         </div>
       `;
     }).join('');

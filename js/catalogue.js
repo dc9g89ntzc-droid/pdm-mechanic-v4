@@ -84,7 +84,7 @@ async function listCatalogueItems(filters = {}) {
     .from('catalogue_items')
     .select(`
       id, name, description, categories, subcategory_id, end_uses,
-      sourcing, craft_time_minutes, craft_cost, purchase_cost, import_price, customer_price,
+      sourcing, craft_time_minutes, craft_cost, purchase_cost, shop_price, customer_price,
       install_time_minutes, usage_type, required_tool,
       stock_quantity, reorder_threshold, active, image_url, notes,
       available_autoparts, available_scrapyard,
@@ -194,17 +194,20 @@ async function recordInventoryTransaction({ itemId, transactionType, quantity, p
   if (error) throw new Error(error.message);
 }
 
-// Buying a part -- from the autoparts store or off a private citizen -- is
-// how the shop stocks items it has no craft recipe or configured cost for
-// yet. Logs the movement like any purchase, but also rolls the price
-// actually paid into catalogue_items.purchase_cost so later job costing
-// (effectiveUnitCost) and Accounts' COGS calc use a real, current price
-// instead of a stale or never-set one.
+// Buying a part -- from the autoparts store, scrapyard, or off a private
+// citizen -- is how the shop stocks items it has no craft recipe for yet.
+// Logs the movement like any purchase, and rolls the price actually paid
+// into catalogue_items.shop_price (what that store charges at its own
+// register, ratcheted to "whatever was actually paid most recently" the
+// same way this used to update purchase_cost). purchase_cost is left
+// alone -- it's the *import* price (what it costs to stock that store's
+// inventory in the first place), a separate, Joanna-maintained figure that
+// a purchase completing shouldn't silently overwrite.
 async function recordPurchase({ itemId, quantity, unitCost, sourceType, performedBy, notes }) {
   await recordInventoryTransaction({
     itemId, transactionType: 'purchased_in', quantity, performedBy, notes, unitCost, sourceType
   });
-  const { error } = await sb.from('catalogue_items').update({ purchase_cost: unitCost }).eq('id', itemId);
+  const { error } = await sb.from('catalogue_items').update({ shop_price: unitCost }).eq('id', itemId);
   if (error) throw new Error(error.message);
 }
 
@@ -274,7 +277,7 @@ async function listSubcategoriesForCategory(category) {
 async function listItemsForTile(category, subcategoryId) {
   const { data, error } = await sb
     .from('catalogue_items')
-    .select('id, name, description, sourcing, customer_price, craft_cost, purchase_cost, image_url, usage_type, stock_quantity, reorder_threshold, available_autoparts, available_scrapyard')
+    .select('id, name, description, sourcing, customer_price, craft_cost, purchase_cost, shop_price, image_url, usage_type, stock_quantity, reorder_threshold, available_autoparts, available_scrapyard')
     .contains('categories', [category])
     .eq('subcategory_id', subcategoryId)
     .eq('active', true)

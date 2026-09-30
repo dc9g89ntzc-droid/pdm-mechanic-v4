@@ -174,8 +174,8 @@
           <th>Sourcing</th>
           <th>Store</th>
           <th>Craft cost</th>
-          <th>Import price</th>
           <th>Purchase cost</th>
+          <th>Shop price</th>
           <th>Customer price</th>
           <th>Stock</th>
         </tr>
@@ -229,14 +229,14 @@
           <input type="number" id="fCraftCost" min="0" step="0.01" />
         </div>
         <div class="field">
-          <label>Import price</label>
-          <input type="number" id="fImportPrice" min="0" step="0.01" />
-          <p class="hint" style="margin:4px 0 0;">Cost to stock the Autoparts/Scrapyard store itself, before anyone can buy the item there.</p>
+          <label>Purchase cost (import price)</label>
+          <input type="number" id="fPurchaseCost" min="0" step="0.01" />
+          <p class="hint" style="margin:4px 0 0;">Cost to stock the Autoparts/Scrapyard store itself, before anyone can buy the item there. Feeds the customer-price markup formula.</p>
         </div>
         <div class="field">
-          <label>Purchase cost (shop price)</label>
-          <input type="number" id="fPurchaseCost" min="0" step="0.01" />
-          <p class="hint" style="margin:4px 0 0;">What the store charges to buy the item off its own shelf.</p>
+          <label>Shop price</label>
+          <input type="number" id="fShopPrice" min="0" step="0.01" />
+          <p class="hint" style="margin:4px 0 0;">What the store charges to buy the item off its own shelf -- what a mechanic pays out of pocket and gets reimbursed. Also updated automatically whenever a purchase is recorded.</p>
         </div>
         <div class="field">
           <label>Customer price</label>
@@ -426,8 +426,8 @@
         <td>${sourcingLabel(item.sourcing)}</td>
         <td>${storeLabel || '<span class="item-desc">—</span>'}</td>
         <td>${item.craft_cost !== null ? formatMoney(item.craft_cost) : '—'}</td>
-        <td>${item.import_price !== null ? formatMoney(item.import_price) : '—'}</td>
         <td>${item.purchase_cost !== null ? formatMoney(item.purchase_cost) : '—'}</td>
+        <td>${item.shop_price !== null ? formatMoney(item.shop_price) : '—'}</td>
         <td>${item.customer_price !== null ? formatMoney(item.customer_price) : '—'}</td>
         <td class="${low ? 'stock low' : 'stock'}">${item.stock_quantity}</td>
       `;
@@ -472,8 +472,8 @@
     document.getElementById('fRequiredTool').value = '';
     document.getElementById('fCraftTime').value = '';
     document.getElementById('fCraftCost').value = '';
-    document.getElementById('fImportPrice').value = '';
     document.getElementById('fPurchaseCost').value = '';
+    document.getElementById('fShopPrice').value = '';
     document.getElementById('fCustomerPrice').value = '';
     document.getElementById('fInstallTime').value = '';
     document.getElementById('fUsageType').value = 'single_use';
@@ -501,8 +501,8 @@
       required_tool: document.getElementById('fRequiredTool').value.trim() || null,
       craft_time_minutes: numOrNull(document.getElementById('fCraftTime').value),
       craft_cost: numOrNull(document.getElementById('fCraftCost').value),
-      import_price: numOrNull(document.getElementById('fImportPrice').value),
       purchase_cost: numOrNull(document.getElementById('fPurchaseCost').value),
+      shop_price: numOrNull(document.getElementById('fShopPrice').value),
       customer_price: numOrNull(document.getElementById('fCustomerPrice').value),
       install_time_minutes: numOrNull(document.getElementById('fInstallTime').value),
       usage_type: document.getElementById('fUsageType').value,
@@ -525,8 +525,8 @@
     document.getElementById('fRequiredTool').value = item.required_tool || '';
     document.getElementById('fCraftTime').value = item.craft_time_minutes ?? '';
     document.getElementById('fCraftCost').value = item.craft_cost ?? '';
-    document.getElementById('fImportPrice').value = item.import_price ?? '';
     document.getElementById('fPurchaseCost').value = item.purchase_cost ?? '';
+    document.getElementById('fShopPrice').value = item.shop_price ?? '';
     document.getElementById('fCustomerPrice').value = item.customer_price ?? '';
     document.getElementById('fInstallTime').value = item.install_time_minutes ?? '';
     document.getElementById('fUsageType').value = item.usage_type;
@@ -701,7 +701,7 @@
       }
       const item = await getCatalogueItem(editingItemId);
       document.getElementById('stockQtyDisplay').textContent = item.stock_quantity;
-      document.getElementById('fPurchaseCost').value = item.purchase_cost ?? '';
+      document.getElementById('fShopPrice').value = item.shop_price ?? '';
       document.getElementById('fTxnQty').value = '';
       document.getElementById('fTxnNotes').value = '';
       document.getElementById('fPurchaseUnitCost').value = '';

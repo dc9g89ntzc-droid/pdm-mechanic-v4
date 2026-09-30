@@ -1,0 +1,27 @@
+-- Run this once in the Supabase SQL editor for project ucvsnxexmvxpccyatmmk.
+--
+-- Corrects an earlier draft of this migration (which added the new column
+-- as "import_price" -- backwards). The real mapping, per Joanna:
+--   purchase_cost  -- UNCHANGED. This already IS the import price -- what
+--                      it costs to run the "import" that stocks the
+--                      Autoparts/Scrapyard store's own inventory. Keeps
+--                      feeding suggestedCustomerPrice()/sql/042's markup
+--                      formula exactly as before, and already has real
+--                      data for every item (from the original master-CSV
+--                      import) -- no backfill needed.
+--   customer_price -- UNCHANGED. What the mechanic shop bills the customer.
+--   shop_price     -- NEW. What the Autoparts/Scrapyard store charges at
+--                      its own register -- what the mechanic pays out of
+--                      pocket to pull the item off that store's shelf into
+--                      the mechanic shop's own stock, then gets reimbursed
+--                      for from the shop's own cash register. Nullable --
+--                      starts empty for every item ("To confirm" until
+--                      Joanna supplies real figures, same convention as
+--                      every other price column, formatMoney() in
+--                      js/workshop.js).
+--
+-- No grant/RLS changes needed -- sql/003_grants.sql's table-level grant and
+-- sql/025's "using (true)" update policy on catalogue_items already cover
+-- any column added to the table, this one included.
+
+alter table catalogue_items add column if not exists shop_price numeric(12,2);
