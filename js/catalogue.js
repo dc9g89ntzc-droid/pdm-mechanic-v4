@@ -84,7 +84,7 @@ async function listCatalogueItems(filters = {}) {
     .from('catalogue_items')
     .select(`
       id, name, description, categories, subcategory_id, end_uses,
-      sourcing, craft_time_minutes, craft_cost, purchase_cost, customer_price,
+      sourcing, craft_time_minutes, craft_cost, purchase_cost, import_price, customer_price,
       install_time_minutes, usage_type, required_tool,
       stock_quantity, reorder_threshold, active, image_url, notes,
       available_autoparts, available_scrapyard,

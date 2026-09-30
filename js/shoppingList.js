@@ -7,7 +7,7 @@ async function listShoppingList() {
     .from('shopping_list_items')
     .select(`
       id, quantity, bought, bought_at, created_at,
-      catalogue_items ( id, name, image_url, purchase_cost, available_autoparts, available_scrapyard )
+      catalogue_items ( id, name, image_url, purchase_cost, import_price, available_autoparts, available_scrapyard )
     `)
     .order('created_at');
   if (error) throw new Error(error.message);
