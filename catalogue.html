@@ -378,8 +378,16 @@
   document.getElementById('fPurchaseSource').innerHTML = PURCHASE_SOURCE_TYPES.map((s) => `<option value="${s.value}">${s.label}</option>`).join('');
 
   function updatePurchaseFieldsVisibility() {
-    const isPurchase = document.getElementById('fTxnType').value === 'purchased_in';
+    const txnType = document.getElementById('fTxnType').value;
+    const isPurchase = txnType === 'purchased_in';
     document.getElementById('purchaseDetailsRow').style.display = (editingItemId && isPurchase) ? 'flex' : 'none';
+    // 'adjustment' is for correcting a miscounted shelf, so it takes the
+    // real total rather than a delta you'd otherwise have to work out by
+    // hand -- every other type is a discrete event (crafted/purchased/used)
+    // and stays a signed +/- quantity.
+    const qtyInput = document.getElementById('fTxnQty');
+    qtyInput.placeholder = txnType === 'adjustment' ? 'New total stock quantity' : 'Quantity (+/-)';
+    qtyInput.min = txnType === 'adjustment' ? '0' : '';
   }
   document.getElementById('fTxnType').addEventListener('change', updatePurchaseFieldsVisibility);
 
@@ -680,34 +688,44 @@
   document.getElementById('addTxnBtn').addEventListener('click', async () => {
     if (!editingItemId) return;
     const transactionType = document.getElementById('fTxnType').value;
-    const quantity = Number(document.getElementById('fTxnQty').value || 0);
+    const rawQty = document.getElementById('fTxnQty').value;
     const notes = document.getElementById('fTxnNotes').value.trim();
-    if (!quantity) { alert('Enter a non-zero quantity.'); return; }
-
-    const isPurchase = transactionType === 'purchased_in';
-    const sourceType = isPurchase ? document.getElementById('fPurchaseSource').value : null;
-    const unitCost = isPurchase ? numOrNull(document.getElementById('fPurchaseUnitCost').value) : null;
-    if (isPurchase) {
-      if (quantity <= 0) { alert('Enter a positive quantity for a purchase.'); return; }
-      if (unitCost === null || unitCost < 0) { alert('Enter the price paid per unit.'); return; }
-    }
 
     try {
-      const itemName = document.getElementById('fName').value;
-      if (isPurchase) {
-        await recordPurchase({
-          itemId: editingItemId, quantity, unitCost, sourceType,
-          performedBy: session?.id, notes
-        });
-        logActivity({
-          actorId: session?.id, action: 'catalogue_item_purchased', entityType: 'catalogue_item', entityId: editingItemId,
-          summary: `${session?.employee_name || 'Someone'} bought ${quantity} × "${itemName}" from ${purchaseSourceLabel(sourceType)} at ${formatMoney(unitCost)} each`
-        });
+      if (transactionType === 'adjustment') {
+        // The field holds the real total here, not a delta -- stockQtyDisplay
+        // is kept in sync with catalogue_items.stock_quantity, so it's the
+        // baseline setStockQuantity() needs to work out the signed change.
+        const target = Number(rawQty);
+        if (rawQty === '' || isNaN(target) || target < 0) { alert('Enter the correct total stock quantity.'); return; }
+        const current = Number(document.getElementById('stockQtyDisplay').textContent);
+        const delta = await setStockQuantity(editingItemId, current, target, session?.id, notes);
+        if (delta === null) { alert('That’s already the stock quantity on record -- nothing to log.'); return; }
       } else {
-        await recordInventoryTransaction({
-          itemId: editingItemId, transactionType, quantity,
-          performedBy: session?.id, notes
-        });
+        const quantity = Number(rawQty || 0);
+        if (!quantity) { alert('Enter a non-zero quantity.'); return; }
+
+        const isPurchase = transactionType === 'purchased_in';
+        const itemName = document.getElementById('fName').value;
+        if (isPurchase) {
+          const sourceType = document.getElementById('fPurchaseSource').value;
+          const unitCost = numOrNull(document.getElementById('fPurchaseUnitCost').value);
+          if (quantity <= 0) { alert('Enter a positive quantity for a purchase.'); return; }
+          if (unitCost === null || unitCost < 0) { alert('Enter the price paid per unit.'); return; }
+          await recordPurchase({
+            itemId: editingItemId, quantity, unitCost, sourceType,
+            performedBy: session?.id, notes
+          });
+          logActivity({
+            actorId: session?.id, action: 'catalogue_item_purchased', entityType: 'catalogue_item', entityId: editingItemId,
+            summary: `${session?.employee_name || 'Someone'} bought ${quantity} × "${itemName}" from ${purchaseSourceLabel(sourceType)} at ${formatMoney(unitCost)} each`
+          });
+        } else {
+          await recordInventoryTransaction({
+            itemId: editingItemId, transactionType, quantity,
+            performedBy: session?.id, notes
+          });
+        }
       }
       const item = await getCatalogueItem(editingItemId);
       document.getElementById('stockQtyDisplay').textContent = item.stock_quantity;

@@ -115,8 +115,10 @@
   .shop-suggest-item:hover { background: rgba(216,31,39,0.08); }
   .shop-suggest-item .sub { color: var(--text-dim); font-size: 11px; }
 
-  .shop-list-total { color: var(--text-dim); font-size: 13px; white-space: nowrap; display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+  .shop-list-total { color: var(--text-dim); font-size: 13px; white-space: nowrap; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
   .shop-list-total .amount { color: var(--amber); font-weight: 600; }
+  .shop-list-total-section { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+  .shop-list-total-section .sltt-title { color: var(--text); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
   .low-stock-banner {
     background: rgba(240,165,44,0.08); border: 1px solid rgba(240,165,44,0.3); border-radius: 10px;
     padding: 12px 14px; margin-bottom: 16px; font-size: 13px;
@@ -127,7 +129,14 @@
   .low-stock-banner .lsb-add:hover { border-color: var(--amber); color: var(--amber); }
   .low-stock-banner .lsb-toggle { background: none; border: none; color: var(--amber); font-size: 12px; cursor: pointer; padding: 8px 0 0; text-decoration: underline; }
   .shop-section { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-  .shop-section h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 0 0 12px; }
+  .shop-section h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 0 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .transfer-cart-btn {
+    background: transparent; border: 1px solid var(--panel-border); color: var(--text);
+    border-radius: 6px; padding: 4px 10px; font-size: 11px; text-transform: none;
+    letter-spacing: normal; cursor: pointer; font-weight: 400;
+  }
+  .transfer-cart-btn:hover { border-color: var(--red); color: var(--red); }
+  .transfer-cart-btn:disabled { opacity: 0.5; cursor: default; }
   .shop-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--panel-border); font-size: 13px; }
   .shop-row:last-child { border-bottom: none; }
   .shop-row input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 auto; cursor: pointer; }
@@ -213,6 +222,7 @@
         <div class="cart-subtotal"><span>Deposit for import run</span><span id="cartImportTotal">$0.00</span></div>
         <div class="cart-total"><span>Withdraw from shop register</span><span id="cartTotal">$0.00</span></div>
         <button class="btn" id="completePurchaseBtn">Complete Purchase</button>
+        <button class="btn secondary" id="transferToListBtn">Transfer to shopping list &rarr;</button>
         <div class="cart-status" id="cartStatus"></div>
       </aside>
     </div>
@@ -509,6 +519,29 @@
     }
   });
 
+  // Moves the whole cart onto the shopping list instead of buying right
+  // now (e.g. picked out what's needed while browsing, but it's actually
+  // someone else's purchasing trip to make) -- inverse of "Transfer to
+  // cart" on the shopping list's own store sections.
+  document.getElementById('transferToListBtn').addEventListener('click', async () => {
+    if (cart.length === 0) return;
+    const btn = document.getElementById('transferToListBtn');
+    btn.disabled = true;
+    try {
+      for (const line of cart) {
+        await addToShoppingList(line.itemId, Number(line.quantity), session?.id);
+      }
+      cart = [];
+      renderCart();
+      showStatus('Moved to the shopping list.', 'success');
+      switchTab('shopList');
+    } catch (err) {
+      showStatus(`Failed to transfer to shopping list: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   // ---- Tabs ----
   document.getElementById('tabBuyBtn').addEventListener('click', () => switchTab('buy'));
   document.getElementById('tabShopListBtn').addEventListener('click', () => switchTab('shopList'));
@@ -529,6 +562,14 @@
     if (item.available_autoparts) return 'autoparts';
     if (item.available_scrapyard) return 'scrapyard';
     return 'unspecified';
+  }
+
+  const SHOP_SECTION_TITLES = { autoparts: 'Autoparts Store', scrapyard: 'Scrapyard', unspecified: 'Source not set' };
+
+  function groupByShopSection(rows) {
+    const sections = { autoparts: [], scrapyard: [], unspecified: [] };
+    rows.forEach((r) => sections[shopListSection(r.catalogue_items)].push(r));
+    return sections;
   }
 
   let wasFullyBought = false; // tracks the auto-popup transition, so it only fires once per completion, not on every render
@@ -557,28 +598,37 @@
   // Rough totals only -- based on each item's last known purchase_cost
   // (import price)/shop_price, not necessarily what it'll actually cost
   // this trip (same caveat as the convert-to-stock price field, which is
-  // what actually gets recorded). Two figures, matching the real two-step
-  // buying process: deposit the import total to stock the Autoparts/
-  // Scrapyard store, then (once bought at shop price) withdraw the
-  // shop-register total to reimburse whoever paid out of pocket.
+  // what actually gets recorded). Two figures per store, matching the real
+  // two-step buying process: deposit the import total to stock that
+  // store, then (once bought at shop price) withdraw the shop-register
+  // total to reimburse whoever paid out of pocket. Split by store since a
+  // deposit/withdrawal run is always one store at a time.
   function renderShopListTotal(rows) {
     const el = document.getElementById('shopListTotal');
     if (rows.length === 0) { el.textContent = ''; return; }
-    let shopTotal = 0, importTotal = 0;
-    let anyShopUnknown = false, anyImportUnknown = false;
-    rows.forEach((r) => {
-      const shopCost = r.catalogue_items?.shop_price;
-      if (shopCost == null) anyShopUnknown = true;
-      else shopTotal += Number(shopCost) * Number(r.quantity);
+    const sections = groupByShopSection(rows);
+    el.innerHTML = ['autoparts', 'scrapyard', 'unspecified'].map((key) => {
+      const sectionRows = sections[key];
+      if (sectionRows.length === 0) return '';
+      let shopTotal = 0, importTotal = 0;
+      let anyShopUnknown = false, anyImportUnknown = false;
+      sectionRows.forEach((r) => {
+        const shopCost = r.catalogue_items?.shop_price;
+        if (shopCost == null) anyShopUnknown = true;
+        else shopTotal += Number(shopCost) * Number(r.quantity);
 
-      const importCost = r.catalogue_items?.purchase_cost;
-      if (importCost == null) anyImportUnknown = true;
-      else importTotal += Number(importCost) * Number(r.quantity);
-    });
-    el.innerHTML = `
-      <div>Deposit for import run: <span class="amount">${formatMoney(importTotal)}</span>${anyImportUnknown ? ' + ?' : ''}</div>
-      <div>Withdraw from shop register: <span class="amount">${formatMoney(shopTotal)}</span>${anyShopUnknown ? ' (some items have no price on file)' : ''}</div>
-    `;
+        const importCost = r.catalogue_items?.purchase_cost;
+        if (importCost == null) anyImportUnknown = true;
+        else importTotal += Number(importCost) * Number(r.quantity);
+      });
+      return `
+        <div class="shop-list-total-section">
+          <div class="sltt-title">${SHOP_SECTION_TITLES[key]}</div>
+          <div>Deposit for import run: <span class="amount">${formatMoney(importTotal)}</span>${anyImportUnknown ? ' + ?' : ''}</div>
+          <div>Withdraw from shop register: <span class="amount">${formatMoney(shopTotal)}</span>${anyShopUnknown ? ' (some items have no price on file)' : ''}</div>
+        </div>
+      `;
+    }).join('');
   }
 
   const LOW_STOCK_COLLAPSED_COUNT = 5;
@@ -642,12 +692,11 @@
       renderShopListSelectionBar();
       return;
     }
-    const sections = { autoparts: [], scrapyard: [], unspecified: [] };
-    rows.forEach((r) => sections[shopListSection(r.catalogue_items)].push(r));
+    const sections = groupByShopSection(rows);
 
-    const titles = { autoparts: 'Autoparts Store', scrapyard: 'Scrapyard', unspecified: 'Source not set' };
     container.innerHTML = ['autoparts', 'scrapyard', 'unspecified'].map((key) => {
       if (sections[key].length === 0) return '';
+      const unboughtCount = sections[key].filter((r) => !r.bought).length;
       const rowsHtml = sections[key].map((r) => `
         <div class="shop-row ${r.bought ? 'bought' : ''}" data-id="${r.id}">
           <input type="checkbox" class="sr-bought" data-id="${r.id}"
@@ -663,8 +712,35 @@
           <button type="button" class="sr-remove" data-id="${r.id}">✕</button>
         </div>
       `).join('');
-      return `<div class="shop-section"><h3>${titles[key]}</h3>${rowsHtml}</div>`;
+      return `
+        <div class="shop-section">
+          <h3>${SHOP_SECTION_TITLES[key]}
+            ${unboughtCount > 0 ? `<button type="button" class="transfer-cart-btn" data-section="${key}">Transfer to cart &rarr;</button>` : ''}
+          </h3>
+          ${rowsHtml}
+        </div>
+      `;
     }).join('');
+
+    container.querySelectorAll('.transfer-cart-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const key = btn.dataset.section;
+        const unbought = sections[key].filter((r) => !r.bought);
+        if (unbought.length === 0) return;
+        btn.disabled = true;
+        try {
+          for (const r of unbought) {
+            addToCart(r.catalogue_items, r.quantity);
+            await removeFromShoppingList(r.id);
+          }
+          switchTab('buy');
+          await loadShoppingList();
+        } catch (err) {
+          alert(`Failed to transfer to cart: ${err.message}`);
+          btn.disabled = false;
+        }
+      });
+    });
 
     container.querySelectorAll('.sr-bought:not(:disabled)').forEach((cb) => {
       cb.addEventListener('change', () => {
@@ -802,13 +878,11 @@
     try {
       const rows = await listShoppingList();
       if (rows.length === 0) { alert('Nothing on the shopping list yet.'); return; }
-      const sections = { autoparts: [], scrapyard: [], unspecified: [] };
-      rows.forEach((r) => sections[shopListSection(r.catalogue_items)].push(r));
-      const titles = { autoparts: 'Autoparts Store', scrapyard: 'Scrapyard', unspecified: 'Source not set' };
+      const sections = groupByShopSection(rows);
       const lines = [`Shopping list — ${new Date().toLocaleDateString('en-GB')}`, ''];
       ['autoparts', 'scrapyard', 'unspecified'].forEach((key) => {
         if (sections[key].length === 0) return;
-        lines.push(titles[key] + ':');
+        lines.push(SHOP_SECTION_TITLES[key] + ':');
         sections[key].forEach((r) => {
           lines.push(`  ${r.bought ? '[x]' : '[ ]'} ${r.quantity} x ${r.catalogue_items?.name || 'Unknown item'}`);
         });

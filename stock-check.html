@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Stock Check</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary, .btn.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+  header button:hover, .btn:hover { background: var(--red-dim); }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 10px; padding: 16px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); align-items: center; }
+  .filters input { background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+  .filters input[type="text"] { flex: 1 1 280px; min-width: 200px; }
+  .filters label.checkbox { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+
+  main { padding: 20px 24px 60px; max-width: 980px; margin: 0 auto; }
+  .page-sub { color: var(--text-dim); font-size: 13px; margin-bottom: 16px; }
+
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden; font-size: 13px; }
+  thead th { text-align: left; padding: 10px 12px; color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--panel-border); }
+  tbody td { padding: 10px 12px; border-bottom: 1px solid var(--panel-border); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr.inactive { opacity: 0.5; }
+  .item-name { font-weight: 600; }
+  .item-desc { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; margin: 0 4px 2px 0; }
+  .current-qty { font-size: 14px; }
+  .current-qty.low { color: var(--red); font-weight: 600; }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 40px; text-align: center; }
+
+  .sc-row { display: flex; align-items: center; gap: 8px; }
+  .sc-row input[type="number"] { width: 80px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); padding: 7px 8px; border-radius: 6px; font-size: 13px; }
+  .sc-row input[type="number"].dirty { border-color: var(--amber); }
+  .sc-save { background: var(--red); border: none; color: white; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .sc-save:disabled { opacity: 0.5; cursor: default; }
+  .sc-flash { font-size: 12px; color: var(--green); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="my-dashboard.html">Home</a>
+      <a href="dashboard.html?area=repair">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="customers.html">Customers</a>
+      <a href="configure.html" class="active">Configure</a>
+      <a href="purchasing.html">Purchasing</a>
+      <a href="reports.html">Reports</a>
+      <a href="logs.html">Logs</a>
+      <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
+      <a href="accounts.html">Accounts</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <div class="filters">
+    <input type="text" id="searchInput" placeholder="Search items…" />
+    <label class="checkbox"><input type="checkbox" id="activeOnlyToggle" checked /> Active only</label>
+    <label class="checkbox"><input type="checkbox" id="lowStockOnlyToggle" /> Low/zero stock only</label>
+  </div>
+
+  <main>
+    <div class="page-sub">Type the real count and save -- this corrects stock straight to that total, it doesn't add or subtract.</div>
+    <table>
+      <thead>
+        <tr><th>Item</th><th>Current</th><th>Correct to</th></tr>
+      </thead>
+      <tbody id="itemsBody"></tbody>
+    </table>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
+<script src="js/catalogue.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  const itemsBody = document.getElementById('itemsBody');
+  const searchInput = document.getElementById('searchInput');
+  const activeOnlyToggle = document.getElementById('activeOnlyToggle');
+  const lowStockOnlyToggle = document.getElementById('lowStockOnlyToggle');
+
+  function currentFilters() {
+    return { search: searchInput.value, activeOnly: activeOnlyToggle.checked };
+  }
+
+  async function loadItems() {
+    itemsBody.innerHTML = '<tr><td colspan="3"><div class="empty-msg">Loading…</div></td></tr>';
+    try {
+      let items = await listCatalogueItems(currentFilters());
+      if (lowStockOnlyToggle.checked) {
+        items = items.filter((item) => item.stock_quantity <= 0 || (item.reorder_threshold !== null && item.stock_quantity <= item.reorder_threshold));
+      }
+      renderItems(items);
+    } catch (err) {
+      itemsBody.innerHTML = `<tr><td colspan="3"><div class="empty-msg">Failed to load items: ${err.message}</div></td></tr>`;
+    }
+  }
+
+  function renderItems(items) {
+    if (items.length === 0) {
+      itemsBody.innerHTML = '<tr><td colspan="3"><div class="empty-msg">No items match the current filters.</div></td></tr>';
+      return;
+    }
+    itemsBody.innerHTML = '';
+    items.forEach((item) => {
+      const tr = document.createElement('tr');
+      if (!item.active) tr.className = 'inactive';
+      const low = item.stock_quantity <= 0 || (item.reorder_threshold !== null && item.stock_quantity <= item.reorder_threshold);
+      const categoryBadges = (item.categories || [])
+        .map((c) => `<span class="badge" style="background:${c ? categoryColor(c) + '26' : '#333'}; color:${categoryColor(c)};">${c}</span>`)
+        .join('');
+      tr.innerHTML = `
+        <td>
+          <div class="item-name">${item.name}</div>
+          <div class="item-desc">${categoryBadges}</div>
+        </td>
+        <td><span class="current-qty ${low ? 'low' : ''}" data-current="${item.stock_quantity}">${item.stock_quantity}</span></td>
+        <td>
+          <div class="sc-row">
+            <input type="number" class="sc-qty" min="0" step="1" value="${item.stock_quantity}" />
+            <button type="button" class="sc-save" disabled>Save</button>
+            <span class="sc-flash"></span>
+          </div>
+        </td>
+      `;
+      const qtyInput = tr.querySelector('.sc-qty');
+      const saveBtn = tr.querySelector('.sc-save');
+      const currentEl = tr.querySelector('.current-qty');
+      const flash = tr.querySelector('.sc-flash');
+
+      function syncDirty() {
+        const dirty = qtyInput.value !== '' && Number(qtyInput.value) !== Number(currentEl.dataset.current);
+        qtyInput.classList.toggle('dirty', dirty);
+        saveBtn.disabled = !dirty;
+      }
+      qtyInput.addEventListener('input', () => { flash.textContent = ''; syncDirty(); });
+      qtyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !saveBtn.disabled) saveBtn.click(); });
+
+      saveBtn.addEventListener('click', async () => {
+        const current = Number(currentEl.dataset.current);
+        const target = Number(qtyInput.value);
+        if (qtyInput.value === '' || isNaN(target) || target < 0) { alert('Enter a valid quantity.'); return; }
+        saveBtn.disabled = true;
+        try {
+          const delta = await setStockQuantity(item.id, current, target, session?.id);
+          if (delta !== null) {
+            currentEl.dataset.current = target;
+            currentEl.textContent = target;
+            const nowLow = target <= 0 || (item.reorder_threshold !== null && target <= item.reorder_threshold);
+            currentEl.classList.toggle('low', nowLow);
+            flash.textContent = `${delta > 0 ? '+' : ''}${delta} logged`;
+          }
+          qtyInput.classList.remove('dirty');
+        } catch (err) {
+          alert(`Failed to save: ${err.message}`);
+          saveBtn.disabled = false;
+        }
+      });
+
+      itemsBody.appendChild(tr);
+    });
+  }
+
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchInput._t);
+    searchInput._t = setTimeout(loadItems, 250);
+  });
+  activeOnlyToggle.addEventListener('change', loadItems);
+  lowStockOnlyToggle.addEventListener('change', loadItems);
+
+  // hasAreaAccess is DB-backed (role_permissions, sql/027) -- real
+  // enforcement is RLS, this just decides what to render. Reuses the
+  // 'catalogue' area (same as catalogue.html) -- stock-check is just a
+  // faster way to do the same catalogue_items write catalogue.html's own
+  // stock ledger already allows, not a separate permission.
+  (async () => {
+    if (!(await hasAreaAccess(session, 'catalogue'))) {
+      document.querySelector('.filters').remove();
+      document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px;">This page is restricted to your role.</div>';
+      return;
+    }
+    loadItems();
+  })();
+</script>
+</body>
+</html>

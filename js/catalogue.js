@@ -211,6 +211,23 @@ async function recordPurchase({ itemId, quantity, unitCost, sourceType, performe
   if (error) throw new Error(error.message);
 }
 
+// Corrects a miscounted shelf to its real total, rather than logging a
+// discrete crafted/purchased/used event -- works out the signed delta from
+// currentQuantity and records it as a single 'adjustment' transaction (the
+// only primitive that actually exists for changing stock_quantity; there's
+// no absolute-set operation at the DB layer, see apply_inventory_transaction
+// in sql/008/025). Returns the delta recorded, or null if nothing changed.
+async function setStockQuantity(itemId, currentQuantity, newQuantity, performedBy, notes) {
+  const delta = Number(newQuantity) - Number(currentQuantity);
+  if (delta === 0) return null;
+  const correctionNote = `Corrected stock from ${currentQuantity} to ${newQuantity}`;
+  await recordInventoryTransaction({
+    itemId, transactionType: 'adjustment', quantity: delta,
+    performedBy, notes: notes ? `${correctionNote} — ${notes}` : correctionNote
+  });
+  return delta;
+}
+
 // ---- Reporting (foreman) ----
 
 // filters: { limit, fromDate, toDate, includeVoided }
