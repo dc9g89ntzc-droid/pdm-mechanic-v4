@@ -810,7 +810,21 @@
     const configSelect = document.getElementById('buildConfig');
     styleSelect.innerHTML = STYLE_OPTIONS.map((s) => `<option value="${s.value}">${s.label}</option>`).join('');
     valvetrainSelect.innerHTML = VALVETRAIN_OPTIONS.map((v) => `<option value="${v}">${v}</option>`).join('');
-    configSelect.innerHTML = ENGINE_CONFIGURATIONS.map((c) => `<option value="${c.value}">${c.value}</option>`).join('');
+
+    // Rotary has no camshafts/valves, so it only ever pairs with a Rotor
+    // Housing configuration -- everything else only ever pairs with a real
+    // Engine Block. Filtering here instead of just adding 'Rotary' to the
+    // list keeps the two dropdowns from landing on a nonsensical
+    // combination (e.g. DOHC + Four Rotor).
+    function refreshConfigOptions() {
+      const wantRotor = valvetrainSelect.value === 'Rotary';
+      const options = ENGINE_CONFIGURATIONS.filter((c) => (c.subcategory === 'Rotor Housings') === wantRotor);
+      const previous = configSelect.value;
+      configSelect.innerHTML = options.map((c) => `<option value="${c.value}">${c.value}</option>`).join('');
+      if (options.some((c) => c.value === previous)) configSelect.value = previous;
+    }
+    valvetrainSelect.addEventListener('change', refreshConfigOptions);
+    refreshConfigOptions();
 
     document.getElementById('buildSuggestBtn').addEventListener('click', () => {
       renderBuildTiers({

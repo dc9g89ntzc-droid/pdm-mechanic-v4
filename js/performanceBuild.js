@@ -11,7 +11,14 @@
 // Titanium pistons/valve springs), that option is excluded from the ladder
 // entirely rather than silently allowed to win by price.
 
-const VALVETRAIN_OPTIONS = ['OHV', 'SOHC', 'DOHC'];
+// 'Rotary' isn't a real valvetrain (a Wankel has no camshafts or poppet
+// valves at all) -- it's here as the UI's way of saying "no valvetrain
+// applies," paired with a Rotor Housing configuration. The actual rotary
+// vs piston branch in suggestPerformanceBuild() below is driven entirely
+// by `configuration` (via ROTOR_COUNT), not by this value -- job-items.html
+// filters the configuration dropdown to match whichever of these is picked
+// so the two can't end up mismatched.
+const VALVETRAIN_OPTIONS = ['OHV', 'SOHC', 'DOHC', 'Rotary'];
 
 const STYLE_OPTIONS = [
   { value: 'comfort', label: 'Comfort' },
