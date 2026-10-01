@@ -129,8 +129,8 @@
   .build-tier { background: var(--bg); border: 1px solid var(--panel-border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
   .build-tier h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; }
   .build-tier.tier-cheap h3 { color: var(--text-dim); }
-  .build-tier.tier-medium h3 { color: var(--amber); }
-  .build-tier.tier-best h3 { color: var(--green); }
+  .build-tier.tier-durable h3 { color: var(--amber); }
+  .build-tier.tier-fastest h3 { color: var(--green); }
   .build-tier .caveat { color: var(--red); font-size: 11px; }
   .build-tier ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
   .build-tier ul li { display: flex; justify-content: space-between; gap: 8px; color: var(--text-dim); }
@@ -790,7 +790,7 @@
   }
 
   // ---- Suggested performance build (performance-leg jobs only) ----
-  const TIER_LABELS = { cheap: 'Cheap', medium: 'Medium', best: 'Best' };
+  const TIER_LABELS = { cheap: 'Cheap', durable: 'Durable', fastest: 'Fastest' };
   // Resolving a name to a real catalogue row is looked up fresh each time
   // "Suggest parts" is clicked (not cached) -- stock/price can move between
   // uses, and this only ever fires on an explicit click, not per keystroke.
@@ -827,20 +827,20 @@
     const suggestion = suggestPerformanceBuild({ style, valvetrain, configuration });
 
     const resolved = {};
-    for (const tier of ['cheap', 'medium', 'best']) {
+    for (const tier of ['cheap', 'durable', 'fastest']) {
       resolved[tier] = await Promise.all(
         suggestion[tier].map(async (entry) => ({ ...entry, catalogueItem: await resolveCatalogueItemByName(entry.itemName) }))
       );
     }
 
-    tiersEl.innerHTML = ['cheap', 'medium', 'best'].map((tier) => {
+    tiersEl.innerHTML = ['cheap', 'durable', 'fastest'].map((tier) => {
       const items = resolved[tier];
       const total = items.reduce((sum, i) => sum + (i.catalogueItem?.customer_price != null ? Number(i.catalogueItem.customer_price) * i.quantity : 0), 0);
-      const caveat = cheapTierCaveat(style);
+      const caveat = tier === 'cheap' ? cheapTierCaveat(style) : (tier === 'fastest' ? FASTEST_TIER_CAVEAT : null);
       return `
         <div class="build-tier tier-${tier}" data-tier="${tier}">
           <h3>${TIER_LABELS[tier]}</h3>
-          ${tier === 'cheap' && caveat ? `<div class="caveat">${caveat}</div>` : ''}
+          ${caveat ? `<div class="caveat">${caveat}</div>` : ''}
           <ul>
             ${items.map((i) => i.catalogueItem
               ? `<li><span>${i.quantity}x ${i.catalogueItem.name}</span><span>${i.catalogueItem.customer_price != null ? formatMoney(i.catalogueItem.customer_price) : 'To confirm'}</span></li>`

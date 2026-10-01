@@ -88,17 +88,48 @@ function mainBearingCount(cylinders, banks) {
   return Math.round(cylinders / banks) + 1;
 }
 
-// ---- Quality ladders (cheap -> best), curated by hand from real
-// engine-building logic, not raw price sort. ----
+// ---- Quality ladders, curated by hand from real engine-building logic,
+// not raw price sort. ----
+//
+// Three tiers per part: cheap (lowest realistic cost), durable (toughest
+// realistic material -- favours reliability over weight/power), fastest
+// (best realistic performance material -- favours power/weight over
+// reliability, "regardless of durability" per Joanna's own framing). Where
+// a category has a genuine light-vs-tough material split in real engine
+// building (blocks, pistons, rods, heads), durable and fastest are two
+// DIFFERENT real materials, not just two points on one ladder. Where no
+// such split exists in the catalogue (bearings, rings, crankshaft, valve
+// springs, spark plugs -- each a single quality progression within one
+// material family, no lighter-but-more-fragile alternative on offer),
+// durable and fastest both land on that ladder's top rung, since there's
+// no toughness-vs-speed tradeoff to make there in reality.
 
-// General ladders, used by street/offroad/drag/race via STYLE_REACH.
+// Light/performance-biased ladders -- "fastest" always reaches the top of
+// these.
 const PISTON_MATERIAL_LADDER = ['Cast Iron', 'Cast Steel', 'Cast Aluminum', 'Powder Metal', 'Forged Steel', 'Forged Aluminum', 'Billet Steel', 'Billet Aluminum'];
 // Titanium excluded -- titanium's real race use is rods/valve gear, not
 // pistons (wrong thermal-expansion behaviour for the application).
 const CONROD_MATERIAL_LADDER = ['Cast Iron', 'Cast Steel', 'Cast Aluminum', 'Powder Metal', 'Forged Steel', 'Forged Aluminum', 'Billet Steel', 'Billet Aluminum', 'Titanium'];
 // Titanium IS included here (unlike pistons) -- real top-tier race rods
-// genuinely are titanium; only Race's reach (1.0) actually reaches it.
+// genuinely are titanium, the fastest/lightest real choice -- and, true to
+// "fastest regardless of durability," also the most fatigue-prone under
+// repeated shock loading, which is exactly why it's excluded from the
+// *tough* rod ladder below rather than also being the "durable" pick.
 const CYLINDER_HEAD_MATERIAL_LADDER = ['Cast Iron', 'Cast Steel', 'Cast Aluminum', 'Forged Steel', 'Forged Aluminum'];
+
+// Steel-only "tough" counterparts -- same families, capped before the
+// aluminum/titanium rungs that trade toughness for weight. This is what
+// "durable" actually picks for these four categories.
+const PISTON_MATERIAL_LADDER_TOUGH = ['Cast Iron', 'Cast Steel', 'Forged Steel', 'Billet Steel'];
+const CONROD_MATERIAL_LADDER_TOUGH = ['Cast Steel', 'Forged Steel', 'Billet Steel'];
+const CYLINDER_HEAD_MATERIAL_LADDER_TOUGH = ['Cast Iron', 'Cast Steel', 'Forged Steel'];
+// Block ladders: Magnesium Alloy excluded from BOTH -- real magnesium
+// isn't used structurally for a combustion-pressure engine block, despite
+// being the priciest option in the catalogue.
+const BLOCK_MATERIAL_LADDER = ['Cast Iron', 'Cast Aluminum', 'Compacted Graphite Iron', 'Billet Steel', 'Billet Aluminum'];
+const BLOCK_MATERIAL_LADDER_TOUGH = ['Cast Iron', 'Compacted Graphite Iron', 'Billet Steel'];
+
+// Single-axis ladders -- no real durable-vs-fastest split, see note above.
 const VALVE_SPRING_MATERIAL_LADDER = ['Cast Steel', 'Forged Steel', 'Billet Steel'];
 // Titanium excluded -- a spring's realistic limit is fatigue life, not raw
 // strength, so steel alloys are the real choice regardless of price.
@@ -107,89 +138,79 @@ const RING_PACK_LADDER = ['Cast Iron (Standard) Ring Pack', 'Steel Performance R
 const CRANKSHAFT_LADDER = ['Cast', 'Forged', 'Billet'];
 const SPARK_PLUG_LADDER = ['Copper Standard Spark Plug', 'Platinum Spark Plug', 'Iridium Spark Plug'];
 
-// Block and connecting-rod ladders that top out at Billet Steel instead of
-// Billet Aluminum/Titanium -- used by Off-Road (durability over weight,
-// real off-road builds favour toughness over shaving grams) and Drag
-// (sudden shock loading from a hard launch/nitrous spike is better
-// resisted by steel than aluminum -- unlike pistons, where aluminum wins
-// on thermal/weight grounds regardless of use case, so pistons stay on the
-// general ladder for every style).
-const BLOCK_MATERIAL_LADDER = ['Cast Iron', 'Cast Aluminum', 'Compacted Graphite Iron', 'Billet Steel', 'Billet Aluminum'];
-// Magnesium Alloy excluded -- real magnesium isn't used structurally for a
-// combustion-pressure engine block, despite being the priciest option.
-const BLOCK_MATERIAL_LADDER_TOUGH = ['Cast Iron', 'Compacted Graphite Iron', 'Billet Steel'];
-const CONROD_MATERIAL_LADDER_TOUGH = ['Cast Steel', 'Forged Steel', 'Billet Steel'];
+// cheap always comes off the general (light/performance) ladder's own
+// cheapest rung -- the tough ladder's cheapest material isn't always the
+// same item (the rod tough ladder starts at Cast Steel, not Cast Iron),
+// and "cheap" should mean the single cheapest realistic part overall, not
+// the cheapest-of-whichever-ladder-happened-to-apply.
+function pickDual(generalLadder, toughLadder) {
+  return {
+    cheap: generalLadder[0],
+    durable: toughLadder[toughLadder.length - 1],
+    fastest: generalLadder[generalLadder.length - 1]
+  };
+}
 
-// How far up a *general* ladder each active style reaches at its own
-// "best" tier (0 = stays at the cheapest rung, 1 = all the way to the top
-// of the realistic ladder). "medium" always lands halfway to that style's
-// own best; "cheap" is always the cheapest realistic rung, never literally
-// nothing -- matches Joanna's own "cheap/unreliable" framing (a real, if
-// bad, part). Comfort doesn't use this at all -- it never touches these
-// subcategories.
-const STYLE_REACH = { street: 0.45, offroad: 0.6, drift: 0.85, drag: 0.85, race: 1 };
-// Off-Road, Drift, and Drag always reach the top of their *tough* ladders
-// (already capped appropriately) rather than the general reach value --
-// drift joins Off-Road/Drag here because sustained sideways loading and
-// repeated clutch kicks are the same "durability over ultimate weight
-// savings" case as a hard launch or rough terrain.
-const TOUGH_STYLES = new Set(['offroad', 'drift', 'drag']);
-
-function pickFromLadder(ladder, style) {
-  const reach = TOUGH_STYLES.has(style) ? 1 : STYLE_REACH[style];
-  const bestIdx = Math.round(reach * (ladder.length - 1));
-  const mediumIdx = Math.round(bestIdx * 0.5);
-  return { cheap: ladder[0], medium: ladder[mediumIdx], best: ladder[bestIdx] };
+function pickSimple(ladder) {
+  const top = ladder[ladder.length - 1];
+  return { cheap: ladder[0], durable: top, fastest: top };
 }
 
 // Camshaft + tappet are capped by valvetrain, not by style -- a pushrod
 // (OHV) engine physically can't safely follow a more aggressive lobe
 // profile at speed, no matter the customer's budget. DOHC is the only
 // valvetrain that reaches a genuine Race Camshaft/Solid Roller Tappet Set.
+// "durable" lands on each valvetrain's self-adjusting hydraulic-roller
+// pick (low maintenance, forgiving); "fastest" is the most aggressive
+// profile that valvetrain can safely run.
 const VALVETRAIN_TIERS = {
   OHV: {
     cheap: { camshaft: 'Stock/Mild Camshaft', tappet: 'Hydraulic Flat Tappet Set' },
-    medium: { camshaft: 'Torque/Tow Camshaft', tappet: 'Hydraulic Roller Tappet Set' },
-    best: { camshaft: 'Street Perf Camshaft', tappet: 'Hydraulic Roller Tappet Set' }
+    durable: { camshaft: 'Torque/Tow Camshaft', tappet: 'Hydraulic Roller Tappet Set' },
+    fastest: { camshaft: 'Street Perf Camshaft', tappet: 'Hydraulic Roller Tappet Set' }
   },
   SOHC: {
     cheap: { camshaft: 'Torque/Tow Camshaft', tappet: 'Hydraulic Roller Tappet Set' },
-    medium: { camshaft: 'Street Perf Camshaft', tappet: 'Hydraulic Roller Tappet Set' },
-    best: { camshaft: 'Performance Camshaft', tappet: 'Solid Flat Tappet Set' }
+    durable: { camshaft: 'Street Perf Camshaft', tappet: 'Hydraulic Roller Tappet Set' },
+    fastest: { camshaft: 'Performance Camshaft', tappet: 'Solid Flat Tappet Set' }
   },
   DOHC: {
     cheap: { camshaft: 'Street Perf Camshaft', tappet: 'Hydraulic Roller Tappet Set' },
-    medium: { camshaft: 'Performance Camshaft', tappet: 'Solid Flat Tappet Set' },
-    best: { camshaft: 'Race Camshaft', tappet: 'Solid Roller Tappet Set' }
+    durable: { camshaft: 'Performance Camshaft', tappet: 'Solid Flat Tappet Set' },
+    fastest: { camshaft: 'Race Camshaft', tappet: 'Solid Roller Tappet Set' }
   }
 };
 
 // Radiator/suspension are named by real tier already (Street/Sport/Race,
 // Stock/Off-Road/Sport/Race) but don't cleanly form one shared ladder --
-// hand-picked per style instead of via STYLE_REACH.
+// hand-picked per style. durable/fastest reuse the old medium/best picks
+// (a radiator/suspension's cooling-capacity or grip ladder doesn't trade
+// away durability for speed the way a piston material does -- the better
+// part is simply better on both counts, so there's one real "upgrade"
+// pick here, not two distinct ones).
 const RADIATOR_BY_STYLE = {
-  street: { cheap: 'Street Radiator', medium: 'Sport Radiator', best: 'Sport Radiator' },
-  offroad: { cheap: 'Street Radiator', medium: 'Sport Radiator', best: 'Sport Radiator' },
-  drag: { cheap: 'Street Radiator', medium: 'Street Radiator', best: 'Sport Radiator' },
+  street: { cheap: 'Street Radiator', durable: 'Sport Radiator', fastest: 'Sport Radiator' },
+  offroad: { cheap: 'Street Radiator', durable: 'Sport Radiator', fastest: 'Sport Radiator' },
+  drag: { cheap: 'Street Radiator', durable: 'Street Radiator', fastest: 'Sport Radiator' },
   // A drag pass is a short burst, not sustained load -- cooling matters far
-  // less here than for a circuit car, so even "best" doesn't need Race.
-  drift: { cheap: 'Street Radiator', medium: 'Sport Radiator', best: 'Race Radiator' },
+  // less here than for a circuit car, so even "fastest" doesn't need Race.
+  drift: { cheap: 'Street Radiator', durable: 'Sport Radiator', fastest: 'Race Radiator' },
   // Drift is the opposite of drag here -- long sustained runs at high RPM
   // under load build real heat, closer to circuit racing than a single pass.
-  race: { cheap: 'Sport Radiator', medium: 'Race Radiator', best: 'Race Radiator' }
+  race: { cheap: 'Sport Radiator', durable: 'Race Radiator', fastest: 'Race Radiator' }
   // Sustained circuit heat is a real reliability risk -- a race build
   // shouldn't run less than Sport radiator even at its cheap tier.
 };
 const SUSPENSION_BY_STYLE = {
-  street: { cheap: 'Stock Suspension', medium: 'Sport Suspension', best: 'Sport Suspension' },
-  offroad: { cheap: 'Stock Suspension', medium: 'Off-Road Suspension', best: 'Off-Road Suspension' },
+  street: { cheap: 'Stock Suspension', durable: 'Sport Suspension', fastest: 'Sport Suspension' },
+  offroad: { cheap: 'Stock Suspension', durable: 'Off-Road Suspension', fastest: 'Off-Road Suspension' },
   // Off-Road's own suspension is the correct tool here, not "upgrading
   // toward Race" -- Race suspension is stiff/track-tuned, wrong job.
-  drift: { cheap: 'Stock Suspension', medium: 'Sport Suspension', best: 'Race Suspension' },
+  drift: { cheap: 'Stock Suspension', durable: 'Sport Suspension', fastest: 'Race Suspension' },
   // Suspension geometry (angle, response) is arguably THE core drift mod in
   // reality -- no dedicated "Drift Suspension" item exists in the catalogue,
   // so Race is the closest real analogue (stiff, precise, adjustable).
-  race: { cheap: 'Sport Suspension', medium: 'Race Suspension', best: 'Race Suspension' }
+  race: { cheap: 'Sport Suspension', durable: 'Race Suspension', fastest: 'Race Suspension' }
   // A genuine track build shouldn't run Stock suspension even as the
   // budget option -- drag intentionally has no suspension entry below
   // (straight-line racing rarely touches suspension at all).
@@ -199,26 +220,28 @@ const SUSPENSION_BY_STYLE = {
 // suspension -- per Joanna's own note that this shouldn't stay
 // engine-only. Quantity is 4 (a full set) for every tier.
 const TIRE_BY_STYLE = {
-  comfort: { cheap: 'Stock Tire', medium: 'Street Tire', best: 'Street Tire' },
-  street: { cheap: 'Stock Tire', medium: 'Street Tire', best: 'Sport Tire' },
-  offroad: { cheap: 'Stock Tire', medium: 'Off-Road Tire', best: 'Off-Road Tire' },
-  drift: { cheap: 'Street Tire', medium: 'Drift Tire', best: 'Drift Tire' },
-  drag: { cheap: 'Street Tire', medium: 'Drag Tire', best: 'Drag Tire' },
+  comfort: { cheap: 'Stock Tire', durable: 'Street Tire', fastest: 'Street Tire' },
+  street: { cheap: 'Stock Tire', durable: 'Street Tire', fastest: 'Sport Tire' },
+  offroad: { cheap: 'Stock Tire', durable: 'Off-Road Tire', fastest: 'Off-Road Tire' },
+  drift: { cheap: 'Street Tire', durable: 'Drift Tire', fastest: 'Drift Tire' },
+  drag: { cheap: 'Street Tire', durable: 'Drag Tire', fastest: 'Drag Tire' },
   // Slick Tires are priced *below* Track Tire in the catalogue, which
   // doesn't match real motorsport (slicks are normally the specialist/
-  // priciest choice) -- kept as Race's "best" anyway since slicks are
-  // genuinely the ultimate-grip real-world pick, price aside. Worth a
-  // second look if that catalogue price turns out to be a typo.
-  race: { cheap: 'Sport Tire', medium: 'Track Tire', best: 'Slick Tires' }
+  // priciest choice) -- kept as Race's "fastest" anyway since slicks are
+  // genuinely the ultimate-grip real-world pick, price aside, and also
+  // genuinely the least durable (narrow heat window, wear fast) -- an
+  // honest fit for "fastest regardless of durability." Worth a second
+  // look if that catalogue price turns out to be a typo.
+  race: { cheap: 'Sport Tire', durable: 'Track Tire', fastest: 'Slick Tires' }
 };
 const BRAKE_PADS_BY_STYLE = {
-  street: { cheap: 'Stock Brake Pads', medium: 'Street Brake Pads', best: 'Sport Brake Pads' },
-  offroad: { cheap: 'Stock Brake Pads', medium: 'Street Brake Pads', best: 'Street Brake Pads' },
+  street: { cheap: 'Stock Brake Pads', durable: 'Street Brake Pads', fastest: 'Sport Brake Pads' },
+  offroad: { cheap: 'Stock Brake Pads', durable: 'Street Brake Pads', fastest: 'Street Brake Pads' },
   // Threshold/trail braking to initiate a slide matters, but pure bite
   // isn't the point the way it is for a circuit car -- Sport caps it.
-  drift: { cheap: 'Stock Brake Pads', medium: 'Street Brake Pads', best: 'Sport Brake Pads' },
-  drag: { cheap: 'Stock Brake Pads', medium: 'Street Brake Pads', best: 'Sport Brake Pads' },
-  race: { cheap: 'Street Brake Pads', medium: 'Sport Brake Pads', best: 'Race Brake Pads' }
+  drift: { cheap: 'Stock Brake Pads', durable: 'Street Brake Pads', fastest: 'Sport Brake Pads' },
+  drag: { cheap: 'Stock Brake Pads', durable: 'Street Brake Pads', fastest: 'Sport Brake Pads' },
+  race: { cheap: 'Street Brake Pads', durable: 'Sport Brake Pads', fastest: 'Race Brake Pads' }
   // A genuine track build needs real stopping power even at its cheap
   // tier -- Stock brakes aren't a safe "budget" option for Race.
 };
@@ -226,12 +249,12 @@ const BRAKE_PADS_BY_STYLE = {
 // Forced induction is Drift/Drag/Race only. Each tier bundles a sized
 // turbocharger + matching intercooler; Boost Controller and the
 // style-specific "signature" extra (Nitrous for Drag, Anti-Lag for
-// Drift/Race) only show up from medium/best, not cheap.
+// Drift/Race) only show up from durable/fastest, not cheap.
 const FORCED_INDUCTION_BY_STYLE = {
   drift: {
     cheap: [{ itemName: 'Turbocharger — Small Compressor / Medium Turbine', quantity: 1 }, { itemName: 'Stock Intercooler', quantity: 1 }],
-    medium: [{ itemName: 'Turbocharger — Medium Compressor / Medium Turbine', quantity: 1 }, { itemName: 'Street Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }],
-    best: [{ itemName: 'Turbocharger — Medium Compressor / Large Turbine', quantity: 1 }, { itemName: 'Race Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }, { itemName: 'Anti-Lag System Kit', quantity: 1 }]
+    durable: [{ itemName: 'Turbocharger — Medium Compressor / Medium Turbine', quantity: 1 }, { itemName: 'Street Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }],
+    fastest: [{ itemName: 'Turbocharger — Medium Compressor / Large Turbine', quantity: 1 }, { itemName: 'Race Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }, { itemName: 'Anti-Lag System Kit', quantity: 1 }]
     // A bigger turbine than compressor here on purpose -- drift needs
     // predictable, controllable power delivery through a slide, not just
     // outright peak, so it's biased toward flow/response over the
@@ -242,13 +265,13 @@ const FORCED_INDUCTION_BY_STYLE = {
   },
   drag: {
     cheap: [{ itemName: 'Turbocharger — Small Compressor / Small Turbine', quantity: 1 }, { itemName: 'Stock Intercooler', quantity: 1 }],
-    medium: [{ itemName: 'Turbocharger — Medium Compressor / Medium Turbine', quantity: 1 }, { itemName: 'Street Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }],
-    best: [{ itemName: 'Turbocharger — Large Compressor / Large Turbine', quantity: 1 }, { itemName: 'Race Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }, { itemName: 'Nitrous Kit — 100 Shot', quantity: 1 }]
+    durable: [{ itemName: 'Turbocharger — Medium Compressor / Medium Turbine', quantity: 1 }, { itemName: 'Street Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }],
+    fastest: [{ itemName: 'Turbocharger — Large Compressor / Large Turbine', quantity: 1 }, { itemName: 'Race Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }, { itemName: 'Nitrous Kit — 100 Shot', quantity: 1 }]
   },
   race: {
     cheap: [{ itemName: 'Turbocharger — Small Compressor / Medium Turbine', quantity: 1 }, { itemName: 'Stock Intercooler', quantity: 1 }],
-    medium: [{ itemName: 'Turbocharger — Medium Compressor / Large Turbine', quantity: 1 }, { itemName: 'Street Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }],
-    best: [{ itemName: 'Turbocharger — Large Compressor / Large Turbine', quantity: 1 }, { itemName: 'Race Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }, { itemName: 'Anti-Lag System Kit', quantity: 1 }]
+    durable: [{ itemName: 'Turbocharger — Medium Compressor / Large Turbine', quantity: 1 }, { itemName: 'Street Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }],
+    fastest: [{ itemName: 'Turbocharger — Large Compressor / Large Turbine', quantity: 1 }, { itemName: 'Race Intercooler', quantity: 1 }, { itemName: 'Boost Controller', quantity: 1 }, { itemName: 'Anti-Lag System Kit', quantity: 1 }]
     // Anti-Lag is a genuine rally/circuit-race part (keeps the turbo
     // spooled between shifts) -- authentic here in a way it wouldn't be
     // for a straight-line drag pass.
@@ -264,25 +287,25 @@ const FORCED_INDUCTION_BY_STYLE = {
 const TRANSMISSION_BY_STYLE = {
   // A smooth modern auto is the real "comfort" pick; Comfort skips the
   // add-on upgrade parts below like it skips everything else aggressive.
-  comfort: { cheap: 'Declasse TH400 Transmission (3-speed auto)', medium: 'Benefactor 722.6 / NAG1 Transmission (5-speed auto)', best: 'Benefactor 7G-Drive Transmission (7-speed auto)' },
+  comfort: { cheap: 'Declasse TH400 Transmission (3-speed auto)', durable: 'Benefactor 722.6 / NAG1 Transmission (5-speed auto)', fastest: 'Benefactor 7G-Drive Transmission (7-speed auto)' },
   // A manual for driver engagement, climbing toward the most refined
   // manual in the catalogue.
-  street: { cheap: 'Bullworth T-5 Transmission (5-speed manual)', medium: 'Tarmac TR-6060 Transmission (6-speed manual)', best: 'Pfister 7MT Transmission (7-speed manual)' },
+  street: { cheap: 'Bullworth T-5 Transmission (5-speed manual)', durable: 'Tarmac TR-6060 Transmission (6-speed manual)', fastest: 'Pfister 7MT Transmission (7-speed manual)' },
   // Declasse 4L80-E is a real heavy-duty tow/off-road automatic; Zancudo's
   // brand styling (rugged/utility) fits an 8-speed HD auto as the top end.
-  offroad: { cheap: 'Declasse TH400 Transmission (3-speed auto)', medium: 'Declasse 4L80-E Transmission (4-speed auto)', best: 'Zancudo 8HP Transmission (8-speed auto)' },
+  offroad: { cheap: 'Declasse TH400 Transmission (3-speed auto)', durable: 'Declasse 4L80-E Transmission (4-speed auto)', fastest: 'Zancudo 8HP Transmission (8-speed auto)' },
   // Manual, and deliberately NOT climbing past 6-speed -- drift favours a
   // close, predictable ratio set for quick mid-slide shifts over more
-  // gears; "best" instead comes from the shift-speed upgrades below.
-  drift: { cheap: 'Bullworth T-5 Transmission (5-speed manual)', medium: 'Tarmac TR-6060 Transmission (6-speed manual)', best: 'Tarmac TR-6060 Transmission (6-speed manual)' },
+  // gears; "fastest" instead comes from the shift-speed upgrades below.
+  drift: { cheap: 'Bullworth T-5 Transmission (5-speed manual)', durable: 'Tarmac TR-6060 Transmission (6-speed manual)', fastest: 'Tarmac TR-6060 Transmission (6-speed manual)' },
   // Declasse Powerslide is a real Powerglide-style 2-speed drag auto --
   // about as authentic a signature pick as Drift Tire was for Drift.
-  drag: { cheap: 'Declasse TH400 Transmission (3-speed auto)', medium: 'Declasse Powerslide Transmission (2-speed auto)', best: 'Declasse Powerslide Transmission (2-speed auto)' },
+  drag: { cheap: 'Declasse TH400 Transmission (3-speed auto)', durable: 'Declasse Powerslide Transmission (2-speed auto)', fastest: 'Declasse Powerslide Transmission (2-speed auto)' },
   // The Race Sequential transmissions are a literal, unambiguous match.
   // Cheap stays a normal manual rather than jumping straight to a
   // several-thousand-dollar sequential box, matching the "cheap tier is
   // still real, just not exotic" framing used everywhere else.
-  race: { cheap: 'Tarmac TR-6060 Transmission (6-speed manual)', medium: 'Race 8-Speed Sequential Transmission (manual)', best: 'Race 10-Speed Sequential Transmission (manual)' }
+  race: { cheap: 'Tarmac TR-6060 Transmission (6-speed manual)', durable: 'Race 8-Speed Sequential Transmission (manual)', fastest: 'Race 10-Speed Sequential Transmission (manual)' }
 };
 
 // Bolt-on transmission upgrades, matched to whether that style's base box
@@ -292,13 +315,13 @@ const TRANSMISSION_BY_STYLE = {
 // deliberately left off Synchronizers: a real sequential gearbox uses dog
 // engagement, not synchros, so that part wouldn't belong there even at
 // Race's cheap (still-synchromesh) tier -- Pneumatic Shifter at Race's
-// best instead, a genuinely authentic pairing with a full sequential box.
+// fastest instead, a genuinely authentic pairing with a full sequential box.
 const TRANSMISSION_UPGRADES_BY_STYLE = {
-  street: { medium: ['Upgraded Synchronizers'], best: ['Upgraded Synchronizers'] },
-  offroad: { medium: ['Upgraded Clutch Packs'], best: ['Upgraded Clutch Packs'] },
-  drift: { medium: ['Upgraded Synchronizers'], best: ['Upgraded Synchronizers', 'Pneumatic Shifter'] },
-  drag: { medium: ['Upgraded Clutch Packs'], best: ['Upgraded Clutch Packs', 'Built Valve Body'] },
-  race: { best: ['Pneumatic Shifter'] }
+  street: { durable: ['Upgraded Synchronizers'], fastest: ['Upgraded Synchronizers'] },
+  offroad: { durable: ['Upgraded Clutch Packs'], fastest: ['Upgraded Clutch Packs'] },
+  drift: { durable: ['Upgraded Synchronizers'], fastest: ['Upgraded Synchronizers', 'Pneumatic Shifter'] },
+  drag: { durable: ['Upgraded Clutch Packs'], fastest: ['Upgraded Clutch Packs', 'Built Valve Body'] },
+  race: { fastest: ['Pneumatic Shifter'] }
 };
 
 // Drivetrain conversion -- only suggested where the real-world signal is
@@ -313,15 +336,15 @@ const TRANSMISSION_UPGRADES_BY_STYLE = {
 const DRIVETRAIN_BY_STYLE = {
   // 4WD over AWD -- genuine off-road capability, not just an all-weather
   // on-road compromise.
-  offroad: { cheap: '4WD Conversion Kit', medium: '4WD Conversion Kit', best: '4WD Conversion Kit' },
+  offroad: { cheap: '4WD Conversion Kit', durable: '4WD Conversion Kit', fastest: '4WD Conversion Kit' },
   // About as close to mandatory as this gets -- RWD is close to the
   // definition of drift.
-  drift: { cheap: 'RWD Conversion Kit', medium: 'RWD Conversion Kit', best: 'RWD Conversion Kit' },
+  drift: { cheap: 'RWD Conversion Kit', durable: 'RWD Conversion Kit', fastest: 'RWD Conversion Kit' },
   // Drag and Race genuinely vary by class/car in reality (AWD launch cars
   // are legitimate for both) -- RWD is the more traditional default, not a
   // hard rule.
-  drag: { cheap: 'RWD Conversion Kit', medium: 'RWD Conversion Kit', best: 'RWD Conversion Kit' },
-  race: { cheap: 'RWD Conversion Kit', medium: 'RWD Conversion Kit', best: 'RWD Conversion Kit' }
+  drag: { cheap: 'RWD Conversion Kit', durable: 'RWD Conversion Kit', fastest: 'RWD Conversion Kit' },
+  race: { cheap: 'RWD Conversion Kit', durable: 'RWD Conversion Kit', fastest: 'RWD Conversion Kit' }
 };
 
 function blockName(material, configuration) {
@@ -334,90 +357,91 @@ function blockName(material, configuration) {
 // (verified directly against sql/033's seeded catalogue_items, not
 // assumed) -- override with only what actually exists there rather than
 // suggest a block that isn't real. Inline 3 only exists in Cast Iron/Billet
-// Steel/Magnesium Alloy; V12/W12 exist in every general-ladder material
-// except Billet Steel (they jump straight to Billet Aluminum), which only
-// matters for the *tough* ladder since Off-Road/Drag's reach always lands
-// exactly on Billet Steel.
+// Steel/Magnesium Alloy, so its general and tough ladders are identical
+// (there's no lighter aluminum option to make "fastest" a distinct pick --
+// an honest reflection of limited catalogue coverage, not a bug). V12/W12
+// exist in every general-ladder material except Billet Steel (they jump
+// straight to Billet Aluminum) -- only their *tough* ladder needs
+// overriding, since the general ladder is unaffected.
 const BLOCK_LADDER_OVERRIDES = {
   'Inline 3': { general: ['Cast Iron', 'Billet Steel'], tough: ['Cast Iron', 'Billet Steel'] },
   V12: { tough: ['Cast Iron', 'Compacted Graphite Iron'] },
   W12: { tough: ['Cast Iron', 'Compacted Graphite Iron'] }
 };
 
-function pickBlock(style, configuration) {
-  const tough = TOUGH_STYLES.has(style);
+function pickBlock(configuration) {
   const overrides = BLOCK_LADDER_OVERRIDES[configuration];
-  const ladder = (overrides && overrides[tough ? 'tough' : 'general'])
-    || (tough ? BLOCK_MATERIAL_LADDER_TOUGH : BLOCK_MATERIAL_LADDER);
-  const picked = pickFromLadder(ladder, style);
+  const generalLadder = (overrides && overrides.general) || BLOCK_MATERIAL_LADDER;
+  const toughLadder = (overrides && overrides.tough) || BLOCK_MATERIAL_LADDER_TOUGH;
+  const picked = pickDual(generalLadder, toughLadder);
   return {
     cheap: { itemName: blockName(picked.cheap, configuration), quantity: 1 },
-    medium: { itemName: blockName(picked.medium, configuration), quantity: 1 },
-    best: { itemName: blockName(picked.best, configuration), quantity: 1 }
+    durable: { itemName: blockName(picked.durable, configuration), quantity: 1 },
+    fastest: { itemName: blockName(picked.fastest, configuration), quantity: 1 }
   };
 }
 
-function pickPistons(style, boosted, cylinders) {
+function pickPistons(boosted, cylinders) {
   // Dished pistons lower static compression to run safely under boost;
   // Flat Top is the safe neutral default for a naturally-aspirated build.
   const topStyle = boosted ? 'Dished' : 'Flat Top';
-  const picked = pickFromLadder(PISTON_MATERIAL_LADDER, style);
+  const picked = pickDual(PISTON_MATERIAL_LADDER, PISTON_MATERIAL_LADDER_TOUGH);
   return {
     cheap: { itemName: `${topStyle} ${picked.cheap} Piston`, quantity: cylinders },
-    medium: { itemName: `${topStyle} ${picked.medium} Piston`, quantity: cylinders },
-    best: { itemName: `${topStyle} ${picked.best} Piston`, quantity: cylinders }
+    durable: { itemName: `${topStyle} ${picked.durable} Piston`, quantity: cylinders },
+    fastest: { itemName: `${topStyle} ${picked.fastest} Piston`, quantity: cylinders }
   };
 }
 
-function pickRings(style, cylinders) {
+function pickRings(cylinders) {
   // One ring pack fits one piston.
-  return mapTiers(pickFromLadder(RING_PACK_LADDER, style), (name) => ({ itemName: name, quantity: cylinders }));
+  return mapTiers(pickSimple(RING_PACK_LADDER), (name) => ({ itemName: name, quantity: cylinders }));
 }
 
-function pickConrod(style, cylinders) {
-  const ladder = TOUGH_STYLES.has(style) ? CONROD_MATERIAL_LADDER_TOUGH : CONROD_MATERIAL_LADDER;
-  return mapTiers(pickFromLadder(ladder, style), (material) => ({ itemName: `H-Beam ${material} Connecting Rod`, quantity: cylinders }));
+function pickConrod(cylinders) {
+  return mapTiers(pickDual(CONROD_MATERIAL_LADDER, CONROD_MATERIAL_LADDER_TOUGH), (material) => ({ itemName: `H-Beam ${material} Connecting Rod`, quantity: cylinders }));
 }
 
-function pickCrankshaft(style) {
-  return mapTiers(pickFromLadder(CRANKSHAFT_LADDER, style), (process) => ({ itemName: `${process} Crankshaft`, quantity: 1 }));
+function pickCrankshaft() {
+  return mapTiers(pickSimple(CRANKSHAFT_LADDER), (process) => ({ itemName: `${process} Crankshaft`, quantity: 1 }));
 }
 
-function pickBearings(style, cylinders, banks) {
+function pickBearings(cylinders, banks) {
   // One conrod bearing per rod journal; main bearings = cylinders-per-bank
   // + 1 (see mainBearingCount).
-  return mapTiers(pickFromLadder(BEARING_LADDER, style), (material) => ([
+  return mapTiers(pickSimple(BEARING_LADDER), (material) => ([
     { itemName: `${material} Conrod Bearing`, quantity: cylinders },
     { itemName: `${material} Main Bearing`, quantity: mainBearingCount(cylinders, banks) }
   ]));
 }
 
-function pickCylinderHead(style, banks) {
+function pickCylinderHead(banks) {
   // One head per bank -- confirmed across every example regardless of
   // valvetrain (an OHV V-Twin gets 2 heads same as a DOHC V12).
-  return mapTiers(pickFromLadder(CYLINDER_HEAD_MATERIAL_LADDER, style), (material) => ({ itemName: `Ported & Polished ${material} Cylinder Head`, quantity: banks }));
+  return mapTiers(pickDual(CYLINDER_HEAD_MATERIAL_LADDER, CYLINDER_HEAD_MATERIAL_LADDER_TOUGH), (material) => ({ itemName: `Ported & Polished ${material} Cylinder Head`, quantity: banks }));
 }
 
-// Spring TYPE follows that tier's own tappet, not style alone -- confirmed
-// against the in-game engine builder's own compatibility check: a Solid
-// Roller race cam paired with Beehive springs (the old blanket default)
-// gets flagged as a genuine mismatch causing extra wear on both parts.
-// Real-world logic behind the mapping: hydraulic lifters self-adjust and
-// need the least spring pressure (Conical is fine); a solid FLAT tappet or
-// hydraulic ROLLER allows a more aggressive lobe and wants the lighter,
-// high-RPM-capable Beehive; a solid ROLLER race cam's much steeper ramp
-// rate needs Dual springs to control valve float at the RPM it's built
-// for. Material grade still follows style, same as every other ladder.
+// Spring TYPE follows that tier's own tappet, not material tier alone --
+// confirmed against the in-game engine builder's own compatibility check:
+// a Solid Roller race cam paired with Beehive springs (the old blanket
+// default) gets flagged as a genuine mismatch causing extra wear on both
+// parts. Real-world logic behind the mapping: hydraulic lifters
+// self-adjust and need the least spring pressure (Conical is fine); a
+// solid FLAT tappet or hydraulic ROLLER allows a more aggressive lobe and
+// wants the lighter, high-RPM-capable Beehive; a solid ROLLER race cam's
+// much steeper ramp rate needs Dual springs to control valve float at the
+// RPM it's built for. Material grade still follows the single-axis spring
+// ladder, same as every other no-split category.
 function valveSpringTypeForTappet(tappet) {
   if (tappet === 'Solid Roller Tappet Set') return 'Dual';
   if (tappet === 'Hydraulic Flat Tappet Set') return 'Conical';
   return 'Beehive'; // Hydraulic Roller Tappet Set, Solid Flat Tappet Set
 }
 
-function pickValveSprings(style, totalValves, tappetByTier) {
+function pickValveSprings(totalValves, tappetByTier) {
   // One set per valve, not per cylinder -- confirmed: total valve springs
   // always equals cylinders x valves-per-cylinder, same count as tappets.
-  return mapTiers(pickFromLadder(VALVE_SPRING_MATERIAL_LADDER, style), (material, tier) => ({
+  return mapTiers(pickSimple(VALVE_SPRING_MATERIAL_LADDER), (material, tier) => ({
     itemName: `${valveSpringTypeForTappet(tappetByTier[tier])} ${material} Valve Spring Set`,
     quantity: totalValves
   }));
@@ -426,7 +450,7 @@ function pickValveSprings(style, totalValves, tappetByTier) {
 function pickSparkPlugs(cylinders) {
   // One plug per cylinder is about as universal a rule as engine building
   // has -- confident to scale without asking.
-  return mapTiers({ cheap: SPARK_PLUG_LADDER[0], medium: SPARK_PLUG_LADDER[1], best: SPARK_PLUG_LADDER[2] }, (name) => ({ itemName: name, quantity: cylinders }));
+  return mapTiers(pickSimple(SPARK_PLUG_LADDER), (name) => ({ itemName: name, quantity: cylinders }));
 }
 
 function pickTransmission(style) {
@@ -439,11 +463,11 @@ function pickTransmission(style) {
 }
 
 function mapTiers(tiers, fn) {
-  return { cheap: fn(tiers.cheap, 'cheap'), medium: fn(tiers.medium, 'medium'), best: fn(tiers.best, 'best') };
+  return { cheap: fn(tiers.cheap, 'cheap'), durable: fn(tiers.durable, 'durable'), fastest: fn(tiers.fastest, 'fastest') };
 }
 
 function pushTiered(target, tiered) {
-  ['cheap', 'medium', 'best'].forEach((tier) => {
+  ['cheap', 'durable', 'fastest'].forEach((tier) => {
     const entry = tiered[tier];
     if (Array.isArray(entry)) target[tier].push(...entry);
     else target[tier].push(entry);
@@ -462,12 +486,17 @@ function cheapTierCaveat(style) {
     : null;
 }
 
+// Unlike the cheap caveat, this applies to every style that reaches the
+// fastest tier at all -- "fastest regardless of durability" is true by
+// definition, not just under an aggressive driving style.
+const FASTEST_TIER_CAVEAT = 'Prioritises outright performance over durability -- higher chance of part failure under sustained or repeated stress.';
+
 // The one function this file exposes. `configuration` must be one of
 // ENGINE_CONFIGURATIONS' `value`s, `valvetrain` one of VALVETRAIN_OPTIONS,
 // `style` one of STYLE_OPTIONS' `value`s. Returns
-// { cheap: [{itemName, quantity}], medium: [...], best: [...] }.
+// { cheap: [{itemName, quantity}], durable: [...], fastest: [...] }.
 function suggestPerformanceBuild({ style, valvetrain, configuration }) {
-  const result = { cheap: [], medium: [], best: [] };
+  const result = { cheap: [], durable: [], fastest: [] };
   const isRotary = configuration in ROTOR_COUNT;
   const cylinders = CYLINDER_COUNT[configuration] || 1;
   // Real Wankels run twin plugs per rotor (leading + trailing) -- confident
@@ -486,11 +515,11 @@ function suggestPerformanceBuild({ style, valvetrain, configuration }) {
     return result;
   }
 
-  pushTiered(result, pickBlock(style, configuration));
+  pushTiered(result, pickBlock(configuration));
 
   if (isRotary) {
     const rotorCount = ROTOR_COUNT[configuration];
-    pushTiered(result, mapTiers({ cheap: 'Apex Seals', medium: 'Apex Seals', best: 'Apex Seals' }, (name) => ({ itemName: name, quantity: rotorCount * 3 })));
+    pushTiered(result, mapTiers({ cheap: 'Apex Seals', durable: 'Apex Seals', fastest: 'Apex Seals' }, (name) => ({ itemName: name, quantity: rotorCount * 3 })));
     // No camshaft/tappet/pistons/rings/conrod/crankshaft/cylinder head/
     // valve springs/head gasket/timing kit here -- a Wankel doesn't have
     // any of these, and this catalogue has no rotary equivalent for the
@@ -502,19 +531,19 @@ function suggestPerformanceBuild({ style, valvetrain, configuration }) {
     const camCount = camshaftCount(valvetrain, banks);
 
     const tappetByTier = {};
-    ['cheap', 'medium', 'best'].forEach((tier) => {
+    ['cheap', 'durable', 'fastest'].forEach((tier) => {
       const vt = VALVETRAIN_TIERS[valvetrain][tier];
       tappetByTier[tier] = vt.tappet;
       result[tier].push({ itemName: vt.camshaft, quantity: camCount }, { itemName: vt.tappet, quantity: totalValves });
     });
     const boosted = style === 'drift' || style === 'drag' || style === 'race';
-    pushTiered(result, pickPistons(style, boosted, cylinders));
-    pushTiered(result, pickRings(style, cylinders));
-    pushTiered(result, pickConrod(style, cylinders));
-    pushTiered(result, pickCrankshaft(style));
-    pushTiered(result, pickBearings(style, cylinders, banks));
-    pushTiered(result, pickCylinderHead(style, banks));
-    pushTiered(result, pickValveSprings(style, totalValves, tappetByTier));
+    pushTiered(result, pickPistons(boosted, cylinders));
+    pushTiered(result, pickRings(cylinders));
+    pushTiered(result, pickConrod(cylinders));
+    pushTiered(result, pickCrankshaft());
+    pushTiered(result, pickBearings(cylinders, banks));
+    pushTiered(result, pickCylinderHead(banks));
+    pushTiered(result, pickValveSprings(totalValves, tappetByTier));
     // Head Gasket and Timing Kit are both flat 1 regardless of bank/head
     // count -- confirmed on every example including multi-head ones.
     // Timing system (Chain/Belt/Gears) doesn't appear to follow from
@@ -523,8 +552,8 @@ function suggestPerformanceBuild({ style, valvetrain, configuration }) {
     // defaulting to Timing Chain Kit as the safest general-purpose pick
     // pending Joanna's call on whether to add it as its own input.
     result.cheap.push({ itemName: 'Head Gasket Set', quantity: 1 }, { itemName: 'Timing Chain Kit', quantity: 1 });
-    result.medium.push({ itemName: 'Head Gasket Set', quantity: 1 }, { itemName: 'Timing Chain Kit', quantity: 1 });
-    result.best.push({ itemName: 'Head Gasket Set', quantity: 1 }, { itemName: 'Timing Chain Kit', quantity: 1 });
+    result.durable.push({ itemName: 'Head Gasket Set', quantity: 1 }, { itemName: 'Timing Chain Kit', quantity: 1 });
+    result.fastest.push({ itemName: 'Head Gasket Set', quantity: 1 }, { itemName: 'Timing Chain Kit', quantity: 1 });
   }
 
   if (RADIATOR_BY_STYLE[style]) {
