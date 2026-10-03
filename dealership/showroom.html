@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<base target="_top">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDM 8230 · Vehicle Showroom</title>
+<link rel="stylesheet" href="css/showroom.css">
+</head>
+<body>
+<main class="shell">
+<section class="hero"><div class="brand"><img class="brand-logo" src="../images/pdm-dealership-logo.png" alt="Premium Deluxe Motorsport"><div><div class="eyebrow">PDM 8230 LLC</div><h1>Welcome to PDM 8230!</h1><p>Discover current PDM stock, see what has just landed, explore customer favourites, or check the typical range PDM may offer for your current vehicle.</p></div></div></section>
+
+
+<div class="portal-nav">
+  <button id="homeTab" class="tab home-tab active" onclick="setPage('home')">HOME</button>
+  <button id="buyTab" class="tab" onclick="setPage('buy')">BUY FROM PDM</button>
+  <button id="sellTab" class="tab" onclick="setPage('sell')">SELL TO PDM</button>
+</div>
+
+<section id="homePage" class="home-page">
+  <div class="home-intro">
+    <div class="home-kicker">Premium Deluxe Motorsport</div>
+    <h2>Find your next vehicle.</h2>
+    <p>
+      Browse current dealership stock, discover recent arrivals and customer favourites,
+      or see the typical range PDM may offer for your current vehicle. Visit us in person
+      to view, discuss and purchase.
+    </p>
+    <div class="home-actions">
+      <button class="home-action primary" onclick="setPage('buy')">BROWSE VEHICLES</button>
+      <button class="home-action" onclick="setPage('sell')">SELL YOUR VEHICLE</button>
+    </div>
+  </div>
+
+  <div class="spotlight-head">
+    <div>
+      <div class="home-kicker">Live from the showroom</div>
+      <h2>PDM Spotlight</h2>
+      <p>Our picks, recent arrivals and the vehicles customers are choosing this month.</p>
+    </div>
+  </div>
+
+  <div id="spotlightCategories" class="spotlight-categories"></div>
+
+  <div class="spotlight-grid">
+    <article id="spotlightPick" class="spotlight-card primary"
+      onmouseenter="pauseSpotlight('pick',true)"
+      onmouseleave="pauseSpotlight('pick',false)">
+    </article>
+
+    <article id="spotlightArrival" class="spotlight-card"
+      onmouseenter="pauseSpotlight('arrival',true)"
+      onmouseleave="pauseSpotlight('arrival',false)">
+    </article>
+
+    <article id="spotlightPopular" class="spotlight-card"
+      onmouseenter="pauseSpotlight('popular',true)"
+      onmouseleave="pauseSpotlight('popular',false)">
+    </article>
+  </div>
+
+  <div class="spotlight-note">
+    Spotlight changes automatically as stock, imports and sales activity change.
+  </div>
+</section>
+
+<section id="cataloguePage" class="catalogue-page hidden">
+<section class="controls">
+  <input id="search"
+         class="control"
+         placeholder="Search make, model or vehicle…"
+         oninput="applyFilters()">
+
+  <select id="category"
+          class="control"
+          onchange="applyFilters()">
+    <option value="ALL">All Categories</option>
+  </select>
+
+  <select id="availability"
+          class="control"
+          onchange="applyFilters()">
+    <option value="IN_STOCK">In Stock</option>
+    <option value="ALL">Show All Vehicles</option>
+  </select>
+
+  <select id="sort"
+          class="control"
+          onchange="applyFilters()">
+    <option value="name">Vehicle A–Z</option>
+    <option value="price_low">Price: Low to High</option>
+    <option value="price_high">Price: High to Low</option>
+    <option value="stock_high">Most Stock</option>
+  </select>
+</section>
+
+<div class="summary">
+  <div id="resultCount"></div>
+  <div id="updatedAt"></div>
+</div>
+
+<section id="catalogue" class="grid">
+  <div class="loading">
+    <div>
+      <div class="spinner"></div>
+      Loading PDM showroom…
+    </div>
+  </div>
+</section>
+
+<div class="fineprint">Typical buyback ranges are indicative only and are not guaranteed offers. Final offers may vary depending on current dealership stock, vehicle condition, market demand and other circumstances at the time of appraisal.</div>
+
+</section>
+
+<div class="footer"><strong>Premium Deluxe Motorsport</strong> · PDM 8230 LLC</div>
+
+</main>
+
+
+<div id="photoModal" class="photo-modal hidden" onclick="closeVehiclePhoto()">
+  <div class="photo-modal-inner" onclick="event.stopPropagation()">
+    <img id="photoModalImage" alt="">
+    <div id="photoModalTitle" class="photo-modal-title"></div>
+    <button class="photo-modal-close" onclick="closeVehiclePhoto()">CLOSE</button>
+  </div>
+</div>
+
+<script src="js/gasShim.js"></script>
+<script src="js/showroom.js"></script>
+</body>
+</html>

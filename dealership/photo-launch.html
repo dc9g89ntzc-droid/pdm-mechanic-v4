@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PDM Photo Studio</title>
+<style>
+  body{margin:0;background:#08111f;color:#fff;font-family:Arial,sans-serif;display:grid;place-items:center;min-height:100vh;text-align:center}
+  main{max-width:560px;padding:36px}
+  .muted{opacity:.78}
+  .small{opacity:.55;font-size:13px}
+  #launch{display:inline-block;padding:14px 20px;background:#2d8cff;color:#fff;text-decoration:none;border-radius:10px;font-weight:700}
+</style>
+</head>
+<body>
+<!--
+  Replaces the doGet ?pdmCaptureTicket= launcher from the Apps Script
+  22_PhotoCaptureBridge. The pdmphoto:// URL (with its signed upload URL)
+  arrives in the #fragment, which the browser never sends to any server.
+-->
+<main>
+  <h1>PDM Photo Studio</h1>
+  <div id="ready">
+    <p class="muted">Launching the local capture helper…</p>
+    <p><a id="launch" href="#">OPEN PHOTO CAPTURE</a></p>
+    <p class="small">You can close this tab once the helper opens.</p>
+  </div>
+  <div id="invalid" hidden>
+    <p>This photography link is missing or invalid.</p>
+    <p>Close this tab and click the photo button again.</p>
+  </div>
+</main>
+<script>
+  (function () {
+    let protocolUrl = '';
+    try {
+      protocolUrl = decodeURIComponent(location.hash.slice(1));
+    } catch {
+      protocolUrl = '';
+    }
+
+    // Only ever hand off to the PDM capture helper's own protocol.
+    if (!protocolUrl.startsWith('pdmphoto://')) {
+      document.getElementById('ready').hidden = true;
+      document.getElementById('invalid').hidden = false;
+      return;
+    }
+
+    // Drop the signed URL from the address bar / history once read.
+    history.replaceState(null, '', location.pathname);
+
+    const launch = document.getElementById('launch');
+    launch.href = protocolUrl;
+    window.addEventListener('load', function () {
+      setTimeout(function () { launch.click(); }, 150);
+    });
+  })();
+</script>
+</body>
+</html>

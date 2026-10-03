@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>PDM 8230 Dealership Portal</title>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="css/portal.css">
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-card">
+    <img class="login-logo" src="../images/pdm-dealership-logo.png" alt="Premium Deluxe Motorsport">
+    <div class="brand-stripe"></div>
+
+    <h1>Dealership Portal</h1>
+    <p class="muted">PDM 8230 LLC</p>
+
+    <div class="field">
+      <label>Employee Name</label>
+      <input id="loginName" autocomplete="username">
+    </div>
+
+    <div class="field">
+      <label>Password</label>
+      <input id="loginPassword"
+             type="password"
+             autocomplete="current-password"
+             onkeydown="if(event.key==='Enter') doLogin()">
+    </div>
+
+    <button class="primary" onclick="doLogin()">Log In</button>
+    <div id="loginError" class="error"></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <aside class="sidebar">
+    <div class="sidebar-logo-wrap">
+      <img class="sidebar-logo" src="../images/pdm-dealership-logo.png" alt="Premium Deluxe Motorsport">
+      <div class="brand-stripe"></div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <button data-page="dashboard" onclick="openPage('dashboard')"><span class="nav-icon">⌂</span>Dashboard</button>
+      <button data-page="sell" data-perm="can_sell" onclick="openPage('sell')"><span class="nav-icon">◇</span>Sell Vehicle</button>
+      <button data-page="import" data-perm="can_import" onclick="openPage('import')"><span class="nav-icon">⇩</span>Import Vehicles</button>
+      <button data-page="buyback" data-perm="can_buyback" onclick="openPage('buyback')"><span class="nav-icon">↙</span>Buy From Player</button>
+      <button data-page="export" data-perm="can_export" onclick="openPage('export')"><span class="nav-icon">↗</span>Export Vehicles</button>
+      <button data-page="stock" onclick="openPage('stock')"><span class="nav-icon">▦</span>Stock</button>
+      <button data-page="vehicles" data-perm="can_manage_vehicles" onclick="openPage('vehicles')"><span class="nav-icon">▤</span>Vehicle Management</button>
+      <button data-page="customers" data-customer-access="true" onclick="openPage('customers')"><span class="nav-icon">◎</span>Customers</button>
+      <button data-page="accounts" data-perm="can_view_accounts" onclick="openPage('accounts')"><span class="nav-icon">$</span>Accounts</button>
+      <button data-page="payroll" data-perm="can_manage_payroll" onclick="openPage('payroll')"><span class="nav-icon">¤</span>Payroll</button>
+      <button data-page="logs"data-manager="true"onclick="openPage('logs')"><span class="nav-icon">≡</span>Logs</button>
+      <button data-page="manager"data-owner="true"onclick="openPage('manager')"><span class="nav-icon">⚙</span>Staff & Permissions</button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="footer-brand">
+        <strong>PDM 8230 LLC</strong>
+        <span>Premium Deluxe Motorsport</span>
+        <div class="mini-stripe"></div>
+      </div>
+      <button class="logout-btn" onclick="logout()">↪ Logout</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="top-left">
+        <div class="hamburger">☰</div>
+        <div id="topTitle" class="top-title">Dashboard</div>
+      </div>
+
+      <div class="user-block"
+           role="button"
+           tabindex="0"
+           aria-haspopup="true"
+           aria-expanded="false"
+           onclick="toggleUserMenu(event)"
+           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleUserMenu(event)}">
+        <div class="user-avatar">◎</div>
+        <div class="user-meta">
+          <strong id="userName"></strong>
+          <span id="userRole"></span>
+        </div>
+        <span class="user-chevron">▾</span>
+      </div>
+
+      <div id="userMenu"
+           class="user-menu hidden">
+        <button onclick="event.stopPropagation();openMyPdm()">
+          <span>👤</span>
+          <span>My PDM</span>
+        </button>
+
+        <button onclick="event.stopPropagation();openMyPdmPassword()">
+          <span>🔐</span>
+          <span>Change Password</span>
+        </button>
+
+        <button class="danger"
+                onclick="event.stopPropagation();closeUserMenu();logout()">
+          <span>↪</span>
+          <span>Sign Out</span>
+        </button>
+      </div>
+    </header>
+
+    <section id="content" class="content"></section>
+  </main>
+
+  <div id="pageLoader" class="hidden">
+    <div class="spinner"></div>
+  </div>
+</div>
+
+<script src="js/gasShim.js"></script>
+<script src="js/portal.js"></script>
+</body>
+</html>
