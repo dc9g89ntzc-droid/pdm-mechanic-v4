@@ -161,7 +161,8 @@
     <input type="text" id="filterSearch" placeholder="Search items…" />
     <label class="checkbox"><input type="checkbox" id="filterActiveOnly" checked /> Active only</label>
     <button id="clearFilters">Clear filters</button>
-    <button class="btn secondary" id="manageSubcatsBtn" style="margin-left:auto;">Subcategories</button>
+    <button class="btn secondary" id="exportCsvBtn" style="margin-left:auto;">Export CSV</button>
+    <button class="btn secondary" id="manageSubcatsBtn">Subcategories</button>
     <button class="btn" id="newItemBtn">+ New Item</button>
   </div>
 
@@ -471,6 +472,50 @@
     filterSearch.value = '';
     filterActiveOnly.checked = true;
     loadItems();
+  });
+
+  function csvField(value) {
+    const str = value === null || value === undefined ? '' : String(value);
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  }
+
+  // Whole catalogue (respecting the Active only toggle, not the search/
+  // category filters -- "all the items in my catalogue" means everything,
+  // not just whatever's currently searched for).
+  document.getElementById('exportCsvBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('exportCsvBtn');
+    btn.disabled = true;
+    try {
+      const items = await listCatalogueItems({ activeOnly: filterActiveOnly.checked });
+      const rows = [['Name', 'Import price', 'Customer price', 'Profit %']];
+      items.forEach((item) => {
+        const importPrice = item.purchase_cost;
+        const customerPrice = item.customer_price;
+        const profitPct = (importPrice != null && customerPrice != null && Number(importPrice) !== 0)
+          ? (((Number(customerPrice) - Number(importPrice)) / Number(importPrice)) * 100).toFixed(1)
+          : '';
+        rows.push([
+          item.name,
+          importPrice != null ? Number(importPrice).toFixed(2) : '',
+          customerPrice != null ? Number(customerPrice).toFixed(2) : '',
+          profitPct
+        ]);
+      });
+      const csv = rows.map((r) => r.map(csvField).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `catalogue-pricing-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Failed to export: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   // ---- Item modal ----
