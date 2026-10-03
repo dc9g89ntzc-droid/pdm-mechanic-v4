@@ -85,6 +85,18 @@
   .filters label.checkbox { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); }
   .filters button { background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
 
+  .sweep-bar {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    padding: 12px 24px; background: rgba(216,31,39,0.08); border-bottom: 1px solid rgba(216,31,39,0.3);
+  }
+  .sweep-bar .sweep-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--red); }
+  .sweep-bar .sweep-count { font-size: 12px; color: var(--text-dim); margin-right: auto; }
+  .sweep-bar input[type="number"] {
+    width: 64px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text);
+    padding: 7px 8px; border-radius: 8px; font-size: 13px; text-align: right;
+  }
+  .sweep-bar .sweep-pct-sign { color: var(--text-dim); font-size: 13px; margin-left: -4px; }
+
   main { padding: 20px 24px 60px; }
 
   table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden; font-size: 13px; }
@@ -164,6 +176,15 @@
     <button class="btn secondary" id="exportCsvBtn" style="margin-left:auto;">Export CSV</button>
     <button class="btn secondary" id="manageSubcatsBtn">Subcategories</button>
     <button class="btn" id="newItemBtn">+ New Item</button>
+  </div>
+
+  <div class="sweep-bar" id="sweepBar" style="display:none;">
+    <span class="sweep-label">Boss tools — bulk re-price</span>
+    <span class="sweep-count" id="sweepCount"></span>
+    <input type="number" id="sweepPct" min="0.1" step="0.1" value="10" />
+    <span class="sweep-pct-sign">%</span>
+    <button type="button" class="btn secondary" id="sweepRaiseBtn">Raise customer prices ↑</button>
+    <button type="button" class="btn secondary" id="sweepLowerBtn">Lower customer prices ↓</button>
   </div>
 
   <main>
@@ -372,6 +393,7 @@
 
   let subcategories = [];
   let editingItemId = null;
+  let currentItems = []; // whatever loadItems() last fetched -- the bulk price-sweep buttons act on exactly this set
 
   document.getElementById('fSourcing').innerHTML = SOURCING_TYPES.map((s) => `<option value="${s.value}">${s.label}</option>`).join('');
   document.getElementById('fUsageType').innerHTML = USAGE_TYPES.map((u) => `<option value="${u.value}">${u.label}</option>`).join('');
@@ -455,7 +477,9 @@
   async function loadItems() {
     try {
       const items = await listCatalogueItems(currentFilters());
+      currentItems = items;
       renderItems(items);
+      updateSweepCount();
     } catch (err) {
       itemsBody.innerHTML = `<tr><td colspan="10"><div class="empty-msg">Failed to load items: ${err.message}</div></td></tr>`;
     }
@@ -517,6 +541,60 @@
       btn.disabled = false;
     }
   });
+
+  // ---- Bulk price sweep (boss only) ----
+  // Acts on exactly whatever the current filters/search have narrowed the
+  // table down to (currentItems, set by loadItems()) -- clear filters first
+  // for a true catalogue-wide sweep, or narrow down for a targeted one.
+  // Only customer_price moves; import/shop/export price are untouched.
+  const sweepBar = document.getElementById('sweepBar');
+  if (isBossRole(session?.role)) sweepBar.style.display = 'flex';
+
+  function updateSweepCount() {
+    const priced = currentItems.filter((i) => i.customer_price != null).length;
+    const el = document.getElementById('sweepCount');
+    if (!el) return;
+    el.textContent = `${priced} of ${currentItems.length} items in view have a customer price to adjust`;
+  }
+
+  async function runPriceSweep(direction) {
+    const pct = Number(document.getElementById('sweepPct').value);
+    if (!pct || pct <= 0) { alert('Enter a positive percentage.'); return; }
+    const targets = currentItems.filter((i) => i.customer_price != null);
+    if (targets.length === 0) { alert('Nothing in the current view has a customer price to adjust.'); return; }
+
+    const verb = direction === 'up' ? 'Raise' : 'Lower';
+    if (!confirm(`${verb} customer_price by ${pct}% on ${targets.length} item${targets.length === 1 ? '' : 's'} in the current view? This can't be undone automatically.`)) return;
+
+    const raiseBtn = document.getElementById('sweepRaiseBtn');
+    const lowerBtn = document.getElementById('sweepLowerBtn');
+    const activeBtn = direction === 'up' ? raiseBtn : lowerBtn;
+    const activeLabel = activeBtn.textContent;
+    raiseBtn.disabled = true;
+    lowerBtn.disabled = true;
+    activeBtn.textContent = `Updating ${targets.length} items…`;
+
+    const factor = direction === 'up' ? (1 + pct / 100) : (1 - pct / 100);
+    try {
+      await Promise.all(targets.map((item) => {
+        const newPrice = Math.max(0, Math.round(Number(item.customer_price) * factor * 100) / 100);
+        return updateCatalogueItem(item.id, { customer_price: newPrice });
+      }));
+      logActivity({
+        actorId: session?.id, action: 'catalogue_price_sweep', entityType: 'catalogue_item', entityId: null,
+        summary: `${session?.employee_name || 'Someone'} ${direction === 'up' ? 'raised' : 'lowered'} customer_price by ${pct}% across ${targets.length} catalogue item${targets.length === 1 ? '' : 's'} (${currentFilters().category || 'all categories'})`
+      });
+      await loadItems();
+    } catch (err) {
+      alert(`Price sweep failed partway through: ${err.message}. Reload to see what actually changed before retrying.`);
+    } finally {
+      raiseBtn.disabled = false;
+      lowerBtn.disabled = false;
+      activeBtn.textContent = activeLabel;
+    }
+  }
+  document.getElementById('sweepRaiseBtn').addEventListener('click', () => runPriceSweep('up'));
+  document.getElementById('sweepLowerBtn').addEventListener('click', () => runPriceSweep('down'));
 
   // ---- Item modal ----
   const itemModalBackdrop = document.getElementById('itemModalBackdrop');
@@ -839,6 +917,7 @@
   (async () => {
     if (!(await hasAreaAccess(session, 'catalogue'))) {
       document.querySelector('.filters').remove();
+      document.getElementById('sweepBar').remove();
       document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px; text-align:center;">This page is restricted to your role.</div>';
       return;
     }

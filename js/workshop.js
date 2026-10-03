@@ -64,6 +64,13 @@ function isManagementRole(role) {
   return MANAGEMENT_ROLES.includes(role);
 }
 
+// Boss-only -- narrower than MANAGEMENT_ROLES above, for the one place
+// that genuinely should be admin-only: catalogue.html's bulk price-sweep
+// buttons (raise/lower every visible item's customer_price at once).
+function isBossRole(role) {
+  return role === 'boss';
+}
+
 // Which areas exist as gated pages, and (for nav hiding) which page each
 // one is. Access per role is configurable from the Staff page's permissions
 // matrix (role_permissions table, sql/027) rather than hardcoded -- these
