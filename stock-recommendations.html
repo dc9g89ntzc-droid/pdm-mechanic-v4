@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Stock Recommendations</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; flex-wrap: wrap; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary, .btn.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+
+  main { padding: 24px; max-width: 1300px; margin: 0 auto; }
+  .page-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .page-title { font-size: 20px; margin: 0 0 4px; }
+  .page-sub { color: var(--text-dim); font-size: 13px; margin: 0; max-width: 760px; line-height: 1.5; }
+
+  .data-note { background: rgba(240,165,44,0.08); border: 1px solid rgba(240,165,44,0.35); color: var(--amber); border-radius: 10px; padding: 12px 14px; font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
+  .data-note.ok { background: rgba(34,197,94,0.06); border-color: rgba(34,197,94,0.3); color: var(--green); }
+
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .controls label { color: var(--text-dim); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .controls select, .controls input[type="search"] { background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+  .controls input[type="search"] { min-width: 220px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .tile { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 14px 16px; }
+  .tile .label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .tile .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+  .tile .hint { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  @media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  .card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 18px; margin-bottom: 20px; overflow-x: auto; }
+  .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .card h2 { font-size: 14px; margin: 0; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+  .card .card-sub { color: var(--text-dim); font-size: 12px; margin: 4px 0 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 6px 8px; color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; border-bottom: 1px solid var(--panel-border); white-space: nowrap; }
+  td { padding: 8px; border-bottom: 1px solid var(--panel-border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 20px; text-align: center; }
+  .dim { color: var(--text-dim); }
+  .item-cell { display: flex; align-items: center; gap: 10px; min-width: 200px; }
+  .item-cell img { width: 28px; height: 28px; object-fit: contain; flex: 0 0 28px; }
+  .item-cell .store { color: var(--text-dim); font-size: 11px; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge.urgent { background: rgba(216,31,39,0.2); color: #ff6b6f; }
+  .badge.buy { background: rgba(240,165,44,0.15); color: var(--amber); }
+  .badge.covered { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.idle { background: rgba(156,150,145,0.15); color: var(--text-dim); }
+  .badge.craft { background: rgba(124,58,237,0.15); color: #a78bfa; }
+
+  .cover-track { width: 70px; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; margin-left: 6px; }
+  .cover-fill { height: 100%; }
+
+  .add-cell { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+  .add-btn { background: transparent; border: 1px solid var(--red); color: var(--red); padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .add-btn:hover:not(:disabled) { background: rgba(216,31,39,0.12); }
+  .add-btn:disabled { opacity: 0.5; cursor: default; }
+  .add-btn.done { border-color: var(--green); color: var(--green); }
+
+  .qty-stepper { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+  .qty-stepper button { width: 20px; height: 20px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; cursor: pointer; font-size: 12px; line-height: 1; padding: 0; }
+  /* Typed quantity between the - / + buttons (bindQtyInput in workshop.js). */
+  .qty-input {
+    width: 46px; padding: 2px 4px; text-align: center; font-size: 12px;
+    background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px;
+    -moz-appearance: textfield; appearance: textfield;
+  }
+  .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .qty-input:focus { outline: none; border-color: var(--red); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="my-dashboard.html">Home</a>
+      <a href="dashboard.html?area=repair">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="quick-job.html">Quick Job</a>
+      <a href="customers.html">Customers</a>
+      <a href="configure.html">Configure</a>
+      <a href="purchasing.html">Purchasing</a>
+      <a href="reports.html" class="active">Reports</a>
+      <a href="logs.html">Logs</a>
+      <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
+      <a href="accounts.html">Accounts</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="page-top">
+      <div>
+        <h1 class="page-title">Stock Recommendations</h1>
+        <p class="page-sub">What to buy, based on how fast each part is actually used on jobs. Most needed first, least needed last. Suggested amounts cover the next week(s) of use, minus what's already on the shelf and on the shopping list.</p>
+      </div>
+      <a class="btn secondary" href="reports.html">&larr; Reports</a>
+    </div>
+
+    <div class="data-note" id="dataNote">Loading usage data…</div>
+
+    <div class="controls">
+      <label>Based on
+        <select id="windowSelect">
+          <option value="7">the last 7 days</option>
+          <option value="14">the last 14 days</option>
+          <option value="28" selected>the last 4 weeks</option>
+          <option value="56">the last 8 weeks</option>
+          <option value="0">all usage data</option>
+        </select>
+      </label>
+      <label>Stock up for
+        <select id="coverSelect">
+          <option value="1" selected>1 week</option>
+          <option value="2">2 weeks</option>
+          <option value="3">3 weeks</option>
+        </select>
+      </label>
+      <input type="search" id="searchInput" placeholder="Filter parts…" />
+    </div>
+
+    <div class="tiles">
+      <div class="tile"><div class="label">Out of stock, in demand</div><div class="value" id="tUrgent">—</div><div class="hint">parts used but none on the shelf</div></div>
+      <div class="tile"><div class="label">Parts to buy</div><div class="value" id="tToBuy">—</div><div class="hint" id="tToBuyHint"></div></div>
+      <div class="tile"><div class="label">Estimated spend</div><div class="value" id="tSpend">—</div><div class="hint" id="tSpendHint">at last paid / import price</div></div>
+      <div class="tile"><div class="label">Idle stock value</div><div class="value" id="tIdle">—</div><div class="hint">on the shelf, unused in this period</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Most necessary</h2>
+          <p class="card-sub">Out of stock first, then the parts that will run out soonest.</p>
+        </div>
+        <button class="btn" id="addAllBtn" disabled>Add all to shopping list</button>
+      </div>
+      <div id="needTable"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Covered</h2>
+          <p class="card-sub">Used recently, with enough on the shelf (or already on the shopping list).</p>
+        </div>
+      </div>
+      <div id="coveredTable"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>Least necessary</h2>
+          <p class="card-sub">In stock but not used on a job in this period, biggest value first. Worth holding off on buying more of these.</p>
+        </div>
+      </div>
+      <div id="idleTable"></div>
+    </div>
+  </main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
+<script src="js/catalogue.js"></script>
+<script src="js/shoppingList.js"></script>
+<script src="js/stockRecommendations.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  function esc(value) {
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  let items = [];
+  let firstUsage = null;
+  let usageCache = { from: null, rows: [] };
+  let onList = {};
+  let rows = [];
+  // Per-item amount to add, editable before clicking Add (defaults to the suggestion).
+  const addQty = {};
+  const added = new Set(); // added this visit -- button shows a tick
+
+  async function loadShoppingListTotals() {
+    const list = await listShoppingList();
+    onList = {};
+    list.filter((r) => !r.bought && r.catalogue_items).forEach((r) => {
+      onList[r.catalogue_items.id] = (onList[r.catalogue_items.id] || 0) + Number(r.quantity);
+    });
+  }
+
+  // How many days of usage the chosen window really covers -- never further
+  // back than the first usage record, so one week of data isn't averaged as
+  // if it were four.
+  function effectiveWindow() {
+    const chosen = Number(document.getElementById('windowSelect').value);
+    const now = Date.now();
+    const first = firstUsage ? new Date(firstUsage).getTime() : now;
+    const available = Math.max(1, (now - first) / DAY_MS);
+    const days = chosen > 0 ? Math.min(chosen, available) : available;
+    return { days, from: new Date(now - days * DAY_MS).toISOString(), available, chosen };
+  }
+
+  async function recompute() {
+    const win = effectiveWindow();
+    if (usageCache.from === null || win.from < usageCache.from) {
+      usageCache = { from: win.from, rows: await listUsageSince(win.from) };
+    }
+    const usage = usageCache.rows.filter((t) => t.created_at >= win.from);
+    const coverWeeks = Number(document.getElementById('coverSelect').value);
+    rows = sortStockRecommendations(buildStockRecommendations({ items, usage, onList, windowDays: win.days, coverWeeks }));
+    rows.forEach((r) => { if (addQty[r.item.id] === undefined || !added.has(r.item.id)) addQty[r.item.id] = r.suggested; });
+    renderDataNote(win, usage);
+    render();
+  }
+
+  function renderDataNote(win, usage) {
+    const note = document.getElementById('dataNote');
+    if (!firstUsage) {
+      note.className = 'data-note';
+      note.textContent = 'No parts have been used on a job yet, so there is nothing to base recommendations on. Only items with a reorder level set are shown as needed.';
+      return;
+    }
+    const days = Math.round(win.days * 10) / 10;
+    const since = new Date(firstUsage).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const capped = win.chosen > 0 && win.available < win.chosen
+      ? ` You picked ${win.chosen} days, but usage tracking only goes back to ${since}.` : '';
+    const partsUsed = new Set(usage.map((t) => t.item_id)).size;
+    note.className = win.days >= 28 ? 'data-note ok' : 'data-note';
+    note.textContent = `Based on ${days} day${days === 1 ? '' : 's'} of usage (${partsUsed} different parts used on jobs).${capped}` +
+      (win.days < 28 ? ' Treat these as a rough guide for now. They get more reliable with every week of jobs recorded.' : '');
+  }
+
+  function coverCell(r) {
+    if (r.weeksCover === null) return r.used > 0 ? '<span class="dim">—</span>' : '<span class="dim">No use</span>';
+    const coverWeeks = Number(document.getElementById('coverSelect').value);
+    const pct = Math.min(100, (r.weeksCover / coverWeeks) * 100);
+    const colour = r.weeksCover < coverWeeks * 0.5 ? 'var(--red)' : r.weeksCover < coverWeeks ? 'var(--amber)' : 'var(--green)';
+    const label = r.weeksCover >= 10 ? '10+ wks' : r.weeksCover < 1 ? `${Math.round(r.weeksCover * 7)} days` : `${r.weeksCover.toFixed(1)} wks`;
+    return `${label}<span class="cover-track"><span class="cover-fill" style="display:block;width:${pct}%;background:${colour};"></span></span>`;
+  }
+
+  function itemCell(r) {
+    const store = sourceStoreLabel(r.item);
+    return `<div class="item-cell">
+      ${r.item.image_url ? `<img src="${esc(r.item.image_url)}" alt="" loading="lazy" />` : ''}
+      <div>${esc(r.item.name)}${store ? `<div class="store">${store}</div>` : ''}</div>
+    </div>`;
+  }
+
+  function addCell(r) {
+    if (r.craftOnly) return '<span class="badge craft" title="Crafted in-house, not bought">Craft</span>';
+    const done = added.has(r.item.id);
+    return `<div class="add-cell">
+      <div class="qty-stepper">
+        <button type="button" class="qty-dec" data-id="${r.item.id}">−</button>
+        <input type="number" class="qty-input" data-id="${r.item.id}" aria-label="Quantity to add" />
+        <button type="button" class="qty-inc" data-id="${r.item.id}">+</button>
+      </div>
+      <button type="button" class="add-btn ${done ? 'done' : ''}" data-id="${r.item.id}">${done ? '&#10003; Added' : 'Add to list'}</button>
+    </div>`;
+  }
+
+  function renderTable(containerId, list, columns, emptyText) {
+    const container = document.getElementById(containerId);
+    if (list.length === 0) {
+      container.innerHTML = `<div class="empty-msg">${emptyText}</div>`;
+      return;
+    }
+    container.innerHTML = `
+      <table>
+        <thead><tr>${columns.map((c) => `<th${c.num ? ' class="num"' : ''}>${c.label}</th>`).join('')}</tr></thead>
+        <tbody>${list.map((r) => `<tr>${columns.map((c) => `<td${c.num ? ' class="num"' : ''}>${c.render(r)}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>`;
+  }
+
+  function filtered(list) {
+    const q = document.getElementById('searchInput').value.trim().toLowerCase();
+    return q ? list.filter((r) => r.item.name.toLowerCase().includes(q)) : list;
+  }
+
+  function render() {
+    const need = rows.filter((r) => r.priority === 'urgent' || r.priority === 'buy');
+    const covered = rows.filter((r) => r.priority === 'covered');
+    const idle = rows.filter((r) => r.priority === 'idle' && r.stock > 0);
+
+    const buyable = need.filter((r) => !r.craftOnly);
+    const spend = buyable.reduce((sum, r) => sum + (r.unitCost === null ? 0 : r.unitCost * (addQty[r.item.id] || 0)), 0);
+    const unpriced = buyable.filter((r) => r.unitCost === null).length;
+    document.getElementById('tUrgent').textContent = need.filter((r) => r.priority === 'urgent').length;
+    document.getElementById('tToBuy').textContent = buyable.length;
+    document.getElementById('tToBuyHint').textContent = need.length > buyable.length ? `+ ${need.length - buyable.length} to craft` : 'to cover the period chosen';
+    document.getElementById('tSpend').textContent = formatMoney(spend);
+    document.getElementById('tSpendHint').textContent = unpriced ? `${unpriced} part${unpriced === 1 ? ' has' : 's have'} no price yet` : 'at last paid / import price';
+    document.getElementById('tIdle').textContent = formatMoney(idle.reduce((sum, r) => sum + r.idleValue, 0));
+
+    renderTable('needTable', filtered(need), [
+      { label: '', render: (r) => `<span class="badge ${r.priority}">${STOCK_PRIORITIES[r.priority].label}</span>` },
+      { label: 'Part', render: itemCell },
+      { label: 'Used / week', num: true, render: (r) => r.used > 0 ? r.weekly : '<span class="dim" title="Below its reorder level">Reorder level</span>' },
+      { label: 'Jobs', num: true, render: (r) => r.jobs || '' },
+      { label: 'In stock', num: true, render: (r) => r.stock },
+      { label: 'Lasts', render: coverCell },
+      { label: 'On list', num: true, render: (r) => r.listed || '' },
+      { label: 'Suggested', num: true, render: (r) => `<strong>${r.suggested}</strong>` },
+      { label: 'Est. cost', num: true, render: (r) => r.craftOnly ? '<span class="dim">Crafted</span>' : r.suggestedCost === null ? '<span class="dim">No price</span>' : formatMoney(r.suggestedCost) },
+      { label: '', num: true, render: addCell }
+    ], 'Nothing needs buying right now.');
+
+    renderTable('coveredTable', filtered(covered), [
+      { label: 'Part', render: itemCell },
+      { label: 'Used / week', num: true, render: (r) => r.weekly },
+      { label: 'Jobs', num: true, render: (r) => r.jobs || '' },
+      { label: 'In stock', num: true, render: (r) => r.stock },
+      { label: 'Lasts', render: coverCell },
+      { label: 'On list', num: true, render: (r) => r.listed || '' },
+      { label: 'Add extra', num: true, render: addCell }
+    ], 'No parts used in this period yet.');
+
+    renderTable('idleTable', filtered(idle), [
+      { label: 'Part', render: itemCell },
+      { label: 'In stock', num: true, render: (r) => r.stock },
+      { label: 'Value on shelf', num: true, render: (r) => r.unitCost === null ? '<span class="dim">No price</span>' : formatMoney(r.idleValue) }
+    ], 'Everything in stock has been used in this period.');
+
+    wireRowControls();
+    document.getElementById('addAllBtn').disabled = buyable.filter((r) => !added.has(r.item.id) && (addQty[r.item.id] || 0) > 0).length === 0;
+  }
+
+  function wireRowControls() {
+    document.querySelectorAll('.qty-input[data-id]').forEach((input) => {
+      const id = input.dataset.id;
+      bindQtyInput(input, addQty[id] || 0, (qty) => { addQty[id] = qty; render(); });
+    });
+    document.querySelectorAll('.qty-inc[data-id]').forEach((btn) => btn.addEventListener('click', () => {
+      addQty[btn.dataset.id] = (addQty[btn.dataset.id] || 0) + 1; render();
+    }));
+    document.querySelectorAll('.qty-dec[data-id]').forEach((btn) => btn.addEventListener('click', () => {
+      addQty[btn.dataset.id] = Math.max(0, (addQty[btn.dataset.id] || 0) - 1); render();
+    }));
+    document.querySelectorAll('.add-btn[data-id]').forEach((btn) => btn.addEventListener('click', () => addItems([btn.dataset.id])));
+  }
+
+  async function addItems(ids) {
+    const toAdd = ids
+      .map((id) => rows.find((r) => r.item.id === id))
+      .filter((r) => r && !r.craftOnly && (addQty[r.item.id] || 0) > 0);
+    if (toAdd.length === 0) {
+      alert('Set a quantity above 0 first.');
+      return;
+    }
+    document.querySelectorAll('.add-btn, #addAllBtn').forEach((b) => { b.disabled = true; });
+    try {
+      for (const r of toAdd) {
+        await addToShoppingList(r.item.id, addQty[r.item.id], session?.id);
+        added.add(r.item.id);
+      }
+      logActivity({
+        actorId: session?.id, action: 'materials_added_to_shopping_list', entityType: 'catalogue_item', entityId: null,
+        summary: `${session?.employee_name || 'Someone'} added ${toAdd.length} part${toAdd.length === 1 ? '' : 's'} to the shopping list from Stock Recommendations`,
+        detail: toAdd.map((r) => `${addQty[r.item.id]} × ${r.item.name}`).join('\n')
+      });
+      await loadShoppingListTotals();
+      await recompute();
+    } catch (err) {
+      alert(`Failed to add to the shopping list: ${err.message}`);
+      render();
+    }
+  }
+
+  document.getElementById('addAllBtn').addEventListener('click', () => {
+    const ids = rows
+      .filter((r) => (r.priority === 'urgent' || r.priority === 'buy') && !r.craftOnly && !added.has(r.item.id))
+      .map((r) => r.item.id);
+    if (ids.length && confirm(`Add ${ids.length} part${ids.length === 1 ? '' : 's'} to the shopping list?`)) addItems(ids);
+  });
+  document.getElementById('windowSelect').addEventListener('change', () => recompute().catch(showLoadError));
+  document.getElementById('coverSelect').addEventListener('change', () => recompute().catch(showLoadError));
+  document.getElementById('searchInput').addEventListener('input', render);
+
+  function showLoadError(err) {
+    const note = document.getElementById('dataNote');
+    note.className = 'data-note';
+    note.textContent = `Couldn't load stock data: ${err.message}`;
+  }
+
+  (async () => {
+    if (!(await hasAreaAccess(session, 'reports'))) {
+      document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px;">This page is restricted to your role.</div>';
+      return;
+    }
+    try {
+      [items, firstUsage] = await Promise.all([listItemsForStockPlan(), getFirstUsageDate(), loadShoppingListTotals()]);
+      await recompute();
+    } catch (err) {
+      showLoadError(err);
+    }
+  })();
+</script>
+</body>
+</html>
