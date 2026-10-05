@@ -59,7 +59,7 @@ async function getAccountsData(token, startIso, endIso) {
     throw new Error('Accounts end date must be after the start date.');
   }
 
-  const [summary, recent, capital, periodCapital] = await Promise.all([
+  const [summary, recent, capital, periodCapital, floatLedger] = await Promise.all([
     rpcSql_('dealership_accounts_summary', {
       p_start: start.toISOString(),
       p_end: end.toISOString()
@@ -81,7 +81,8 @@ async function getAccountsData(token, startIso, endIso) {
       p_employee_id: user.employee_id,
       p_start: start.toISOString(),
       p_end: end.toISOString()
-    })
+    }),
+    rpcSql_('dealership_float_ledger', { p_employee_id: user.employee_id })
   ]);
 
   const data = rowData_(summary);
@@ -112,6 +113,86 @@ async function getAccountsData(token, startIso, endIso) {
 
   data.operating_capital = rowData_(capital) || {};
   data.period_operating_capital = rowData_(periodCapital) || {};
+  data.float_ledger = rowData_(floatLedger) || {};
+
+  return data;
+}
+
+// ============================================================
+// FLOAT DEPOSITS (sql/057) -- money put into the dealership account to cover
+// expensive imports, owed back to whoever deposited it. Permission rules
+// live in the RPCs; these just validate input and audit.
+// ============================================================
+
+function cleanFloatAmount_(value) {
+  const n = Number(String(value ?? '').replace(/[$,\s]/g, ''));
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error('Enter an amount greater than 0.');
+  }
+  return Math.round(n * 100) / 100;
+}
+
+async function depositFloat(token, amount, reason) {
+  const user = requireSession_(token);
+  requireEmployeeLink_(user);
+
+  amount = cleanFloatAmount_(amount);
+  reason = String(reason || '').trim();
+  if (!reason) throw new Error('A reason is required for a float deposit.');
+
+  const data = await rpcSql_('dealership_float_deposit', {
+    p_employee_id: user.employee_id,
+    p_employee_name: user.employee_name,
+    p_amount: amount,
+    p_reason: reason
+  });
+
+  await auditLog_(user, 'DEPOSIT', 'FLOAT', data && data.movement_id ? data.movement_id : '',
+    'Deposited float into Operating Capital', { amount, reason });
+
+  return data;
+}
+
+async function withdrawFloat(token, depositorEmployeeId, amount, reason) {
+  const user = requireSession_(token);
+  requireEmployeeLink_(user);
+
+  depositorEmployeeId = String(depositorEmployeeId || '').trim();
+  if (!depositorEmployeeId) throw new Error('Choose whose deposit is being withdrawn.');
+  amount = cleanFloatAmount_(amount);
+  reason = String(reason || '').trim();
+
+  const data = await rpcSql_('dealership_float_withdraw', {
+    p_actor_employee_id: user.employee_id,
+    p_actor_employee_name: user.employee_name,
+    p_depositor_employee_id: depositorEmployeeId,
+    p_amount: amount,
+    p_reason: reason || null
+  });
+
+  await auditLog_(user, 'WITHDRAW', 'FLOAT', data && data.movement_id ? data.movement_id : '',
+    'Withdrew float from Operating Capital', { depositor_employee_id: depositorEmployeeId, amount, reason });
+
+  return data;
+}
+
+async function voidFloatMovement(token, movementId, reason) {
+  const user = requireSession_(token);
+  requireEmployeeLink_(user);
+
+  movementId = String(movementId || '').trim();
+  reason = String(reason || '').trim();
+  if (!movementId) throw new Error('Float entry is required.');
+  if (!reason) throw new Error('A reason is required to void a float entry.');
+
+  const data = await rpcSql_('dealership_float_void', {
+    p_employee_id: user.employee_id,
+    p_employee_name: user.employee_name,
+    p_movement_id: movementId,
+    p_reason: reason
+  });
+
+  await auditLog_(user, 'DELETE', 'FLOAT', movementId, 'Voided float entry', { reason });
 
   return data;
 }
@@ -317,6 +398,9 @@ module.exports = {
   functions: {
     getAccountsData,
     setOperatingCapitalBaseline,
+    depositFloat,
+    withdrawFloat,
+    voidFloatMovement,
     getPayrollConfiguration,
     getPayrollPreview,
     savePayrollSettings,

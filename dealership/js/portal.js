@@ -7224,6 +7224,8 @@ function renderAccounts() {
       ` : ''}
     </div>
 
+    ${renderFloatDeposits(data.float_ledger)}
+
     <div class="acct-section">
       <div class="acct-section-head">
         <div>
@@ -10649,6 +10651,204 @@ function submitNewCustomer() {
 
 function closeCustomerDrawer() {
   document.getElementById('customerDrawer')?.remove();
+}
+
+
+// ============================================================
+// FLOAT DEPOSITS (sql/057)
+// Money someone puts into the dealership account to cover expensive
+// imports. Raises Operating Capital, is owed back to them, and is never
+// profit. Only the depositor (or an Owner) can withdraw it, up to what they
+// still have in. Server-side RPCs enforce all of that; this only decides
+// which buttons to show.
+// ============================================================
+
+function renderFloatDeposits(ledger) {
+  ledger = ledger || {};
+  const depositors = Array.isArray(ledger.depositors) ? ledger.depositors : [];
+  const movements = Array.isArray(ledger.movements) ? ledger.movements : [];
+  const me = String(state.user.employee_id || '');
+
+  const depositorRows = depositors.map(d => {
+    const mine = String(d.employee_id) === me;
+    const canWithdraw = mine || ledger.is_owner === true;
+    return `
+      <tr>
+        <td>${escapeHtml(d.employee_name || 'Unknown')}${mine ? ' <span class="muted">(you)</span>' : ''}</td>
+        <td>${money(d.deposited || 0)}</td>
+        <td>${money(d.withdrawn || 0)}</td>
+        <td><strong>${money(d.outstanding || 0)}</strong></td>
+        <td>${formatLogDate(d.last_movement)}</td>
+        <td style="text-align:right">
+          ${canWithdraw
+            ? `<button class="add-row-btn"
+                       onclick="openFloatWithdraw('${jsString(d.employee_id)}','${jsString(d.employee_name || '')}',${Number(d.outstanding || 0)})">
+                 ${mine ? 'WITHDRAW' : 'WITHDRAW FOR THEM'}
+               </button>`
+            : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  const movementRows = movements.map(m => {
+    const deposit = m.movement_type === 'DEPOSIT';
+    const by = m.recorded_by_name && m.recorded_by_name !== m.depositor_name
+      ? ` <span class="muted">(recorded by ${escapeHtml(m.recorded_by_name)})</span>` : '';
+    return `
+      <tr style="${m.is_deleted ? 'opacity:.5;text-decoration:line-through' : ''}">
+        <td>${formatLogDate(m.movement_date)}</td>
+        <td><span class="acct-type ${deposit ? 'sale' : 'import'}">${deposit ? 'Deposit' : 'Withdrawal'}</span></td>
+        <td>${escapeHtml(m.depositor_name || '')}${by}</td>
+        <td class="${deposit ? 'acct-positive' : 'acct-negative'}">${deposit ? '+' : '−'}${money(m.amount || 0)}</td>
+        <td>${escapeHtml(m.reason || '')}${m.is_deleted
+          ? `<div class="muted" style="font-size:10px">Voided by ${escapeHtml(m.deleted_by_name || '')}: ${escapeHtml(m.delete_reason || '')}</div>` : ''}</td>
+        <td style="text-align:right">
+          ${ledger.is_owner === true && !m.is_deleted
+            ? `<button class="add-row-btn" onclick="voidFloatEntry('${jsString(m.movement_id)}')">VOID</button>`
+            : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div class="acct-section">
+      <div class="acct-section-head">
+        <div>
+          <h2>Float Deposits</h2>
+          <div class="acct-note">
+            Personal money put into the dealership account to cover large imports.
+            Deposits raise Operating Capital and are owed back to the depositor; withdrawals repay them.
+            Never counted as profit.
+          </div>
+        </div>
+        ${ledger.can_deposit === true
+          ? `<button class="add-row-btn" onclick="openFloatDeposit()">+ ADD FLOAT DEPOSIT</button>`
+          : ''}
+      </div>
+
+      <div class="acct-grid">
+        ${accountsMetric(
+          'Float Owed Back',
+          money(ledger.total_outstanding || 0),
+          depositors.length + (depositors.length === 1 ? ' person has' : ' people have') + ' money in'
+        )}
+      </div>
+
+      ${depositors.length ? `
+        <div class="acct-table-wrap" style="margin-top:12px">
+          <table class="acct-table">
+            <thead>
+              <tr><th>Depositor</th><th>Deposited</th><th>Withdrawn</th><th>Still in</th><th>Last movement</th><th></th></tr>
+            </thead>
+            <tbody>${depositorRows}</tbody>
+          </table>
+        </div>
+      ` : `<div class="acct-note" style="margin-top:10px">No float is currently deposited.</div>`}
+
+      ${movements.length ? `
+        <details style="margin-top:12px">
+          <summary class="acct-note" style="cursor:pointer">Float history (last ${movements.length})</summary>
+          <div class="acct-table-wrap" style="margin-top:8px">
+            <table class="acct-table">
+              <thead>
+                <tr><th>When</th><th>Type</th><th>Whose</th><th>Amount</th><th>Reason</th><th></th></tr>
+              </thead>
+              <tbody>${movementRows}</tbody>
+            </table>
+          </div>
+        </details>
+      ` : ''}
+    </div>
+  `;
+}
+
+// A rejected deposit/withdrawal (e.g. more than is deposited) is shown as a
+// popup, keeping the Accounts page -- handleServerError would replace it.
+function floatActionFailed(error) {
+  showPageLoader(false);
+  const msg = cleanError(error);
+  if (msg.includes('SESSION_EXPIRED')) return handleServerError(error);
+  alert(msg);
+}
+
+function parseFloatAmount(value) {
+  const n = Number(String(value || '').replace(/[$,\s]/g, ''));
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
+}
+
+function openFloatDeposit() {
+  const amount = parseFloatAmount(prompt('How much are you depositing into the dealership account?', ''));
+  if (amount === null) return;
+
+  const reason = prompt('What is it for?', 'Float for importing ');
+  if (reason === null) return;
+  if (!String(reason).trim()) {
+    alert('A reason is required.');
+    return;
+  }
+
+  if (!confirm(
+    `Record a float deposit of ${money(amount)} from ${state.user.employee_name}?
+
+Operating Capital goes up by ${money(amount)}, and it's recorded as owed back to you.
+Only you (or an Owner) can withdraw it later.`
+  )) return;
+
+  showPageLoader(true);
+  google.script.run
+    .withSuccessHandler(() => { showPageLoader(false); fetchAccounts(); })
+    .withFailureHandler(floatActionFailed)
+    .depositFloat(state.token, amount, String(reason).trim());
+}
+
+function openFloatWithdraw(depositorId, depositorName, outstanding) {
+  const mine = String(depositorId) === String(state.user.employee_id || '');
+  const amount = parseFloatAmount(prompt(
+    `Withdraw how much? ${mine ? 'You have' : depositorName + ' has'} ${money(outstanding)} still deposited.`,
+    String(outstanding)
+  ));
+  if (amount === null) return;
+
+  if (amount > Number(outstanding)) {
+    alert(`That's more than the ${money(outstanding)} still deposited.`);
+    return;
+  }
+
+  const current = accountsState.data && accountsState.data.operating_capital
+    ? Number(accountsState.data.operating_capital.current_balance || 0) : 0;
+  const after = current - amount;
+
+  if (!confirm(
+    `Record a withdrawal of ${money(amount)} ${mine ? 'to you' : 'to ' + depositorName}?
+
+Only confirm once the money has actually been taken out of the in-city account.
+
+Operating Capital: ${money(current)} → ${money(after)}${after < 1000000 ? '\n⚠ This takes Operating Capital below the $1m protected float.' : ''}`
+  )) return;
+
+  showPageLoader(true);
+  google.script.run
+    .withSuccessHandler(() => { showPageLoader(false); fetchAccounts(); })
+    .withFailureHandler(floatActionFailed)
+    .withdrawFloat(state.token, depositorId, amount, mine ? 'Repaid to depositor' : 'Repaid on behalf of ' + depositorName);
+}
+
+function voidFloatEntry(movementId) {
+  const reason = prompt('Why is this float entry being voided? (e.g. entered by mistake)', '');
+  if (reason === null) return;
+  if (!String(reason).trim()) {
+    alert('A reason is required.');
+    return;
+  }
+  if (!confirm('Void this float entry? Operating Capital and the amount owed will be corrected.')) return;
+
+  showPageLoader(true);
+  google.script.run
+    .withSuccessHandler(() => { showPageLoader(false); fetchAccounts(); })
+    .withFailureHandler(floatActionFailed)
+    .voidFloatMovement(state.token, movementId, String(reason).trim());
 }
 
 
