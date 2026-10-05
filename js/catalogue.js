@@ -180,7 +180,7 @@ async function removeIngredient(ingredientRowId) {
   if (error) throw new Error(error.message);
 }
 
-async function recordInventoryTransaction({ itemId, transactionType, quantity, performedBy, notes, jobId, unitCost, sourceType }) {
+async function recordInventoryTransaction({ itemId, transactionType, quantity, performedBy, notes, jobId, unitCost, sourceType, batchId }) {
   const { error } = await sb.from('inventory_transactions').insert({
     item_id: itemId,
     transaction_type: transactionType,
@@ -189,7 +189,8 @@ async function recordInventoryTransaction({ itemId, transactionType, quantity, p
     notes: notes || null,
     job_id: jobId || null,
     unit_cost: unitCost ?? null,
-    source_type: sourceType ?? null
+    source_type: sourceType ?? null,
+    batch_id: batchId || null
   });
   if (error) throw new Error(error.message);
 }
@@ -203,9 +204,10 @@ async function recordInventoryTransaction({ itemId, transactionType, quantity, p
 // alone -- it's the *import* price (what it costs to stock that store's
 // inventory in the first place), a separate, Joanna-maintained figure that
 // a purchase completing shouldn't silently overwrite.
-async function recordPurchase({ itemId, quantity, unitCost, sourceType, performedBy, notes }) {
+// batchId (sql/055) ties one checkout's items together for the Logs page.
+async function recordPurchase({ itemId, quantity, unitCost, sourceType, performedBy, notes, batchId }) {
   await recordInventoryTransaction({
-    itemId, transactionType: 'purchased_in', quantity, performedBy, notes, unitCost, sourceType
+    itemId, transactionType: 'purchased_in', quantity, performedBy, notes, unitCost, sourceType, batchId
   });
   const { error } = await sb.from('catalogue_items').update({ shop_price: unitCost }).eq('id', itemId);
   if (error) throw new Error(error.message);
@@ -235,7 +237,7 @@ async function listInventoryTransactions(filters = {}) {
   let query = sb
     .from('inventory_transactions')
     .select(`
-      id, item_id, transaction_type, quantity, unit_cost, source_type, job_id,
+      id, item_id, transaction_type, quantity, unit_cost, source_type, job_id, batch_id,
       performed_by, notes, created_at, voided_at, voided_by, void_reason, reversal_of,
       catalogue_items ( name )
     `)
@@ -243,6 +245,7 @@ async function listInventoryTransactions(filters = {}) {
     .limit(filters.limit || 300);
   if (filters.fromDate) query = query.gte('created_at', filters.fromDate);
   if (filters.toDate) query = query.lte('created_at', filters.toDate);
+  if (filters.transactionType) query = query.eq('transaction_type', filters.transactionType);
   if (!filters.includeVoided) query = query.is('voided_at', null);
   const { data, error } = await query;
   if (error) throw new Error(error.message);

@@ -160,6 +160,7 @@
       <a href="my-dashboard.html">Home</a>
       <a href="dashboard.html?area=repair">Workshop</a>
       <a href="checkin.html">New Job</a>
+      <a href="quick-job.html">Quick Job</a>
       <a href="customers.html">Customers</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html">Purchasing</a>
@@ -180,7 +181,10 @@
       <div class="job-title" id="jobTitle">Loading job…</div>
       <div class="job-sub" id="jobSub"></div>
     </div>
-    <a href="#" id="backLink" class="btn secondary">&larr; Add / edit items</a>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button type="button" id="backStageBtn" class="btn secondary" style="display:none;">&larr; Back to Inspection</button>
+      <a href="#" id="backLink" class="btn secondary">&larr; Add / edit items</a>
+    </div>
   </div>
 
   <div class="flow-layout">
@@ -323,6 +327,10 @@
     document.getElementById('backLink').href = activeLeg
       ? `job-items.html?job=${jobId}&type=${activeLeg.job_type}`
       : `job-items.html?job=${jobId}`;
+    // Repair's quote comes straight after its inspection; other work types
+    // go back to adding items, which backLink already covers.
+    document.getElementById('backStageBtn').style.display =
+      activeLeg && activeLeg.job_type === 'repair' && activeLeg.status === 'quote_preparation' ? '' : 'none';
 
     document.getElementById('sheetJobNumber').textContent = `Job #${job.job_number}`;
     document.getElementById('sheetDate').textContent = formatDateTimeEST();
@@ -466,6 +474,22 @@
 
     container.innerHTML = html;
   }
+
+  document.getElementById('backStageBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('backStageBtn');
+    btn.disabled = true;
+    try {
+      await reopenInspection(jobId);
+      logActivity({
+        actorId: session?.id, action: 'job_leg_status_changed', entityType: 'job', entityId: jobId,
+        summary: `${session?.employee_name || 'Someone'} took Job #${job.job_number} back to Repair Inspection`
+      });
+      window.location.href = `inspection.html?job=${jobId}`;
+    } catch (err) {
+      alert(`Failed to go back to inspection: ${err.message}`);
+      btn.disabled = false;
+    }
+  });
 
   document.getElementById('generateBtn').addEventListener('click', async () => {
     const btn = document.getElementById('generateBtn');

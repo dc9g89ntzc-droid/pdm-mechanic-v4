@@ -178,6 +178,7 @@
       <a href="my-dashboard.html">Home</a>
       <a href="dashboard.html?area=repair">Workshop</a>
       <a href="checkin.html">New Job</a>
+      <a href="quick-job.html">Quick Job</a>
       <a href="customers.html">Customers</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html" class="active">Purchasing</a>
@@ -490,12 +491,13 @@
     btn.textContent = 'Logging purchase…';
 
     const purchased = [];
+    const batchId = crypto.randomUUID();
     try {
       while (cart.length > 0) {
         const line = cart[0];
         await recordPurchase({
           itemId: line.itemId, quantity: Number(line.quantity), unitCost: Number(line.unitCost),
-          sourceType: source, performedBy: session?.id, notes
+          sourceType: source, performedBy: session?.id, notes, batchId
         });
         purchased.push(line);
         cart.shift();
@@ -977,6 +979,7 @@
     const btn = document.getElementById('convertConfirmBtn');
     btn.disabled = true;
     btn.textContent = 'Adding to stock…';
+    const batchId = crypto.randomUUID();
     try {
       for (const e of entries) {
         const row = convertRowsData[e.idx];
@@ -986,7 +989,7 @@
         // original request.
         await recordPurchase({
           itemId: row.catalogue_items.id, quantity: Number(e.quantity), unitCost: Number(e.cost),
-          sourceType: e.source, performedBy: session?.id, notes: 'Converted from shopping list'
+          sourceType: e.source, performedBy: session?.id, notes: 'Converted from shopping list', batchId
         });
       }
       logActivity({

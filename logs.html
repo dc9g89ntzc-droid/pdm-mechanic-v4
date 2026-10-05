@@ -79,6 +79,36 @@
   .modal .actions button { flex: 1; padding: 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
   .modal .actions .confirm { background: var(--red); border: none; color: white; font-weight: 600; }
   .modal .actions .cancel { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
+
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
+  .tab { background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .tab.active { background: var(--red); border-color: var(--red); color: white; font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .panel-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .panel-tools select { background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); padding: 7px 10px; border-radius: 8px; font-size: 13px; }
+  .panel-tools .count { color: var(--text-dim); font-size: 12px; margin-left: auto; }
+
+  .badge.quick { background: rgba(240,165,44,0.15); color: var(--amber); }
+  .badge.type-repair { background: rgba(216,31,39,0.15); color: #f0888c; }
+  .badge.type-customisation { background: rgba(240,165,44,0.15); color: var(--amber); }
+  .badge.type-performance { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.type-engine_building { background: rgba(124,58,237,0.15); color: #a78bfa; }
+  .badge.stage-completed { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.stage-ready_to_bill { background: rgba(240,165,44,0.15); color: var(--amber); }
+  .badge.stage-in_progress { background: rgba(56,189,248,0.15); color: #38bdf8; }
+  .badge.stage-cancelled { background: rgba(156,150,145,0.15); color: var(--text-dim); }
+  .badge.paid { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.unpaid { background: rgba(240,165,44,0.15); color: var(--amber); }
+  .view-bill { background: transparent; border: 1px solid var(--panel-border); color: var(--text); padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .view-bill:hover { border-color: var(--red); }
+  .dim { color: var(--text-dim); }
+  details summary { cursor: pointer; color: var(--text); }
+  details ul { margin: 8px 0 2px; padding-left: 18px; color: var(--text-dim); }
+  details li { margin: 2px 0; }
+
+  .modal.wide { max-width: 760px; }
+  .bill-preview { width: 100%; border-radius: 8px; background: white; display: block; margin-bottom: 14px; }
 </style>
 </head>
 <body>
@@ -88,6 +118,7 @@
       <a href="my-dashboard.html">Home</a>
       <a href="dashboard.html?area=repair">Workshop</a>
       <a href="checkin.html">New Job</a>
+      <a href="quick-job.html">Quick Job</a>
       <a href="customers.html">Customers</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html">Purchasing</a>
@@ -111,16 +142,71 @@
   </div>
 
   <main>
-    <div class="card">
-      <h2>Inventory Transactions</h2>
+    <div class="tabs" id="tabs">
+      <button class="tab" data-tab="jobs">Jobs</button>
+      <button class="tab" data-tab="purchases">Purchases</button>
+      <button class="tab" data-tab="payroll">Payroll</button>
+      <button class="tab" data-tab="stock">Stock movements</button>
+      <button class="tab" data-tab="activity">Activity</button>
+    </div>
+
+    <div class="tab-panel card" data-panel="jobs">
+      <div class="panel-tools">
+        <select id="jobKindFilter">
+          <option value="">All jobs</option>
+          <option value="full">Full jobs</option>
+          <option value="quick">Quick jobs</option>
+        </select>
+        <select id="jobStageFilter">
+          <option value="">Any stage</option>
+          <option value="completed">Completed</option>
+          <option value="ready_to_bill">Ready to bill</option>
+          <option value="in_progress">In progress</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <span class="count" id="jobsCount"></span>
+      </div>
+      <div id="jobsTable"></div>
+    </div>
+
+    <div class="tab-panel card" data-panel="purchases">
+      <div class="panel-tools"><span class="count" id="purchasesCount"></span></div>
+      <div id="purchasesTable"></div>
+    </div>
+
+    <div class="tab-panel card" data-panel="payroll">
+      <div class="panel-tools">
+        <select id="payrollTypeFilter">
+          <option value="">All pay</option>
+          <option value="shift_pay">Shift pay</option>
+          <option value="commission">Commission</option>
+          <option value="delivery">Deliveries</option>
+        </select>
+        <span class="count" id="payrollCount"></span>
+      </div>
+      <div id="payrollTable"></div>
+    </div>
+
+    <div class="tab-panel card" data-panel="stock">
       <div id="inventoryTable"></div>
     </div>
 
-    <div class="card">
-      <h2>Activity Log</h2>
+    <div class="tab-panel card" data-panel="activity">
       <div id="activityTable"></div>
     </div>
   </main>
+
+  <div class="modal-backdrop" id="billModalBackdrop">
+    <div class="modal wide">
+      <h2 id="billModalTitle"></h2>
+      <p class="sub" id="billModalSub"></p>
+      <img class="bill-preview" id="billPreview" alt="Final bill" />
+      <div class="actions">
+        <button class="cancel" id="billCloseBtn">Close</button>
+        <a class="confirm" id="billOpenLink" target="_blank" rel="noopener" style="flex:1; padding:10px; border-radius:8px; font-size:13px; text-align:center; text-decoration:none;">Open in new tab</a>
+      </div>
+    </div>
+  </div>
 
   <div class="modal-backdrop" id="voidModalBackdrop">
     <div class="modal">
@@ -268,8 +354,175 @@
     });
   }
 
+  // ---- Jobs ----
+  let jobsCache = [];
+
+  async function loadJobsLog() {
+    jobsCache = await listJobsForLog({ limit: 300, ...currentFilters() });
+    renderJobsLog();
+  }
+
+  function renderJobsLog() {
+    const kind = document.getElementById('jobKindFilter').value;
+    const stage = document.getElementById('jobStageFilter').value;
+    const jobs = jobsCache.filter((j) =>
+      (!kind || (kind === 'quick') === !!j.is_quick_job) && (!stage || j.stage === stage)
+    );
+    document.getElementById('jobsCount').textContent = `${jobs.length} job${jobs.length === 1 ? '' : 's'}`;
+    renderTable(document.getElementById('jobsTable'), jobs, [
+      { label: 'When', render: (j) => formatDateTime(j.receipt_generated_at || j.created_at) },
+      { label: 'Job', render: (j) => `#${j.job_number}` },
+      { label: 'Work', render: (j) => j.is_quick_job
+          ? '<span class="badge quick">Quick Job</span>'
+          : (j.job_types || []).map((t) => `<span class="badge type-${t}">${jobTypeLabel(t)}</span>`).join(' ') || '<span class="dim">To confirm</span>' },
+      { label: 'Customer', render: (j) => j.customers?.customer_name || 'Unknown' },
+      { label: 'Plate', render: (j) => j.owned_vehicles?.registration || '<span class="dim">None</span>' },
+      { label: 'Mechanic', render: (j) => staffName(j.assigned_staff_id) },
+      { label: 'Stage', render: (j) => `<span class="badge stage-${j.stage}">${jobStageLabel(j.stage)}</span>` },
+      { label: 'Discount', render: (j) => j.discount_type ? `${j.discount_type === 'staff' ? 'Staff' : 'EMS'} -${formatMoney(j.discount_amount)}` : '' },
+      { label: 'Total', num: true, render: (j) => j.receipt_generated_at ? formatMoney(jobBilledTotal(j)) : '<span class="dim">Not billed</span>' },
+      { label: '', render: (j) => j.receipt_document_url ? `<button type="button" class="view-bill" data-id="${j.id}">View bill</button>` : '' }
+    ]);
+    document.querySelectorAll('#jobsTable .view-bill').forEach((btn) => {
+      btn.addEventListener('click', () => openBill(jobsCache.find((j) => j.id === btn.dataset.id)));
+    });
+  }
+
+  function openBill(job) {
+    document.getElementById('billModalTitle').textContent =
+      `${job.is_quick_job ? 'Quick Job' : 'Job'} #${job.job_number} — ${job.customers?.customer_name || 'Unknown customer'}`;
+    document.getElementById('billModalSub').textContent =
+      `Billed ${formatDateTime(job.receipt_generated_at)} · ${formatMoney(jobBilledTotal(job))}`;
+    document.getElementById('billPreview').src = job.receipt_document_url;
+    document.getElementById('billOpenLink').href = job.receipt_document_url;
+    document.getElementById('billModalBackdrop').classList.add('open');
+  }
+  function closeBill() {
+    document.getElementById('billModalBackdrop').classList.remove('open');
+    document.getElementById('billPreview').removeAttribute('src');
+  }
+  document.getElementById('billCloseBtn').addEventListener('click', closeBill);
+  document.getElementById('billModalBackdrop').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('billModalBackdrop')) closeBill();
+  });
+  document.getElementById('jobKindFilter').addEventListener('change', renderJobsLog);
+  document.getElementById('jobStageFilter').addEventListener('change', renderJobsLog);
+
+  // ---- Purchases ----
+  // One row per checkout. Rows written since sql/055 share a batch_id; older
+  // ones are grouped by same buyer + store + notes within a few minutes,
+  // which is how a single checkout's items were written back to back.
+  const LEGACY_BATCH_GAP_MS = 5 * 60 * 1000;
+
+  function groupPurchases(txns) {
+    const groups = [];
+    const byBatch = {};
+    let legacy = null;
+    [...txns].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).forEach((t) => {
+      if (t.batch_id) {
+        if (!byBatch[t.batch_id]) {
+          byBatch[t.batch_id] = { rows: [] };
+          groups.push(byBatch[t.batch_id]);
+        }
+        byBatch[t.batch_id].rows.push(t);
+        return;
+      }
+      const last = legacy && legacy.rows[legacy.rows.length - 1];
+      const sameCheckout = last
+        && last.performed_by === t.performed_by
+        && last.source_type === t.source_type
+        && (last.notes || '') === (t.notes || '')
+        && new Date(t.created_at) - new Date(last.created_at) <= LEGACY_BATCH_GAP_MS;
+      if (!sameCheckout) {
+        legacy = { rows: [] };
+        groups.push(legacy);
+      }
+      legacy.rows.push(t);
+    });
+    return groups.map((g) => {
+      const first = g.rows[0];
+      return {
+        id: first.id,
+        when: first.created_at,
+        by: first.performed_by,
+        source: first.source_type,
+        notes: first.notes,
+        rows: g.rows,
+        total: g.rows.reduce((sum, r) => sum + Number(r.unit_cost || 0) * Number(r.quantity), 0),
+        voided: g.rows.every((r) => r.voided_at)
+      };
+    }).reverse();
+  }
+
+  async function loadPurchasesLog() {
+    const txns = await listInventoryTransactions({ limit: 1000, transactionType: 'purchased_in', ...currentFilters() });
+    const groups = groupPurchases(txns.filter((t) => !t.reversal_of));
+    document.getElementById('purchasesCount').textContent = `${groups.length} purchase${groups.length === 1 ? '' : 's'}`;
+    renderTable(document.getElementById('purchasesTable'), groups, [
+      { label: 'When', render: (g) => formatDateTime(g.when) },
+      { label: 'By', render: (g) => staffName(g.by) },
+      { label: 'Bought from', render: (g) => g.source ? purchaseSourceLabel(g.source) : '<span class="dim">Unknown</span>' },
+      { label: 'Items', render: (g) => `
+          <details>
+            <summary>${g.rows.length} item type${g.rows.length === 1 ? '' : 's'}</summary>
+            <ul>${g.rows.map((r) => `<li${r.voided_at ? ' style="text-decoration:line-through"' : ''}>${r.quantity} × ${r.catalogue_items?.name || 'Unknown item'} @ ${r.unit_cost !== null ? formatMoney(r.unit_cost) : 'no price'}</li>`).join('')}</ul>
+          </details>` },
+      { label: 'Notes', render: (g) => g.notes || '' },
+      { label: 'Total', num: true, render: (g) => formatMoney(g.total) }
+    ], (g) => g.voided ? 'voided' : '');
+  }
+
+  // ---- Payroll ----
+  const PAY_TYPE_LABELS = { shift_pay: 'Shift pay', commission: 'Commission', delivery: 'Delivery' };
+  let payrollCache = [];
+
+  async function loadPayrollLog() {
+    const f = currentFilters();
+    payrollCache = await listPayrollLedger({ from: f.fromDate, to: f.toDate, limit: 500 });
+    renderPayrollLog();
+  }
+
+  function renderPayrollLog() {
+    const type = document.getElementById('payrollTypeFilter').value;
+    const rows = payrollCache.filter((e) => !type || e.entry_type === type);
+    const total = rows.reduce((sum, e) => sum + Number(e.amount), 0);
+    document.getElementById('payrollCount').textContent = `${rows.length} entr${rows.length === 1 ? 'y' : 'ies'} · ${formatMoney(total)}`;
+    renderTable(document.getElementById('payrollTable'), rows, [
+      { label: 'When', render: (e) => formatDateTime(e.created_at) },
+      { label: 'Employee', render: (e) => staffName(e.mechanic_id) },
+      { label: 'Type', render: (e) => PAY_TYPE_LABELS[e.entry_type] || e.entry_type },
+      { label: 'Notes', render: (e) => e.notes || '' },
+      { label: 'Amount', num: true, render: (e) => formatMoney(e.amount) },
+      { label: 'Status', render: (e) => e.paid ? `<span class="badge paid" title="Paid ${formatDateTime(e.paid_at)}">Paid</span>` : '<span class="badge unpaid">Unpaid</span>' }
+    ]);
+  }
+  document.getElementById('payrollTypeFilter').addEventListener('change', renderPayrollLog);
+
+  // ---- Tabs ----
+  const TAB_LOADERS = {
+    jobs: loadJobsLog,
+    purchases: loadPurchasesLog,
+    payroll: loadPayrollLog,
+    stock: loadInventoryLog,
+    activity: loadActivityLog
+  };
+  let activeTab = TAB_LOADERS[location.hash.slice(1)] ? location.hash.slice(1) : 'jobs';
+
+  function showTab(tab) {
+    activeTab = tab;
+    history.replaceState(null, '', `#${tab}`);
+    document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.panel === tab));
+    return TAB_LOADERS[tab]().catch((err) => {
+      document.querySelector(`.tab-panel[data-panel="${tab}"]`).insertAdjacentHTML('afterbegin',
+        `<div class="empty-msg">Failed to load: ${err.message}</div>`);
+    });
+  }
+  document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+  // Only the visible tab is fetched -- switching tabs loads that one fresh.
   function loadAll() {
-    return Promise.all([loadInventoryLog(), loadActivityLog()]);
+    return showTab(activeTab);
   }
 
   [document.getElementById('filterFrom'), document.getElementById('filterTo'), document.getElementById('filterVoided')].forEach((el) => {

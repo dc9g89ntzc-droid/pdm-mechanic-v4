@@ -212,6 +212,7 @@
       <a href="my-dashboard.html">Home</a>
       <a href="dashboard.html?area=repair">Workshop</a>
       <a href="checkin.html" class="active">New Job</a>
+      <a href="quick-job.html">Quick Job</a>
       <a href="customers.html">Customers</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html">Purchasing</a>
@@ -713,6 +714,9 @@
         opt.textContent = m.employee_name;
         select.appendChild(opt);
       });
+      // Default to whoever's creating the job -- they can still pick
+      // someone else or Unassigned.
+      if (session && mechanics.some((m) => m.id === session.id)) select.value = session.id;
     } catch (err) {
       console.error('Failed to load mechanics', err);
     }

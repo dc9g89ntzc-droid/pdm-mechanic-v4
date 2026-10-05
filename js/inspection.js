@@ -583,6 +583,20 @@ async function completeInspection(inspectionId, jobId) {
   await updateLegStatus(jobId, 'repair', 'quote_preparation');
 }
 
+// The quote page's "Back to Inspection": undoes completeInspection by
+// reopening the job's latest inspection, findings and all. Just navigating
+// back (e.g. the browser's Back button) used to make getOrCreateInspection
+// start a fresh, empty inspection -- which then became the "latest" one and
+// left the quote showing no findings.
+async function reopenInspection(jobId) {
+  const latest = await getLatestInspectionForJob(jobId);
+  if (latest && latest.completed_at) {
+    const { error } = await sb.from('inspections').update({ completed_at: null }).eq('id', latest.id);
+    if (error) throw new Error(error.message);
+  }
+  await updateLegStatus(jobId, 'repair', 'inspection_in_progress');
+}
+
 function severityColor(value) {
   return SEVERITIES.find((s) => s.value === value)?.color || null;
 }

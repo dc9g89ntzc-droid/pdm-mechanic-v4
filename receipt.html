@@ -87,6 +87,21 @@
 
   #quoteSheet #carDiagram { width: 100%; max-width: 700px; height: auto; background: #f2f2f2; border-radius: 6px; display: block; margin: 0 auto; }
 
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    align-items: center; justify-content: center; z-index: 10;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px; width: 100%; max-width: 420px; }
+  .modal h2 { font-size: 16px; margin: 0 0 4px; }
+  .modal p.sub { color: var(--text-dim); font-size: 13px; margin: 0 0 18px; line-height: 1.45; }
+  .modal .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .modal .actions button { flex: 1; padding: 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .modal .actions .confirm { background: var(--green); border: none; color: white; font-weight: 600; }
+  .modal .actions .cancel { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
+  .modal .actions button:disabled { opacity: 0.5; cursor: default; }
+  .modal .stay { display: block; margin: 14px auto 0; background: none; border: none; color: var(--text-dim); font-size: 12px; cursor: pointer; text-decoration: underline; }
+
   @media print {
     header, .job-bar, .actions-row, .share-box, .flow-sidebar, .flow-summary { display: none; }
     body { background: white; }
@@ -166,6 +181,7 @@
       <a href="my-dashboard.html">Home</a>
       <a href="dashboard.html?area=repair">Workshop</a>
       <a href="checkin.html">New Job</a>
+      <a href="quick-job.html">Quick Job</a>
       <a href="customers.html">Customers</a>
       <a href="configure.html">Configure</a>
       <a href="purchasing.html">Purchasing</a>
@@ -186,7 +202,10 @@
       <div class="job-title" id="jobTitle">Loading job…</div>
       <div class="job-sub" id="jobSub"></div>
     </div>
-    <a href="#" id="backLink" class="btn secondary">&larr; Back to Workshop</a>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button type="button" id="backStageBtn" class="btn secondary" style="display:none;">&larr; Back to Work</button>
+      <a href="#" id="backLink" class="btn secondary">&larr; Back to Workshop</a>
+    </div>
   </div>
 
   <div class="flow-layout">
@@ -258,6 +277,18 @@
     <div class="flow-summary" id="flowSummary"></div>
   </div>
 
+  <div class="modal-backdrop" id="leaveModalBackdrop">
+    <div class="modal">
+      <h2>Has this bill been paid?</h2>
+      <p class="sub" id="leaveModalSub">This job hasn't been marked as billed yet.</p>
+      <div class="actions">
+        <button class="cancel" id="leaveInProgressBtn">Still in progress</button>
+        <button class="confirm" id="leavePaidBtn">Bill paid</button>
+      </div>
+      <button class="stay" id="leaveStayBtn">Stay on this page</button>
+    </div>
+  </div>
+
 <script src="https://cdn.jsdelivr.net/npm/html2canvas-pro@2.4.3/dist/html2canvas-pro.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="js/supabaseClient.js"></script>
@@ -285,6 +316,8 @@
   document.getElementById('backLink').href = 'dashboard.html?area=billing';
 
   let job = null;
+  let billed = false;   // true once a receipt exists -- stops the leave prompt and hides Back to Work
+  let leaving = false;  // set once navigating away has been chosen, so beforeunload doesn't ask again
   let finalLabourFee = null; // per-leg: attached services' flat fee, else real hours worked x rate -- computed once in loadJob() and reused when actually billing
 
   async function renderFlowChrome() {
@@ -356,6 +389,12 @@
     document.getElementById('sheetMechanic').textContent = mechanicName;
 
     renderShareBox();
+
+    billed = !!job.receipt_document_url;
+    const lastDone = [...LEG_ORDER].reverse().find((t) => legs.some((l) => l.job_type === t && l.status === 'completed'));
+    const backBtn = document.getElementById('backStageBtn');
+    backBtn.style.display = !billed && lastDone ? '' : 'none';
+    if (lastDone) backBtn.textContent = `\u2190 Back to ${jobTypeLabel(lastDone)} Work`;
   }
 
   async function loadLines() {
@@ -426,55 +465,153 @@
     container.innerHTML = html;
   }
 
+  // Renders the receipt, uploads it, marks the job completed and pays the
+  // labour commission. Shared by the Mark billed button and the "Bill paid"
+  // answer in the leave prompt. onProgress gets each step's label.
+  async function billAndComplete(onProgress = () => {}) {
+    // Regenerating an already-billed receipt must not pay commission twice.
+    const wasBilled = billed;
+    onProgress('Generating…');
+    const canvas = await html2canvas(document.getElementById('quoteSheet'), { backgroundColor: '#ffffff', scale: 2 });
+    const imageBase64 = canvas.toDataURL('image/png');
+
+    onProgress('Uploading…');
+    const res = await fetch('/.netlify/functions/upload-quote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64, filename: `receipt-job-${job.job_number}.png` })
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Upload failed');
+
+    await updateJobReceiptDocument(jobId, json.url);
+    billed = true;
+    document.getElementById('backStageBtn').style.display = 'none';
+    job.status = 'completed';
+    document.getElementById('jobSub').textContent = `${document.getElementById('jobSub').textContent.split(' · ').slice(0,2).join(' · ')} · ${jobStatusLabel('completed')}`;
+    job.receipt_document_url = json.url;
+    job.receipt_generated_at = new Date().toISOString();
+    logActivity({
+      actorId: session?.id, action: 'job_billed_completed', entityType: 'job', entityId: jobId,
+      summary: `${session?.employee_name || 'Someone'} billed and completed Job #${job.job_number}`
+    });
+
+    // Commission goes to whoever the job is assigned to, not necessarily
+    // whoever happened to click this button. No assignee means no one to
+    // pay it to -- skip and leave a trail rather than guessing.
+    if (finalLabourFee !== null) {
+      await updateJobLabourFee(jobId, finalLabourFee);
+    }
+    const commission = wasBilled ? 0 : commissionForLabourFee(finalLabourFee);
+    if (commission && job.assigned_staff_id) {
+      await recordCommission(job.assigned_staff_id, jobId, commission, `Labour commission on Job #${job.job_number}: ${formatMoney(finalLabourFee)} billed labour x ${(LABOUR_MARGIN_SHARE * 100).toFixed(0)}% shop margin share`);
+    } else if (commission) {
+      logActivity({
+        actorId: session?.id, action: 'commission_skipped_unassigned', entityType: 'job', entityId: jobId,
+        summary: `Job #${job.job_number} billed with a ${formatMoney(commission)} labour commission but no assigned mechanic -- commission not recorded`
+      });
+    }
+
+    renderShareBox();
+  }
+
   document.getElementById('generateBtn').addEventListener('click', async () => {
     const btn = document.getElementById('generateBtn');
     btn.disabled = true;
-    btn.textContent = 'Generating…';
     try {
-      const canvas = await html2canvas(document.getElementById('quoteSheet'), { backgroundColor: '#ffffff', scale: 2 });
-      const imageBase64 = canvas.toDataURL('image/png');
-
-      btn.textContent = 'Uploading…';
-      const res = await fetch('/.netlify/functions/upload-quote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64, filename: `receipt-job-${job.job_number}.png` })
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Upload failed');
-
-      await updateJobReceiptDocument(jobId, json.url);
-      job.status = 'completed';
-      document.getElementById('jobSub').textContent = `${document.getElementById('jobSub').textContent.split(' · ').slice(0,2).join(' · ')} · ${jobStatusLabel('completed')}`;
-      job.receipt_document_url = json.url;
-      job.receipt_generated_at = new Date().toISOString();
-      logActivity({
-        actorId: session?.id, action: 'job_billed_completed', entityType: 'job', entityId: jobId,
-        summary: `${session?.employee_name || 'Someone'} billed and completed Job #${job.job_number}`
-      });
-
-      // Commission goes to whoever the job is assigned to, not necessarily
-      // whoever happened to click this button. No assignee means no one to
-      // pay it to -- skip and leave a trail rather than guessing.
-      if (finalLabourFee !== null) {
-        await updateJobLabourFee(jobId, finalLabourFee);
-      }
-      const commission = commissionForLabourFee(finalLabourFee);
-      if (commission && job.assigned_staff_id) {
-        await recordCommission(job.assigned_staff_id, jobId, commission, `Labour commission on Job #${job.job_number}: ${formatMoney(finalLabourFee)} billed labour x ${(LABOUR_MARGIN_SHARE * 100).toFixed(0)}% shop margin share`);
-      } else if (commission) {
-        logActivity({
-          actorId: session?.id, action: 'commission_skipped_unassigned', entityType: 'job', entityId: jobId,
-          summary: `Job #${job.job_number} billed with a ${formatMoney(commission)} labour commission but no assigned mechanic -- commission not recorded`
-        });
-      }
-
-      renderShareBox();
+      await billAndComplete((label) => { btn.textContent = label; });
     } catch (err) {
       alert(`Failed to generate receipt: ${err.message}`);
     } finally {
       btn.disabled = false;
       btn.textContent = 'Mark billed & complete';
+    }
+  });
+
+  // ---- Back to Work ----
+  document.getElementById('backStageBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('backStageBtn');
+    btn.disabled = true;
+    try {
+      const jobType = await reopenLastCompletedLeg(jobId);
+      logActivity({
+        actorId: session?.id, action: 'job_leg_status_changed', entityType: 'job', entityId: jobId,
+        summary: `${session?.employee_name || 'Someone'} took Job #${job.job_number} back from Billing to ${jobTypeLabel(jobType)} Work`
+      });
+      leaving = true;
+      window.location.href = `job-items.html?job=${jobId}&type=${jobType}`;
+    } catch (err) {
+      alert(`Failed to go back to work: ${err.message}`);
+      btn.disabled = false;
+    }
+  });
+
+  // ---- "Has this bill been paid?" prompt ----
+  // Mechanics were leaving jobs sat in Billing without ever clicking Mark
+  // billed. Any in-app navigation away from an unbilled job asks first;
+  // closing the tab or the browser's Back button get the browser's own
+  // "Leave site?" warning instead, since a custom popup isn't allowed there.
+  let pendingLeave = null; // what to do once the mechanic has answered
+
+  function openLeavePrompt(proceed) {
+    pendingLeave = proceed;
+    document.getElementById('leaveModalSub').textContent =
+      `Job #${job.job_number} for ${job.customers?.customer_name || 'this customer'} hasn't been marked as billed yet.`;
+    document.getElementById('leaveModalBackdrop').classList.add('open');
+  }
+
+  function closeLeavePrompt() {
+    document.getElementById('leaveModalBackdrop').classList.remove('open');
+    pendingLeave = null;
+  }
+
+  // Capture phase, so it runs before the link's or Sign out button's own handler.
+  document.addEventListener('click', (e) => {
+    if (billed || leaving || !job) return;
+    const link = e.target.closest('a[href]');
+    const isLogout = !!e.target.closest('#logoutBtn');
+    if (!link && !isLogout) return;
+    if (link) {
+      const href = link.getAttribute('href');
+      if (!href || href.startsWith('#') || link.target === '_blank') return;
+    }
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    openLeavePrompt(() => {
+      leaving = true;
+      if (isLogout) logout();
+      else window.location.href = link.href;
+    });
+  }, true);
+
+  window.addEventListener('beforeunload', (e) => {
+    if (billed || leaving) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  document.getElementById('leaveStayBtn').addEventListener('click', closeLeavePrompt);
+  document.getElementById('leaveInProgressBtn').addEventListener('click', () => {
+    const proceed = pendingLeave;
+    closeLeavePrompt();
+    if (proceed) proceed();
+  });
+  document.getElementById('leavePaidBtn').addEventListener('click', async () => {
+    const paidBtn = document.getElementById('leavePaidBtn');
+    const otherBtn = document.getElementById('leaveInProgressBtn');
+    paidBtn.disabled = true;
+    otherBtn.disabled = true;
+    try {
+      await billAndComplete((label) => { paidBtn.textContent = label; });
+      const proceed = pendingLeave;
+      closeLeavePrompt();
+      if (proceed) proceed();
+    } catch (err) {
+      alert(`Failed to bill this job: ${err.message}`);
+    } finally {
+      paidBtn.disabled = false;
+      otherBtn.disabled = false;
+      paidBtn.textContent = 'Bill paid';
     }
   });
 

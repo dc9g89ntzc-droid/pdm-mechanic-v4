@@ -319,7 +319,10 @@ async function clockOutShift(shiftId, reason) {
   if (error) throw new Error(error.message);
 }
 
-const SHIFT_PAY_RATE_PER_HOUR = 10000; // matches the server's general civ-job baseline
+// Was 10000 (the server's civ-job baseline), which Joanna found paid ~4x too
+// much -- cut to a quarter. Only affects shifts clocked out from now on;
+// payroll_ledger rows already written keep the amount they were paid at.
+const SHIFT_PAY_RATE_PER_HOUR = 2500;
 
 async function recordShiftPay(mechanicId, shiftId, clockInAt, clockOutAt) {
   const hours = (new Date(clockOutAt) - new Date(clockInAt)) / 3600000;
@@ -403,7 +406,8 @@ async function listBilledJobs({ from, to, limit = 300 } = {}) {
   let query = sb
     .from('jobs')
     .select(`
-      id, job_number, quoted_total, labour_fee, assigned_staff_id, receipt_generated_at,
+      id, job_number, quoted_total, labour_fee, discount_type, discount_amount, is_quick_job,
+      assigned_staff_id, receipt_generated_at,
       customers ( customer_name ),
       owned_vehicles ( registration, make, model )
     `)
@@ -810,6 +814,27 @@ async function updateLegStatus(jobId, jobType, status) {
   }
 }
 
+// Billing page's "back to work": reopens the last finished leg (in
+// LEG_ORDER) so a forgotten part can still be added, and takes the job back
+// out of Billing. Callers must only offer this before the job is billed.
+// Returns the reopened leg's job_type.
+async function reopenLastCompletedLeg(jobId) {
+  const legs = await listJobLegs(jobId);
+  const leg = [...LEG_ORDER].reverse()
+    .map((t) => legs.find((l) => l.job_type === t && l.status === 'completed'))
+    .find(Boolean);
+  if (!leg) throw new Error('There is no finished work stage to go back to.');
+
+  const { error } = await sb.from('job_legs')
+    .update({ status: 'work_in_progress', completed_at: null })
+    .eq('id', leg.id);
+  if (error) throw new Error(error.message);
+
+  const { error: stageError } = await sb.from('jobs').update({ stage: 'in_progress' }).eq('id', jobId);
+  if (stageError) throw new Error(stageError.message);
+  return leg.job_type;
+}
+
 // What each area tab on the board renders: every job whose ACTIVE leg
 // (per activeLegForJob) is this jobType. Fetches every non-terminal leg
 // once, groups by job client-side -- a job with a completed repair leg and
@@ -994,16 +1019,148 @@ function totalLabourFee(legs, jobServices, jobItems) {
   return anyKnown ? Math.round(total * 100) / 100 : null;
 }
 
-// Commission is always the same shop-margin-share cut, whichever path
-// produced the labour fee -- for the hours-based path this reduces to
-// exactly hours x (rate - wage), the same ratio either way, so one formula
-// covers both instead of two separate ones.
-const LABOUR_MARGIN_SHARE = (LABOUR_RATE_PER_HOUR - SHIFT_PAY_RATE_PER_HOUR) / LABOUR_RATE_PER_HOUR;
+// Commission is a fixed 20% cut of billed labour. It used to be derived as
+// (LABOUR_RATE_PER_HOUR - SHIFT_PAY_RATE_PER_HOUR) / LABOUR_RATE_PER_HOUR,
+// which came to 20% at the old 10000 wage -- pinned here so cutting the
+// shift wage doesn't silently quadruple every mechanic's commission.
+const LABOUR_MARGIN_SHARE = 0.2;
 function commissionForLabourFee(fee) {
   if (!fee || fee <= 0) return 0;
   return Math.round(fee * LABOUR_MARGIN_SHARE * 100) / 100;
 }
 
+
+// ---- Quick Jobs (sql/055) ----
+//
+// Rapid-turnover work (a mechanic's own car, or a customer who just needs
+// parts fitted now): no inspection, quote or legs -- parts are picked from
+// the whole catalogue and billed straight away. Saved as an ordinary job +
+// job_items so stock, Accounts and history all treat it like any other job.
+
+const STAFF_DISCOUNT_RATE = 0.1; // 10% off every item's customer price, labour waived
+const EMS_DISCOUNT_RATE = 0.1;   // 10% off the final bill
+
+const DISCOUNT_TYPES = [
+  { value: '', label: 'No discount' },
+  { value: 'staff', label: 'Staff discount (10% off parts, no labour)' },
+  { value: 'ems', label: 'EMS discount (10% off final bill)' }
+];
+
+// A quick job has no legs, so each part's labour is charged by the job type
+// its catalogue category belongs to -- the same per-distinct-component
+// install charge regular jobs use (INSTALL_CHARGE_BY_JOB_TYPE). Items tagged
+// with more than one category take the cheapest matching rate; Tools/Scrap
+// Material map to nothing and carry no labour.
+function jobTypeForCatalogueItem(item) {
+  const categories = item.categories || [];
+  const byRate = Object.keys(CATEGORY_FOR_JOB_TYPE)
+    .sort((a, b) => INSTALL_CHARGE_BY_JOB_TYPE[a] - INSTALL_CHARGE_BY_JOB_TYPE[b]);
+  return byRate.find((t) => categories.includes(CATEGORY_FOR_JOB_TYPE[t])) || null;
+}
+
+function roundMoney(value) {
+  return Math.round(Number(value) * 100) / 100;
+}
+
+// lines: [{ catalogue_item_id, job_type, quantity, unit_price }]. Returns
+// everything the bill shows and what gets persisted -- one function so the
+// popup, the bill image and the saved job can never disagree.
+function quickJobTotals(lines, discountType) {
+  const parts = roundMoney(lines.reduce((sum, l) => sum + Number(l.unit_price || 0) * Number(l.quantity), 0));
+  let labour = 0;
+  Object.keys(INSTALL_CHARGE_BY_JOB_TYPE).forEach((t) => {
+    labour += installChargeForType(lines, t) || 0;
+  });
+  labour = roundMoney(labour);
+
+  let labourCharged = labour;
+  let discount = 0;
+  if (discountType === 'staff') {
+    labourCharged = 0;
+    discount = roundMoney(parts * STAFF_DISCOUNT_RATE);
+  } else if (discountType === 'ems') {
+    discount = roundMoney((parts + labour) * EMS_DISCOUNT_RATE);
+  }
+  return {
+    parts,
+    labour: labourCharged,
+    subtotal: roundMoney(parts + labourCharged),
+    discount,
+    total: roundMoney(parts + labourCharged - discount)
+  };
+}
+
+// Exact (case-insensitive) name match first, so repeat customers don't
+// pile up duplicates; creates the customer otherwise.
+async function findOrCreateCustomerByName(name) {
+  const clean = name.trim();
+  const { data, error } = await sb
+    .from('customers')
+    .select('customer_id, customer_name')
+    .ilike('customer_name', clean)
+    .eq('active', true)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data || createCustomer({ name: clean });
+}
+
+// Plate already on file -> reuse that vehicle even if it's registered to
+// someone else (a mechanic's own job on a borrowed car, etc). Otherwise
+// create it under this customer.
+async function findOrCreateVehicleByPlate(plate, ownerId) {
+  const clean = plate.trim().toUpperCase();
+  const { data, error } = await sb
+    .from('owned_vehicles')
+    .select('owned_vehicle_id, registration')
+    .ilike('registration', clean)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data || createVehicle({ registration: clean, owner_id: ownerId });
+}
+
+// Billing step for a quick job -- bill link, labour/discount snapshot and
+// completion in one update (mirrors updateJobReceiptDocument +
+// updateJobLabourFee for regular jobs).
+async function finalizeQuickJob(jobId, { receiptUrl, labourFee, discountType, discountAmount }) {
+  const { error } = await sb.from('jobs').update({
+    receipt_document_url: receiptUrl || null,
+    receipt_generated_at: new Date().toISOString(),
+    labour_fee: labourFee,
+    discount_type: discountType || null,
+    discount_amount: discountAmount || null,
+    status: 'completed',
+    stage: 'completed'
+  }).eq('id', jobId);
+  if (error) throw new Error(error.message);
+}
+
+// What a job actually charged -- discounts (quick jobs) included.
+function jobBilledTotal(job) {
+  return roundMoney(Number(job.quoted_total || 0) + Number(job.labour_fee || 0) - Number(job.discount_amount || 0));
+}
+
+// Logs' Jobs tab: every job in the window, newest first, with whatever's
+// needed to show its bill.
+async function listJobsForLog({ fromDate, toDate, limit = 300 } = {}) {
+  let query = sb
+    .from('jobs')
+    .select(`
+      id, job_number, job_types, stage, is_quick_job, quoted_total, labour_fee,
+      discount_type, discount_amount, assigned_staff_id, created_at,
+      receipt_document_url, receipt_generated_at,
+      customers ( customer_name ),
+      owned_vehicles ( registration, make, model )
+    `)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (fromDate) query = query.gte('created_at', fromDate);
+  if (toDate) query = query.lte('created_at', toDate);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data;
+}
 
 function formatDateTime(value) {
   if (!value) return 'Unknown';
