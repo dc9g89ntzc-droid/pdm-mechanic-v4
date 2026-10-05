@@ -7071,8 +7071,9 @@ function renderAccounts() {
   const netCash =
     Number(s.net_cash_movement || 0);
 
-  const realizedProfit = Number(s.realized_profit ??
-    (Number(s.sales_profit || 0) + Number(s.export_proceeds ?? s.export_revenue ?? 0)));
+  // Realised profit is sale profit only (sql/056). Export cash goes to
+  // Operating Capital and is shown here for information.
+  const realizedProfit = Number(s.realized_profit ?? s.sales_profit ?? 0);
   const exportProceeds = Number(s.export_proceeds ?? s.export_revenue ?? 0);
 
   const uncostedExport =
@@ -7084,8 +7085,8 @@ function renderAccounts() {
         <div>
           <h2>Realised Performance</h2>
           <div class="acct-note">
-            Exact historical sale profit plus full export cash proceeds.
-            Imports and buybacks acquire inventory and contribute no immediate profit.
+            Exact historical sale profit only. Export proceeds go to Operating Capital,
+            not realised profit. Imports and buybacks acquire inventory and contribute no immediate profit.
           </div>
         </div>
       </div>
@@ -7113,21 +7114,21 @@ function renderAccounts() {
         ${accountsMetric(
           'Export Proceeds',
           money(exportProceeds),
-          'All export cash income counts as realised profit',
+          'Goes to Operating Capital, not realised profit',
           exportProceeds
         )}
 
         ${accountsMetric(
           'Realised Profit',
           money(realizedProfit),
-          'Exact sale profit + full export proceeds',
+          'Exact sale profit only',
           realizedProfit
         )}
 
         ${accountsMetric(
           'Uncosted Export Revenue',
           money(uncostedExport),
-          'Included in full in realised profit'
+          'Exports with no stored acquisition cost'
         )}
       </div>
 
@@ -7136,8 +7137,7 @@ function renderAccounts() {
           <strong>Export costing note:</strong>
           ${money(uncostedExport)} of export revenue in this period came from
           stock exports without a stored historical acquisition cost.
-          It is included in full in realised profit, just like exports with a known cost.
-          No export acquisition cost is deducted for settlement purposes.
+          Like all export proceeds, it goes to Operating Capital and is not part of realised profit.
         </div>
       ` : ''}
     </div>
@@ -7539,8 +7539,9 @@ function renderAccountsActivity(rows) {
             const type =
               String(r.activity_type || '').toLowerCase();
 
+            // Exports are Operating Capital only -- no realised profit.
             const profit = type === 'export'
-              ? Number(r.cash_in || 0)
+              ? 0
               : type === 'sale'
                 ? (r.realized_profit == null ? null : Number(r.realized_profit))
                 : 0;
@@ -7588,7 +7589,7 @@ function renderAccountsActivity(rows) {
                 <td>
                   <div>${escapeHtml(r.transaction_ref || '')}</div>
                   ${type === 'export'
-                    ? `<div class="muted" style="font-size:10px">Full export proceeds</div>`
+                    ? `<div class="muted" style="font-size:10px">Operating Capital only</div>`
                     : (type === 'import' || type === 'buyback')
                       ? `<div class="muted" style="font-size:10px">Inventory acquisition</div>`
                       : ''}
@@ -9232,7 +9233,10 @@ function renderPayroll() {
       ${payrollCard(
         legacy ? 'Historical Allocation Base' : 'Realised Profit',
         money(profit),
-        legacy ? 'Original capital-based settlement; unchanged' : 'Exact sale profit + full export proceeds'
+        legacy ? 'Original capital-based settlement; unchanged'
+          : p.calculation_basis === 'REALIZED_SALES_PLUS_EXPORT_PROCEEDS'
+            ? 'Exact sale profit + full export proceeds (rule at the time)'
+            : 'Exact sale profit only; exports go to Operating Capital'
       )}
 
       ${payrollCard(
@@ -9831,7 +9835,7 @@ Employee Pool: ${money(p.employee_pool || 0)}
 
 ${payrollLiquidityText(p)}
 
-Exact sale profit + full export proceeds. The float is a liquidity safeguard only.
+Exact sale profit only; export proceeds go to Operating Capital. The float is a liquidity safeguard only.
 This freezes a permanent snapshot of the week's settlement calculations.`;
 
   if (!confirm(text)) return;
