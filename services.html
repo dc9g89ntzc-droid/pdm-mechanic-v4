@@ -132,6 +132,17 @@
   .disabled-note { color: var(--text-dim); font-size: 12px; font-style: italic; }
   .materials-summary { display: flex; justify-content: space-between; font-size: 13px; padding: 10px 0; border-top: 1px solid var(--panel-border); margin-top: 8px; }
   .materials-summary.total { font-weight: 700; }
+  /* Typed quantity between the - / + buttons (bindQtyInput in workshop.js). */
+  .qty-input {
+    width: 46px; padding: 2px 4px; text-align: center; font-size: 12px;
+    background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px;
+    -moz-appearance: textfield; appearance: textfield;
+  }
+  .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .qty-input:focus { outline: none; border-color: var(--red); }
+  .qty-stepper { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+  .qty-stepper .qty-input { flex: 0 0 46px; width: 46px; padding: 2px 4px; font-size: 12px; }
+  .qty-stepper button { width: 20px; height: 20px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; cursor: pointer; font-size: 12px; line-height: 1; padding: 0; }
 </style>
 </head>
 <body>
@@ -480,11 +491,28 @@
         const priceLabel = price !== null && price !== undefined ? formatMoney(price) : 'To confirm';
         div.innerHTML = `
           <span style="flex:2;">${materialName}</span>
-          <span style="flex:1;">× ${row.quantity}</span>
+          <span style="flex:1;"><span class="qty-stepper">
+            <button type="button" class="qty-dec">−</button>
+            <input type="number" class="qty-input" aria-label="Quantity" />
+            <button type="button" class="qty-inc">+</button>
+          </span></span>
           <span style="flex:1;">${priceLabel}</span>
-          <button data-id="${row.id}">Remove</button>
+          <button data-id="${row.id}" class="remove-material">Remove</button>
         `;
-        div.querySelector('button').addEventListener('click', async () => {
+        const setQty = async (qty) => {
+          try {
+            if (qty <= 0) await removeServiceMaterial(row.id);
+            else await updateServiceMaterialQuantity(row.id, qty);
+          } catch (err) {
+            alert(`Failed to update quantity: ${err.message}`);
+          }
+          await loadMaterialsList();
+          await loadServices();
+        };
+        bindQtyInput(div.querySelector('.qty-input'), Number(row.quantity), setQty);
+        div.querySelector('.qty-inc').addEventListener('click', () => setQty(Number(row.quantity) + 1));
+        div.querySelector('.qty-dec').addEventListener('click', () => setQty(Number(row.quantity) - 1));
+        div.querySelector('.remove-material').addEventListener('click', async () => {
           await removeServiceMaterial(row.id);
           logActivity({
             actorId: session?.id, action: 'service_material_removed', entityType: 'service', entityId: editingServiceId,

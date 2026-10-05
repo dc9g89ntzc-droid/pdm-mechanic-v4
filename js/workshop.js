@@ -1162,6 +1162,33 @@ async function listJobsForLog({ fromDate, toDate, limit = 300 } = {}) {
   return data;
 }
 
+// ---- Quantity steppers ----
+//
+// Every "- qty +" control also lets the number itself be typed. Markup is
+// <input type="number" class="qty-input"> between the two buttons; this
+// wires it up. Saves on Enter or blur (not per keystroke, which would
+// write half-typed numbers), Escape cancels. Whole numbers only -- stock
+// movements (inventory_transactions.quantity) are integers. 0 means
+// remove, same as pressing - down to zero; anything invalid snaps back.
+function bindQtyInput(input, currentQty, onCommit) {
+  input.value = currentQty;
+  input.min = '0';
+  input.step = '1';
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = currentQty; input.blur(); }
+  });
+  input.addEventListener('focus', () => input.select());
+  input.addEventListener('change', () => {
+    const raw = input.value.trim();
+    const n = Number(raw);
+    if (raw === '' || !Number.isFinite(n) || n < 0) { input.value = currentQty; return; }
+    const qty = Math.round(n);
+    if (qty === Number(currentQty)) { input.value = currentQty; return; }
+    onCommit(qty);
+  });
+}
+
 function formatDateTime(value) {
   if (!value) return 'Unknown';
   return new Date(value).toLocaleString(undefined, {

@@ -198,6 +198,14 @@
     .flow-layout { flex-wrap: wrap; }
     .flow-sidebar, .flow-summary { flex: 1 1 100%; position: static; }
   }
+  /* Typed quantity between the - / + buttons (bindQtyInput in workshop.js). */
+  .qty-input {
+    width: 46px; padding: 2px 4px; text-align: center; font-size: 12px;
+    background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px;
+    -moz-appearance: textfield; appearance: textfield;
+  }
+  .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .qty-input:focus { outline: none; border-color: var(--red); }
 </style>
 </head>
 <body>
@@ -652,7 +660,7 @@
             <div class="ql-bottom">
               <div class="ql-qty">
                 <button class="qty-dec">−</button>
-                <span>${line.quantity}</span>
+                <input type="number" class="qty-input" aria-label="Quantity" />
                 <button class="qty-inc">+</button>
               </div>
               <div class="ql-price-group">
@@ -661,6 +669,18 @@
               </div>
             </div>
           `;
+          bindQtyInput(row.querySelector('.qty-input'), Number(line.quantity), async (newQty) => {
+            try {
+              if (newQty === 0) {
+                await removeJobItem(line.id, line.catalogue_item_id, Number(line.quantity), session?.id, jobId);
+              } else {
+                await updateJobItemQuantity(line.id, line.catalogue_item_id, newQty, Number(line.quantity), session?.id, jobId);
+              }
+            } catch (err) {
+              alert(`Failed to update quantity: ${err.message}`);
+            }
+            await refreshQuote();
+          });
           row.querySelector('.qty-inc').addEventListener('click', async () => {
             await updateJobItemQuantity(line.id, line.catalogue_item_id, Number(line.quantity) + 1, Number(line.quantity), session?.id, jobId);
             await refreshQuote();

@@ -92,6 +92,11 @@ async function addServiceMaterial(serviceId, catalogueItemId, quantity) {
   if (error) throw new Error(error.message);
 }
 
+async function updateServiceMaterialQuantity(materialRowId, quantity) {
+  const { error } = await sb.from('service_materials').update({ quantity }).eq('id', materialRowId);
+  if (error) throw new Error(error.message);
+}
+
 async function removeServiceMaterial(materialRowId) {
   const { error } = await sb.from('service_materials').delete().eq('id', materialRowId);
   if (error) throw new Error(error.message);

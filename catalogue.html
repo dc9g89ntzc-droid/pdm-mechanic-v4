@@ -143,6 +143,17 @@
   .txn-row { display: flex; gap: 8px; align-items: center; }
   .txn-row select, .txn-row input { flex: 1; }
   .disabled-note { color: var(--text-dim); font-size: 12px; font-style: italic; }
+  /* Typed quantity between the - / + buttons (bindQtyInput in workshop.js). */
+  .qty-input {
+    width: 46px; padding: 2px 4px; text-align: center; font-size: 12px;
+    background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px;
+    -moz-appearance: textfield; appearance: textfield;
+  }
+  .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .qty-input:focus { outline: none; border-color: var(--red); }
+  .qty-stepper { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+  .qty-stepper .qty-input { flex: 0 0 46px; width: 46px; padding: 2px 4px; font-size: 12px; }
+  .qty-stepper button { width: 20px; height: 20px; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; cursor: pointer; font-size: 12px; line-height: 1; padding: 0; }
 </style>
 </head>
 <body>
@@ -780,10 +791,26 @@
       const ingredientName = row.catalogue_items ? row.catalogue_items.name : 'Unknown item';
       div.innerHTML = `
         <span style="flex:2;">${ingredientName}</span>
-        <span style="flex:1;">× ${row.quantity}</span>
-        <button data-id="${row.id}">Remove</button>
+        <span style="flex:1;"><span class="qty-stepper">
+          <button type="button" class="qty-dec">−</button>
+          <input type="number" class="qty-input" aria-label="Quantity" />
+          <button type="button" class="qty-inc">+</button>
+        </span></span>
+        <button data-id="${row.id}" class="remove-ingredient">Remove</button>
       `;
-      div.querySelector('button').addEventListener('click', async () => {
+      const setQty = async (qty) => {
+        try {
+          if (qty <= 0) await removeIngredient(row.id);
+          else await updateIngredientQuantity(row.id, qty);
+        } catch (err) {
+          alert(`Failed to update quantity: ${err.message}`);
+        }
+        await loadIngredientsList();
+      };
+      bindQtyInput(div.querySelector('.qty-input'), Number(row.quantity), setQty);
+      div.querySelector('.qty-inc').addEventListener('click', () => setQty(Number(row.quantity) + 1));
+      div.querySelector('.qty-dec').addEventListener('click', () => setQty(Number(row.quantity) - 1));
+      div.querySelector('.remove-ingredient').addEventListener('click', async () => {
         await removeIngredient(row.id);
         logActivity({
           actorId: session?.id, action: 'catalogue_ingredient_removed', entityType: 'catalogue_item', entityId: editingItemId,

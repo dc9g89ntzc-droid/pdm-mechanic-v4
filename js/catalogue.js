@@ -175,6 +175,11 @@ async function addIngredient(itemId, ingredientItemId, quantity) {
   if (error) throw new Error(error.message);
 }
 
+async function updateIngredientQuantity(ingredientRowId, quantity) {
+  const { error } = await sb.from('catalogue_item_ingredients').update({ quantity }).eq('id', ingredientRowId);
+  if (error) throw new Error(error.message);
+}
+
 async function removeIngredient(ingredientRowId) {
   const { error } = await sb.from('catalogue_item_ingredients').delete().eq('id', ingredientRowId);
   if (error) throw new Error(error.message);
