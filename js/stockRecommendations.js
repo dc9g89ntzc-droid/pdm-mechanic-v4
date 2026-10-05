@@ -1,6 +1,8 @@
 // Stock recommendations (stock-recommendations.html): how much of each part
 // the shop actually gets through per week, from real usage on jobs, and how
-// much to buy so the shelf covers the coming week(s). Gets more reliable as
+// much to buy so the shelf covers the coming week(s). Purely usage-driven
+// (Joanna's call): a part nobody has used in the window isn't listed at all
+// -- no reorder levels, no "unused stock" section. Gets more reliable as
 // more weeks of data build up -- the page always says how much data it's
 // working from.
 //
@@ -50,7 +52,7 @@ async function getFirstUsageDate() {
 async function listItemsForStockPlan() {
   return fetchAllRows(() => sb
     .from('catalogue_items')
-    .select('id, name, categories, sourcing, usage_type, stock_quantity, reorder_threshold, purchase_cost, shop_price, available_autoparts, available_scrapyard, image_url')
+    .select('id, name, categories, sourcing, usage_type, stock_quantity, purchase_cost, shop_price, available_autoparts, available_scrapyard, image_url')
     .eq('active', true)
     .order('name'));
 }
@@ -58,8 +60,7 @@ async function listItemsForStockPlan() {
 const STOCK_PRIORITIES = {
   urgent: { rank: 0, label: 'Out of stock' },
   buy: { rank: 1, label: 'Buy soon' },
-  covered: { rank: 2, label: 'Covered' },
-  idle: { rank: 3, label: 'No recent use' }
+  covered: { rank: 2, label: 'Covered' }
 };
 
 // What one unit is likely to cost to restock -- the store's own price as
@@ -74,6 +75,7 @@ function restockUnitCost(item) {
 // onList:    { [catalogue_item_id]: unbought quantity already on the shopping list }
 // windowDays: days the usage actually covers (already capped to available data)
 // coverWeeks: how many weeks of usage the shelf should hold after buying
+// Returns only parts with net usage in the window.
 function buildStockRecommendations({ items, usage, onList = {}, windowDays, coverWeeks = 1 }) {
   const days = Math.max(1, windowDays);
   const usedById = {};
@@ -83,29 +85,22 @@ function buildStockRecommendations({ items, usage, onList = {}, windowDays, cove
     if (t.job_id) (jobsById[t.item_id] = jobsById[t.item_id] || new Set()).add(t.job_id);
   });
 
-  return items.map((item) => {
-    const used = Math.max(0, usedById[item.id] || 0);
+  return items.filter((item) => (usedById[item.id] || 0) > 0).map((item) => {
+    const used = usedById[item.id];
     const weekly = (used / days) * 7;
     const stock = Number(item.stock_quantity || 0);
     const listed = Number(onList[item.id] || 0);
     const reusable = item.usage_type === 'reusable';
 
     // A reusable tool only ever needs one on the shelf; consumables need
-    // enough to cover the chosen number of weeks, and never less than the
-    // manually-set reorder level.
-    let target;
-    if (reusable) target = used > 0 ? 1 : 0;
-    else target = Math.ceil(weekly * coverWeeks - 1e-9);
-    if (item.reorder_threshold !== null && item.reorder_threshold !== undefined) {
-      target = Math.max(target, Number(item.reorder_threshold));
-    }
+    // enough to cover the chosen number of weeks.
+    const target = reusable ? 1 : Math.ceil(weekly * coverWeeks - 1e-9);
 
     const suggested = Math.max(0, target - stock - listed);
-    const weeksCover = weekly > 0 ? Math.max(0, stock) / weekly : null;
+    const weeksCover = Math.max(0, stock) / weekly;
 
     let priority;
-    if (used === 0 && suggested === 0) priority = 'idle';
-    else if (stock <= 0 && (used > 0 || suggested > 0)) priority = 'urgent';
+    if (stock <= 0) priority = 'urgent';
     else if (suggested > 0) priority = 'buy';
     else priority = 'covered';
 
@@ -123,21 +118,17 @@ function buildStockRecommendations({ items, usage, onList = {}, windowDays, cove
       priority,
       unitCost,
       suggestedCost: unitCost === null ? null : Math.round(unitCost * suggested * 100) / 100,
-      idleValue: priority === 'idle' && unitCost !== null ? Math.round(unitCost * Math.max(0, stock) * 100) / 100 : 0,
       craftOnly: item.sourcing === 'crafted'
     };
   });
 }
 
-// Most necessary first: out of stock, then lowest cover / fastest moving;
-// least necessary last: unused stock, biggest money tied up first.
+// Most necessary first: out of stock, then soonest to run out / fastest
+// moving. Least necessary last: the most weeks of stock in hand.
 function sortStockRecommendations(rows) {
-  return [...rows].sort((a, b) => {
-    const pr = STOCK_PRIORITIES[a.priority].rank - STOCK_PRIORITIES[b.priority].rank;
-    if (pr) return pr;
-    if (a.priority === 'idle') return b.idleValue - a.idleValue || a.item.name.localeCompare(b.item.name);
-    const coverA = a.weeksCover === null ? -1 : a.weeksCover;
-    const coverB = b.weeksCover === null ? -1 : b.weeksCover;
-    return coverA - coverB || b.weekly - a.weekly || a.item.name.localeCompare(b.item.name);
-  });
+  return [...rows].sort((a, b) =>
+    STOCK_PRIORITIES[a.priority].rank - STOCK_PRIORITIES[b.priority].rank ||
+    a.weeksCover - b.weeksCover ||
+    b.weekly - a.weekly ||
+    a.item.name.localeCompare(b.item.name));
 }

@@ -68,7 +68,6 @@
   .badge.urgent { background: rgba(216,31,39,0.2); color: #ff6b6f; }
   .badge.buy { background: rgba(240,165,44,0.15); color: var(--amber); }
   .badge.covered { background: rgba(34,197,94,0.15); color: var(--green); }
-  .badge.idle { background: rgba(156,150,145,0.15); color: var(--text-dim); }
   .badge.craft { background: rgba(124,58,237,0.15); color: #a78bfa; }
 
   .cover-track { width: 70px; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; margin-left: 6px; }
@@ -119,7 +118,7 @@
     <div class="page-top">
       <div>
         <h1 class="page-title">Stock Recommendations</h1>
-        <p class="page-sub">What to buy, based on how fast each part is actually used on jobs. Most needed first, least needed last. Suggested amounts cover the next week(s) of use, minus what's already on the shelf and on the shopping list.</p>
+        <p class="page-sub">What to buy, based on how fast each part is actually used on jobs. Most needed first, least needed last. Suggested amounts cover the next week(s) of use, minus what's already on the shelf and on the shopping list. Parts nobody has used aren't listed.</p>
       </div>
       <a class="btn secondary" href="reports.html">&larr; Reports</a>
     </div>
@@ -150,7 +149,7 @@
       <div class="tile"><div class="label">Out of stock, in demand</div><div class="value" id="tUrgent">—</div><div class="hint">parts used but none on the shelf</div></div>
       <div class="tile"><div class="label">Parts to buy</div><div class="value" id="tToBuy">—</div><div class="hint" id="tToBuyHint"></div></div>
       <div class="tile"><div class="label">Estimated spend</div><div class="value" id="tSpend">—</div><div class="hint" id="tSpendHint">at last paid / import price</div></div>
-      <div class="tile"><div class="label">Idle stock value</div><div class="value" id="tIdle">—</div><div class="hint">on the shelf, unused in this period</div></div>
+      <div class="tile"><div class="label">Parts used</div><div class="value" id="tUsed">—</div><div class="hint">different parts used on jobs</div></div>
     </div>
 
     <div class="card">
@@ -167,21 +166,11 @@
     <div class="card">
       <div class="card-head">
         <div>
-          <h2>Covered</h2>
-          <p class="card-sub">Used recently, with enough on the shelf (or already on the shopping list).</p>
+          <h2>Least necessary</h2>
+          <p class="card-sub">Used, but with enough on the shelf (or already on the shopping list). Least needed at the bottom.</p>
         </div>
       </div>
       <div id="coveredTable"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <div>
-          <h2>Least necessary</h2>
-          <p class="card-sub">In stock but not used on a job in this period, biggest value first. Worth holding off on buying more of these.</p>
-        </div>
-      </div>
-      <div id="idleTable"></div>
     </div>
   </main>
 
@@ -253,7 +242,7 @@
     const note = document.getElementById('dataNote');
     if (!firstUsage) {
       note.className = 'data-note';
-      note.textContent = 'No parts have been used on a job yet, so there is nothing to base recommendations on. Only items with a reorder level set are shown as needed.';
+      note.textContent = 'No parts have been used on a job yet, so there is nothing to recommend.';
       return;
     }
     const days = Math.round(win.days * 10) / 10;
@@ -267,7 +256,6 @@
   }
 
   function coverCell(r) {
-    if (r.weeksCover === null) return r.used > 0 ? '<span class="dim">—</span>' : '<span class="dim">No use</span>';
     const coverWeeks = Number(document.getElementById('coverSelect').value);
     const pct = Math.min(100, (r.weeksCover / coverWeeks) * 100);
     const colour = r.weeksCover < coverWeeks * 0.5 ? 'var(--red)' : r.weeksCover < coverWeeks ? 'var(--amber)' : 'var(--green)';
@@ -317,7 +305,6 @@
   function render() {
     const need = rows.filter((r) => r.priority === 'urgent' || r.priority === 'buy');
     const covered = rows.filter((r) => r.priority === 'covered');
-    const idle = rows.filter((r) => r.priority === 'idle' && r.stock > 0);
 
     const buyable = need.filter((r) => !r.craftOnly);
     const spend = buyable.reduce((sum, r) => sum + (r.unitCost === null ? 0 : r.unitCost * (addQty[r.item.id] || 0)), 0);
@@ -327,12 +314,12 @@
     document.getElementById('tToBuyHint').textContent = need.length > buyable.length ? `+ ${need.length - buyable.length} to craft` : 'to cover the period chosen';
     document.getElementById('tSpend').textContent = formatMoney(spend);
     document.getElementById('tSpendHint').textContent = unpriced ? `${unpriced} part${unpriced === 1 ? ' has' : 's have'} no price yet` : 'at last paid / import price';
-    document.getElementById('tIdle').textContent = formatMoney(idle.reduce((sum, r) => sum + r.idleValue, 0));
+    document.getElementById('tUsed').textContent = rows.length;
 
     renderTable('needTable', filtered(need), [
       { label: '', render: (r) => `<span class="badge ${r.priority}">${STOCK_PRIORITIES[r.priority].label}</span>` },
       { label: 'Part', render: itemCell },
-      { label: 'Used / week', num: true, render: (r) => r.used > 0 ? r.weekly : '<span class="dim" title="Below its reorder level">Reorder level</span>' },
+      { label: 'Used / week', num: true, render: (r) => r.weekly },
       { label: 'Jobs', num: true, render: (r) => r.jobs || '' },
       { label: 'In stock', num: true, render: (r) => r.stock },
       { label: 'Lasts', render: coverCell },
@@ -350,13 +337,7 @@
       { label: 'Lasts', render: coverCell },
       { label: 'On list', num: true, render: (r) => r.listed || '' },
       { label: 'Add extra', num: true, render: addCell }
-    ], 'No parts used in this period yet.');
-
-    renderTable('idleTable', filtered(idle), [
-      { label: 'Part', render: itemCell },
-      { label: 'In stock', num: true, render: (r) => r.stock },
-      { label: 'Value on shelf', num: true, render: (r) => r.unitCost === null ? '<span class="dim">No price</span>' : formatMoney(r.idleValue) }
-    ], 'Everything in stock has been used in this period.');
+    ], 'Nothing used in this period has stock to spare.');
 
     wireRowControls();
     document.getElementById('addAllBtn').disabled = buyable.filter((r) => !added.has(r.item.id) && (addQty[r.item.id] || 0) > 0).length === 0;
