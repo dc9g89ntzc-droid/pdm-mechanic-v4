@@ -982,4 +982,5 @@ function number(v){return Number(v||0).toLocaleString('en-US');}
 function escapeHtml(v){return String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');}
 function cleanError(error){return String(error?.message||error||'Unknown error').replace(/^Exception:\s*/,'').replace(/^Error:\s*/,'');}
 
-setPage('home');
+// Landing page links straight to a tab via showroom.html#buy / #sell.
+setPage(location.hash.slice(1) || 'home');

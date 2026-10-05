@@ -67,7 +67,7 @@ function requireSession() {
     const hadSession = !!session;
     clearSession();
     clearToken();
-    window.location.href = hadSession ? 'index.html?expired=1' : 'index.html';
+    window.location.href = hadSession ? 'mechanic.html?expired=1' : 'mechanic.html';
     return null;
   }
   return session;
@@ -108,5 +108,5 @@ async function logout() {
   }
   clearSession();
   clearToken();
-  window.location.href = 'index.html';
+  window.location.href = 'mechanic.html';
 }

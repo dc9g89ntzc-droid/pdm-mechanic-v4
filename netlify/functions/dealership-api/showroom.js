@@ -7,17 +7,20 @@ const { SUPABASE_URL, selectSql_ } = require('./supabase');
 
 const IMAGE_BASE_URL_ = SUPABASE_URL + '/storage/v1/object/public/vehicle-images/';
 
+// Must match dealership_public_catalogue.category exactly -- the Apps
+// Script list said Sport / Sport Classic / Trucks / Trailers, which no
+// vehicle uses, so those 251 vehicles could never be spotlighted.
 const SPOTLIGHT_CATEGORIES_ = [
   'Compact',
   'Coupe',
   'Electric',
   'Muscle',
-  'Sport',
-  'Sport Classic',
+  'Sports',
+  'Sports Classics',
   'SUV',
-  'Trucks',
+  'Truck',
   'Misc',
-  'Trailers',
+  'Trailer',
   'Work Truck',
   'Sedans',
   'Semi-Trucks',

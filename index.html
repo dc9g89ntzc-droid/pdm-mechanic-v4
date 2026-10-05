@@ -3,156 +3,139 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>PDM Mechanic Shop</title>
+<title>PDM 8230 · Premium Deluxe Motorsport</title>
+<!--
+  Business landing page. Customers go to the dealership showroom; staff
+  pick their own sign-in. The mechanic login used to live here and is now
+  mechanic.html (js/auth.js redirects there).
+-->
 <style>
   :root {
-    --bg: #0c0c0d;
-    --panel: #17181a;
-    --panel-border: #2a2b2e;
-    --text: #f0ebe4;
-    --text-dim: #9c9691;
-    --red: #d81f27;
-    --red-dim: #b8181f;
+    --bg: #02060b;
+    --panel: #07111b;
+    --line: #233447;
+    --text: #f7fbff;
+    --muted: #a7b2bf;
+    --blue: #0b72ff;
+    --blue2: #2d8cff;
+    --red: #ff2d2d;
+    --mech-red: #d81f27;
     --amber: #f0a52c;
-    --green: #22c55e;
   }
   * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
   body {
-    margin: 0;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg);
     color: var(--text);
-    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(circle at 82% 0%, rgba(11,114,255,.14), transparent 32%),
+      radial-gradient(circle at 4% 70%, rgba(255,45,45,.07), transparent 28%),
+      var(--bg);
   }
-  .card {
-    width: 100%;
-    max-width: 360px;
-    background: var(--panel);
-    border: 1px solid var(--panel-border);
-    border-radius: 12px;
-    padding: 32px;
+  a { color: inherit; text-decoration: none; }
+
+  .shell { width: min(1100px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 54px; }
+
+  .hero {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(145deg, rgba(12,26,40,.96), rgba(4,10,16,.98));
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    padding: 36px 32px 44px;
+    text-align: center;
   }
-  h1 {
-    font-size: 20px;
-    margin: 0 0 4px;
+  .hero:after {
+    content: "";
+    position: absolute; left: 0; right: 0; bottom: 0; height: 8px;
+    background: linear-gradient(to bottom, var(--blue) 0 33%, #fff 33% 66%, var(--red) 66%);
   }
-  p.sub {
-    margin: 0 0 24px;
-    color: var(--text-dim);
-    font-size: 13px;
-  }
-  label {
-    display: block;
+  .logo { width: min(420px, 80%); height: auto; }
+  .eyebrow {
+    color: var(--blue2);
+    text-transform: uppercase;
+    letter-spacing: .12em;
     font-size: 12px;
-    color: var(--text-dim);
-    margin-bottom: 6px;
+    font-weight: 900;
   }
-  input {
-    width: 100%;
-    padding: 10px 12px;
-    margin-bottom: 16px;
-    background: var(--bg);
-    border: 1px solid var(--panel-border);
-    border-radius: 8px;
-    color: var(--text);
-    font-size: 14px;
+  h1 { margin: 18px 0 8px; font-size: clamp(28px, 5vw, 46px); letter-spacing: -.035em; }
+  .hero p { margin: 0 auto; color: var(--muted); max-width: 620px; line-height: 1.55; }
+
+  h2 { margin: 40px 0 14px; font-size: 13px; }
+
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+  .tile {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 24px;
+    background: linear-gradient(180deg, rgba(10,20,30,.98), rgba(6,14,22,.98));
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    transition: transform .15s, border-color .15s;
   }
-  input:focus {
-    outline: none;
-    border-color: var(--red);
-  }
-  button {
-    width: 100%;
-    padding: 11px;
-    background: var(--red);
-    border: none;
-    border-radius: 8px;
-    color: white;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  button:hover:not(:disabled) {
-    background: var(--red-dim);
-  }
-  button:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-  .error {
-    display: none;
-    margin-top: 14px;
-    padding: 10px 12px;
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: var(--red);
-    border-radius: 8px;
-    font-size: 13px;
+  .tile:hover, .tile:focus-visible { transform: translateY(-2px); border-color: var(--blue); outline: none; }
+  .tile h3 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
+  .tile p { margin: 0; color: var(--muted); line-height: 1.5; font-size: 14px; }
+  .tile .go { margin-top: 8px; color: var(--blue2); font-weight: 800; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
+
+  .staff .tile { padding: 18px 22px; flex-direction: row; align-items: center; justify-content: space-between; }
+  .staff .tile h3 { font-size: 17px; }
+  .staff .tile p { font-size: 13px; }
+  .staff .mechanic:hover, .staff .mechanic:focus-visible { border-color: var(--mech-red); }
+  .staff .mechanic .go { color: var(--amber); }
+
+  footer { margin-top: 40px; text-align: center; color: var(--muted); font-size: 12px; }
+
+  @media (max-width: 640px) {
+    .grid { grid-template-columns: 1fr; }
+    .hero { padding: 28px 18px 36px; }
   }
 </style>
 </head>
 <body>
-  <form class="card" id="loginForm">
-    <h1>PDM Mechanic Shop</h1>
-    <p class="sub">Staff sign in</p>
+  <main class="shell">
+    <section class="hero">
+      <img class="logo" src="images/pdm-dealership-logo.png" alt="Premium Deluxe Motorsport" />
+      <div class="eyebrow" style="margin-top:18px">PDM 8230 LLC</div>
+      <h1>Welcome to PDM 8230</h1>
+      <p>Browse vehicles in stock right now, or see what PDM may offer for the car you already have.</p>
+    </section>
 
-    <label for="employeeName">Employee name</label>
-    <input id="employeeName" type="text" autocomplete="username" required />
+    <h2 class="eyebrow">Customers</h2>
+    <div class="grid">
+      <a class="tile" href="dealership/showroom.html#buy">
+        <h3>Buy a vehicle</h3>
+        <p>Current showroom stock with prices and availability.</p>
+        <span class="go">Browse vehicles &rarr;</span>
+      </a>
+      <a class="tile" href="dealership/showroom.html#sell">
+        <h3>Sell your vehicle</h3>
+        <p>See the typical range PDM may offer for your current vehicle.</p>
+        <span class="go">Get an estimate &rarr;</span>
+      </a>
+    </div>
 
-    <label for="password">Password</label>
-    <input id="password" type="password" autocomplete="current-password" required />
+    <h2 class="eyebrow">Staff</h2>
+    <div class="grid staff">
+      <a class="tile" href="dealership/">
+        <div>
+          <h3>Dealership Portal</h3>
+          <p>Sales, imports, buybacks, stock and payroll</p>
+        </div>
+        <span class="go">Sign in &rarr;</span>
+      </a>
+      <a class="tile mechanic" href="mechanic.html">
+        <div>
+          <h3>Mechanic Shop</h3>
+          <p>Workshop board, jobs, parts and payroll</p>
+        </div>
+        <span class="go">Sign in &rarr;</span>
+      </a>
+    </div>
 
-    <button type="submit" id="loginBtn">Sign in</button>
-
-    <div class="error" id="loginError"></div>
-  </form>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="js/supabaseClient.js"></script>
-<script src="js/auth.js"></script>
-<script>
-  if (hasValidSession()) {
-    window.location.href = 'my-dashboard.html';
-  } else {
-    // A session object can outlive its token (12h expiry, mechanic-login.js)
-    // -- clear both here so this form stays reachable instead of the old
-    // behaviour of bouncing straight back to a dashboard that's just going
-    // to fail to load anything.
-    clearSession();
-    clearToken();
-  }
-
-  const form = document.getElementById('loginForm');
-  const btn = document.getElementById('loginBtn');
-  const errorBox = document.getElementById('loginError');
-
-  if (new URLSearchParams(window.location.search).get('expired') === '1') {
-    errorBox.textContent = 'Your session expired. Please sign in again.';
-    errorBox.style.display = 'block';
-  }
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    errorBox.style.display = 'none';
-    btn.disabled = true;
-    btn.textContent = 'Signing in...';
-
-    try {
-      await login(
-        document.getElementById('employeeName').value.trim(),
-        document.getElementById('password').value
-      );
-      window.location.href = 'my-dashboard.html';
-    } catch (err) {
-      errorBox.textContent = err.message;
-      errorBox.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'Sign in';
-    }
-  });
-</script>
+    <footer>PDM 8230 LLC · Premium Deluxe Motorsport</footer>
+  </main>
 </body>
 </html>
