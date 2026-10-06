@@ -137,6 +137,8 @@
   }
   .transfer-cart-btn:hover { border-color: var(--red); color: var(--red); }
   .transfer-cart-btn:disabled { opacity: 0.5; cursor: default; }
+  .shop-row .transfer-cart-btn { flex: 0 0 auto; }
+  .shop-list-flash { color: var(--green); font-size: 13px; min-height: 18px; margin: 0 0 10px; }
   .shop-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--panel-border); font-size: 13px; }
   .shop-row:last-child { border-bottom: none; }
   .shop-row input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 auto; cursor: pointer; }
@@ -251,6 +253,7 @@
         <div id="shopListTotal" class="shop-list-total"></div>
       </div>
 
+      <div id="shopListFlash" class="shop-list-flash"></div>
       <div id="shopListSections"></div>
       <div id="shopSelectionBar" style="margin: 12px 0;"></div>
       <div id="lowStockSuggestions"></div>
@@ -418,6 +421,11 @@
     }
   }
 
+  function updateCartTabLabel() {
+    const count = cart.length;
+    document.getElementById('tabBuyBtn').textContent = count ? `Buy Parts (${count} in cart)` : 'Buy Parts';
+  }
+
   function addToCart(item, qty) {
     const existing = cart.find((l) => l.itemId === item.id);
     if (existing) {
@@ -457,6 +465,7 @@
     if (cart.length === 0) {
       linesEl.innerHTML = '<div class="cart-empty">No items added yet.</div>';
       updateCartTotal();
+      updateCartTabLabel();
       return;
     }
     linesEl.innerHTML = '';
@@ -501,6 +510,7 @@
       linesEl.appendChild(row);
     });
     updateCartTotal();
+    updateCartTabLabel();
   }
 
   function showStatus(message, type) {
@@ -735,7 +745,6 @@
 
     container.innerHTML = ['autoparts', 'scrapyard', 'unspecified'].map((key) => {
       if (sections[key].length === 0) return '';
-      const unboughtCount = sections[key].filter((r) => !r.bought).length;
       const rowsHtml = sections[key].map((r) => `
         <div class="shop-row ${r.bought ? 'bought' : ''}" data-id="${r.id}">
           <input type="checkbox" class="sr-bought" data-id="${r.id}"
@@ -748,34 +757,33 @@
                  <input type="number" class="qty-input" aria-label="Quantity" />
                  <button type="button" class="sr-qty-inc">+</button>
                </div>`}
+          ${r.bought ? '' : `<button type="button" class="transfer-cart-btn" data-id="${r.id}" title="Move this item into the purchase cart">&rarr; Cart</button>`}
           <button type="button" class="sr-remove" data-id="${r.id}">✕</button>
         </div>
       `).join('');
       return `
         <div class="shop-section">
-          <h3>${SHOP_SECTION_TITLES[key]}
-            ${unboughtCount > 0 ? `<button type="button" class="transfer-cart-btn" data-section="${key}">Transfer to cart &rarr;</button>` : ''}
-          </h3>
+          <h3>${SHOP_SECTION_TITLES[key]}</h3>
           ${rowsHtml}
         </div>
       `;
     }).join('');
 
-    container.querySelectorAll('.transfer-cart-btn').forEach((btn) => {
+    // One item at a time into the purchase cart, at its list quantity --
+    // stays on the list so several can be picked in a row.
+    container.querySelectorAll('.transfer-cart-btn[data-id]').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const key = btn.dataset.section;
-        const unbought = sections[key].filter((r) => !r.bought);
-        if (unbought.length === 0) return;
+        const r = rows.find((row) => row.id === btn.dataset.id);
+        if (!r || r.bought) return;
         btn.disabled = true;
         try {
-          for (const r of unbought) {
-            addToCart(r.catalogue_items, r.quantity);
-            await removeFromShoppingList(r.id);
-          }
-          switchTab('buy');
+          addToCart(r.catalogue_items, Number(r.quantity));
+          await removeFromShoppingList(r.id);
+          document.getElementById('shopListFlash').textContent =
+            `${r.quantity} × ${r.catalogue_items?.name || 'item'} moved to the cart (Buy Parts tab).`;
           await loadShoppingList();
         } catch (err) {
-          alert(`Failed to transfer to cart: ${err.message}`);
+          alert(`Failed to move to cart: ${err.message}`);
           btn.disabled = false;
         }
       });
