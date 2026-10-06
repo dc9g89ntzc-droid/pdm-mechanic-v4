@@ -53,6 +53,7 @@
   .badge.crafted_in { background: rgba(34,197,94,0.15); color: var(--green); }
   .badge.purchased_in { background: rgba(56,189,248,0.15); color: #38bdf8; }
   .badge.adjustment { background: rgba(240,165,44,0.15); color: var(--amber); }
+  .badge.transfer { background: rgba(167,139,250,0.15); color: #a78bfa; }
   .badge.active-state { background: rgba(34,197,94,0.15); color: var(--green); }
   .badge.voided-state { background: rgba(216,31,39,0.15); color: #f0888c; cursor: help; }
 
@@ -320,6 +321,7 @@
       { label: 'Item', render: (t) => `<span class="item-text">${t.catalogue_items?.name || 'Unknown item'}</span>` },
       { label: 'Type', render: (t) => `<span class="badge ${t.transaction_type}">${TRANSACTION_TYPES.find((x) => x.value === t.transaction_type)?.label || t.transaction_type}</span>` },
       { label: 'Qty', num: true, render: (t) => t.quantity },
+      { label: 'Where', render: (t) => t.location ? stockLocationLabel(t.location, true) : '' },
       { label: 'Source', render: (t) => t.source_type ? purchaseSourceLabel(t.source_type) : '' },
       { label: 'Cost', num: true, render: (t) => t.unit_cost !== null ? formatMoney(t.unit_cost) : '' },
       { label: 'By', render: (t) => staffName(t.performed_by) },
@@ -446,6 +448,7 @@
         when: first.created_at,
         by: first.performed_by,
         source: first.source_type,
+        location: first.location,
         notes: first.notes,
         rows: g.rows,
         total: g.rows.reduce((sum, r) => sum + Number(r.unit_cost || 0) * Number(r.quantity), 0),
@@ -462,6 +465,7 @@
       { label: 'When', render: (g) => formatDateTime(g.when) },
       { label: 'By', render: (g) => staffName(g.by) },
       { label: 'Bought from', render: (g) => g.source ? purchaseSourceLabel(g.source) : '<span class="dim">Unknown</span>' },
+      { label: 'Put into', render: (g) => g.location ? stockLocationLabel(g.location) : '' },
       { label: 'Items', render: (g) => `
           <details>
             <summary>${g.rows.length} item type${g.rows.length === 1 ? '' : 's'}</summary>

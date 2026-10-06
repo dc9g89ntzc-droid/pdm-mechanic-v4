@@ -224,6 +224,10 @@
           <select id="purchaseSource"></select>
         </div>
         <div class="cart-field">
+          <label for="purchaseLocation">Put into</label>
+          <select id="purchaseLocation"></select>
+        </div>
+        <div class="cart-field">
           <label for="purchaseNotes">Notes (optional — e.g. citizen name)</label>
           <input type="text" id="purchaseNotes" placeholder="Notes" />
         </div>
@@ -263,6 +267,10 @@
     <div class="modal">
       <h2>Add bought items to stock</h2>
       <p class="hint">Confirm what was actually paid for each — defaults to the last price on file, but adjust anything that was different this time.</p>
+      <div class="cart-field" style="margin-bottom:12px;">
+        <label for="convertLocation">Put into</label>
+        <select id="convertLocation"></select>
+      </div>
       <div id="convertRows"></div>
       <div id="convertWithdrawTotal" style="text-align:right; margin-top:10px; color:var(--amber); font-weight:600; font-size:13px;"></div>
       <div class="actions">
@@ -296,6 +304,22 @@
   let cart = []; // { itemId, name, imageUrl, quantity, unitCost }
 
   document.getElementById('purchaseSource').innerHTML = PURCHASE_SOURCE_TYPES.map((s) => `<option value="${s.value}">${s.label}</option>`).join('');
+
+  // Where bought stock goes (sql/058). Both pickers share one remembered
+  // choice, so whoever does the buying doesn't have to re-pick every time.
+  const LOCATION_PREF_KEY = 'pdm_purchase_location';
+  function savedPurchaseLocation() {
+    try { return localStorage.getItem(LOCATION_PREF_KEY) || 'shop'; } catch { return 'shop'; }
+  }
+  ['purchaseLocation', 'convertLocation'].forEach((id) => {
+    const el = document.getElementById(id);
+    el.innerHTML = STOCK_LOCATIONS.map((l) => `<option value="${l.value}">${l.label}</option>`).join('');
+    el.value = savedPurchaseLocation();
+    el.addEventListener('change', () => {
+      try { localStorage.setItem(LOCATION_PREF_KEY, el.value); } catch { /* per-browser convenience only */ }
+      ['purchaseLocation', 'convertLocation'].forEach((other) => { document.getElementById(other).value = el.value; });
+    });
+  });
 
   function renderBreadcrumb() {
     const parts = ['<a id="bcRoot">Categories</a>'];
@@ -497,6 +521,7 @@
     }
 
     const source = document.getElementById('purchaseSource').value;
+    const location = document.getElementById('purchaseLocation').value;
     const notes = document.getElementById('purchaseNotes').value.trim() || null;
     const btn = document.getElementById('completePurchaseBtn');
     btn.disabled = true;
@@ -509,7 +534,7 @@
         const line = cart[0];
         await recordPurchase({
           itemId: line.itemId, quantity: Number(line.quantity), unitCost: Number(line.unitCost),
-          sourceType: source, performedBy: session?.id, notes, batchId
+          sourceType: source, performedBy: session?.id, notes, batchId, location
         });
         purchased.push(line);
         cart.shift();
@@ -1031,7 +1056,8 @@
         // original request.
         await recordPurchase({
           itemId: row.catalogue_items.id, quantity: Number(e.quantity), unitCost: Number(e.cost),
-          sourceType: e.source, performedBy: session?.id, notes: 'Converted from shopping list', batchId
+          sourceType: e.source, performedBy: session?.id, notes: 'Converted from shopping list', batchId,
+          location: document.getElementById('convertLocation').value
         });
       }
       logActivity({

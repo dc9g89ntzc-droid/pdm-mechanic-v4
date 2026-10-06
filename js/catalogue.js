@@ -18,8 +18,25 @@ const TRANSACTION_TYPES = [
   { value: 'crafted_in', label: 'Crafted' },
   { value: 'purchased_in', label: 'Purchased' },
   { value: 'used_on_job', label: 'Used on a job' },
-  { value: 'adjustment', label: 'Manual adjustment' }
+  { value: 'adjustment', label: 'Manual adjustment' },
+  { value: 'transfer', label: 'Transfer' }
 ];
+
+// Where stock physically sits (sql/058). catalogue_items.stock_quantity is
+// the combined total; stock_shop / stock_autoparts are the split.
+const STOCK_LOCATIONS = [
+  { value: 'shop', label: 'Shop storage', short: 'Shop' },
+  { value: 'autoparts', label: 'Autoparts store', short: 'Autoparts' }
+];
+
+function stockLocationLabel(value, short) {
+  const loc = STOCK_LOCATIONS.find((l) => l.value === value);
+  return loc ? (short ? loc.short : loc.label) : value;
+}
+
+function stockAtLocation(item, location) {
+  return Number(location === 'autoparts' ? item.stock_autoparts : item.stock_shop) || 0;
+}
 
 // Where a purchased_in transaction's stock actually came from -- matters
 // because a private citizen sale price is a one-off, not a stable catalogue
@@ -86,7 +103,7 @@ async function listCatalogueItems(filters = {}) {
       id, name, description, categories, subcategory_id, end_uses,
       sourcing, craft_time_minutes, craft_cost, purchase_cost, shop_price, export_price, customer_price,
       install_time_minutes, usage_type, required_tool,
-      stock_quantity, reorder_threshold, active, image_url, notes,
+      stock_quantity, stock_shop, stock_autoparts, reorder_threshold, active, image_url, notes,
       available_autoparts, available_scrapyard,
       catalogue_subcategories ( name )
     `)
@@ -185,11 +202,16 @@ async function removeIngredient(ingredientRowId) {
   if (error) throw new Error(error.message);
 }
 
-async function recordInventoryTransaction({ itemId, transactionType, quantity, performedBy, notes, jobId, unitCost, sourceType, batchId }) {
+// location: 'shop' | 'autoparts' (sql/058) -- every movement says where.
+async function recordInventoryTransaction({ itemId, transactionType, quantity, performedBy, notes, jobId, unitCost, sourceType, batchId, location }) {
+  if (!STOCK_LOCATIONS.some((l) => l.value === location)) {
+    throw new Error('Stock location is required (shop storage or autoparts store).');
+  }
   const { error } = await sb.from('inventory_transactions').insert({
     item_id: itemId,
     transaction_type: transactionType,
     quantity,
+    location,
     performed_by: performedBy || null,
     notes: notes || null,
     job_id: jobId || null,
@@ -209,10 +231,11 @@ async function recordInventoryTransaction({ itemId, transactionType, quantity, p
 // alone -- it's the *import* price (what it costs to stock that store's
 // inventory in the first place), a separate, Joanna-maintained figure that
 // a purchase completing shouldn't silently overwrite.
-// batchId (sql/055) ties one checkout's items together for the Logs page.
-async function recordPurchase({ itemId, quantity, unitCost, sourceType, performedBy, notes, batchId }) {
+// batchId (sql/055) ties one checkout's items together for the Logs page;
+// location (sql/058) is where the stock is being put.
+async function recordPurchase({ itemId, quantity, unitCost, sourceType, performedBy, notes, batchId, location }) {
   await recordInventoryTransaction({
-    itemId, transactionType: 'purchased_in', quantity, performedBy, notes, unitCost, sourceType, batchId
+    itemId, transactionType: 'purchased_in', quantity, performedBy, notes, unitCost, sourceType, batchId, location
   });
   const { error } = await sb.from('catalogue_items').update({ shop_price: unitCost }).eq('id', itemId);
   if (error) throw new Error(error.message);
@@ -224,15 +247,58 @@ async function recordPurchase({ itemId, quantity, unitCost, sourceType, performe
 // only primitive that actually exists for changing stock_quantity; there's
 // no absolute-set operation at the DB layer, see apply_inventory_transaction
 // in sql/008/025). Returns the delta recorded, or null if nothing changed.
-async function setStockQuantity(itemId, currentQuantity, newQuantity, performedBy, notes) {
+// currentQuantity/newQuantity are that one location's count, not the total.
+async function setStockQuantity(itemId, currentQuantity, newQuantity, performedBy, notes, location) {
   const delta = Number(newQuantity) - Number(currentQuantity);
   if (delta === 0) return null;
-  const correctionNote = `Corrected stock from ${currentQuantity} to ${newQuantity}`;
+  const correctionNote = `Corrected ${stockLocationLabel(location).toLowerCase()} stock from ${currentQuantity} to ${newQuantity}`;
   await recordInventoryTransaction({
-    itemId, transactionType: 'adjustment', quantity: delta,
+    itemId, transactionType: 'adjustment', quantity: delta, location,
     performedBy, notes: notes ? `${correctionNote} — ${notes}` : correctionNote
   });
   return delta;
+}
+
+// Moves stock between the two locations: two 'transfer' rows (out of one,
+// into the other) sharing a batch_id, so the total never changes and voiding
+// either half voids both (sql/058).
+async function transferStock({ itemId, quantity, from, to, performedBy, notes }) {
+  const qty = Math.round(Number(quantity));
+  if (!Number.isFinite(qty) || qty <= 0) throw new Error('Enter how many to move.');
+  if (from === to) throw new Error('Pick two different locations.');
+  const batchId = crypto.randomUUID();
+  const note = `Moved ${qty} from ${stockLocationLabel(from).toLowerCase()} to ${stockLocationLabel(to).toLowerCase()}${notes ? ` — ${notes}` : ''}`;
+  await recordInventoryTransaction({ itemId, transactionType: 'transfer', quantity: -qty, location: from, performedBy, notes: note, batchId });
+  await recordInventoryTransaction({ itemId, transactionType: 'transfer', quantity: qty, location: to, performedBy, notes: note, batchId });
+}
+
+// Stock used on (positive) or returned from (negative) a job. Usage comes out
+// of shop storage first and only dips into the autoparts store for the rest
+// (Joanna's rule); anything beyond both comes off the shop, since that's
+// where the work physically happened. Returns always go back to the shop.
+async function recordJobStockUsage({ itemId, used, performedBy, jobId, notes }) {
+  const qty = Number(used);
+  if (!qty) return;
+  if (qty < 0) {
+    await recordInventoryTransaction({ itemId, transactionType: 'used_on_job', quantity: -qty, location: 'shop', performedBy, jobId, notes });
+    return;
+  }
+  const { data, error } = await sb
+    .from('catalogue_items')
+    .select('stock_shop, stock_autoparts')
+    .eq('id', itemId)
+    .single();
+  if (error) throw new Error(error.message);
+  const shop = Math.max(0, Number(data.stock_shop) || 0);
+  const autoparts = Math.max(0, Number(data.stock_autoparts) || 0);
+  const fromAutoparts = Math.min(Math.max(0, qty - shop), autoparts);
+  const fromShop = qty - fromAutoparts;
+  if (fromShop > 0) {
+    await recordInventoryTransaction({ itemId, transactionType: 'used_on_job', quantity: -fromShop, location: 'shop', performedBy, jobId, notes });
+  }
+  if (fromAutoparts > 0) {
+    await recordInventoryTransaction({ itemId, transactionType: 'used_on_job', quantity: -fromAutoparts, location: 'autoparts', performedBy, jobId, notes });
+  }
 }
 
 // ---- Reporting (foreman) ----
@@ -242,7 +308,7 @@ async function listInventoryTransactions(filters = {}) {
   let query = sb
     .from('inventory_transactions')
     .select(`
-      id, item_id, transaction_type, quantity, unit_cost, source_type, job_id, batch_id,
+      id, item_id, transaction_type, quantity, location, unit_cost, source_type, job_id, batch_id,
       performed_by, notes, created_at, voided_at, voided_by, void_reason, reversal_of,
       catalogue_items ( name )
     `)
@@ -420,8 +486,8 @@ async function addJobItem({ jobId, catalogueItem, quantity, sourcingChoice, perf
     if (error) throw new Error(error.message);
   }
 
-  await recordInventoryTransaction({
-    itemId: catalogueItem.id, transactionType: 'used_on_job', quantity: -quantity,
+  await recordJobStockUsage({
+    itemId: catalogueItem.id, used: quantity,
     performedBy, jobId, notes: 'Added via job item picker'
   });
 }
@@ -431,8 +497,8 @@ async function updateJobItemQuantity(id, catalogueItemId, newQuantity, oldQuanti
   const { error } = await sb.from('job_items').update({ quantity: newQuantity }).eq('id', id);
   if (error) throw new Error(error.message);
   if (delta !== 0) {
-    await recordInventoryTransaction({
-      itemId: catalogueItemId, transactionType: 'used_on_job', quantity: -delta,
+    await recordJobStockUsage({
+      itemId: catalogueItemId, used: delta,
       performedBy, jobId, notes: 'Quantity adjusted on job item picker'
     });
   }
@@ -450,8 +516,8 @@ async function updateJobItemUnitPrice(id, unitPrice) {
 async function removeJobItem(id, catalogueItemId, quantity, performedBy, jobId) {
   const { error } = await sb.from('job_items').delete().eq('id', id);
   if (error) throw new Error(error.message);
-  await recordInventoryTransaction({
-    itemId: catalogueItemId, transactionType: 'used_on_job', quantity,
+  await recordJobStockUsage({
+    itemId: catalogueItemId, used: -quantity,
     performedBy, jobId, notes: 'Removed via job item picker'
   });
 }

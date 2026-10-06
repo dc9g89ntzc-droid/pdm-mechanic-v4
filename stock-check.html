@@ -33,7 +33,7 @@
   .filters input[type="text"] { flex: 1 1 280px; min-width: 200px; }
   .filters label.checkbox { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); white-space: nowrap; }
 
-  main { padding: 20px 24px 60px; max-width: 980px; margin: 0 auto; }
+  main { padding: 20px 24px 60px; max-width: 1150px; margin: 0 auto; }
   .page-sub { color: var(--text-dim); font-size: 13px; margin-bottom: 16px; }
 
   table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden; font-size: 13px; }
@@ -53,7 +53,12 @@
   .sc-row input[type="number"].dirty { border-color: var(--amber); }
   .sc-save { background: var(--red); border: none; color: white; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
   .sc-save:disabled { opacity: 0.5; cursor: default; }
-  .sc-flash { font-size: 12px; color: var(--green); }
+  .sc-flash { font-size: 12px; color: var(--green); min-width: 70px; }
+  .sc-total { font-size: 14px; font-weight: 600; }
+  .sc-total.low { color: var(--red); }
+  .sc-move { display: flex; flex-direction: column; gap: 4px; }
+  .sc-move button { background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+  .sc-move button:hover { color: var(--text); border-color: var(--amber); }
 </style>
 </head>
 <body>
@@ -86,10 +91,10 @@
   </div>
 
   <main>
-    <div class="page-sub">Type the real count and save -- this corrects stock straight to that total, it doesn't add or subtract.</div>
+    <div class="page-sub">Type the real count for each location and save -- this corrects that location straight to the number you enter, it doesn't add or subtract. Use Move to shift stock between the shop and the autoparts store without changing the total.</div>
     <table>
       <thead>
-        <tr><th>Item</th><th>Current</th><th>Correct to</th></tr>
+        <tr><th>Item</th><th>Shop storage</th><th>Autoparts store</th><th>Total</th><th>Move</th></tr>
       </thead>
       <tbody id="itemsBody"></tbody>
     </table>
@@ -119,7 +124,7 @@
   }
 
   async function loadItems() {
-    itemsBody.innerHTML = '<tr><td colspan="3"><div class="empty-msg">Loading…</div></td></tr>';
+    itemsBody.innerHTML = '<tr><td colspan="5"><div class="empty-msg">Loading…</div></td></tr>';
     try {
       let items = await listCatalogueItems(currentFilters());
       if (lowStockOnlyToggle.checked) {
@@ -127,71 +132,121 @@
       }
       renderItems(items);
     } catch (err) {
-      itemsBody.innerHTML = `<tr><td colspan="3"><div class="empty-msg">Failed to load items: ${err.message}</div></td></tr>`;
+      itemsBody.innerHTML = `<tr><td colspan="5"><div class="empty-msg">Failed to load items: ${err.message}</div></td></tr>`;
     }
+  }
+
+  function isLow(item, total) {
+    return total <= 0 || (item.reorder_threshold !== null && total <= item.reorder_threshold);
   }
 
   function renderItems(items) {
     if (items.length === 0) {
-      itemsBody.innerHTML = '<tr><td colspan="3"><div class="empty-msg">No items match the current filters.</div></td></tr>';
+      itemsBody.innerHTML = '<tr><td colspan="5"><div class="empty-msg">No items match the current filters.</div></td></tr>';
       return;
     }
     itemsBody.innerHTML = '';
     items.forEach((item) => {
       const tr = document.createElement('tr');
       if (!item.active) tr.className = 'inactive';
-      const low = item.stock_quantity <= 0 || (item.reorder_threshold !== null && item.stock_quantity <= item.reorder_threshold);
+      // Live per-location counts for this row (sql/058), updated in place as
+      // corrections and moves are saved.
+      const counts = { shop: Number(item.stock_shop) || 0, autoparts: Number(item.stock_autoparts) || 0 };
       const categoryBadges = (item.categories || [])
         .map((c) => `<span class="badge" style="background:${c ? categoryColor(c) + '26' : '#333'}; color:${categoryColor(c)};">${c}</span>`)
         .join('');
+      const locationCell = (loc) => `
+        <td>
+          <div class="sc-row" data-loc="${loc}">
+            <input type="number" class="sc-qty" min="0" step="1" value="${counts[loc]}" aria-label="${stockLocationLabel(loc)} count" />
+            <button type="button" class="sc-save" disabled>Save</button>
+            <span class="sc-flash"></span>
+          </div>
+        </td>`;
       tr.innerHTML = `
         <td>
           <div class="item-name">${item.name}</div>
           <div class="item-desc">${categoryBadges}</div>
         </td>
-        <td><span class="current-qty ${low ? 'low' : ''}" data-current="${item.stock_quantity}">${item.stock_quantity}</span></td>
+        ${locationCell('shop')}
+        ${locationCell('autoparts')}
+        <td><span class="sc-total"></span></td>
         <td>
-          <div class="sc-row">
-            <input type="number" class="sc-qty" min="0" step="1" value="${item.stock_quantity}" />
-            <button type="button" class="sc-save" disabled>Save</button>
-            <span class="sc-flash"></span>
+          <div class="sc-move">
+            <button type="button" data-from="autoparts" data-to="shop">Autoparts &rarr; Shop</button>
+            <button type="button" data-from="shop" data-to="autoparts">Shop &rarr; Autoparts</button>
           </div>
         </td>
       `;
-      const qtyInput = tr.querySelector('.sc-qty');
-      const saveBtn = tr.querySelector('.sc-save');
-      const currentEl = tr.querySelector('.current-qty');
-      const flash = tr.querySelector('.sc-flash');
+      const totalEl = tr.querySelector('.sc-total');
 
-      function syncDirty() {
-        const dirty = qtyInput.value !== '' && Number(qtyInput.value) !== Number(currentEl.dataset.current);
-        qtyInput.classList.toggle('dirty', dirty);
-        saveBtn.disabled = !dirty;
+      function refresh() {
+        const total = counts.shop + counts.autoparts;
+        totalEl.textContent = total;
+        totalEl.classList.toggle('low', isLow(item, total));
+        tr.querySelectorAll('.sc-row').forEach((row) => {
+          const input = row.querySelector('.sc-qty');
+          if (!input.classList.contains('dirty')) input.value = counts[row.dataset.loc];
+        });
       }
-      qtyInput.addEventListener('input', () => { flash.textContent = ''; syncDirty(); });
-      qtyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !saveBtn.disabled) saveBtn.click(); });
 
-      saveBtn.addEventListener('click', async () => {
-        const current = Number(currentEl.dataset.current);
-        const target = Number(qtyInput.value);
-        if (qtyInput.value === '' || isNaN(target) || target < 0) { alert('Enter a valid quantity.'); return; }
-        saveBtn.disabled = true;
-        try {
-          const delta = await setStockQuantity(item.id, current, target, session?.id);
-          if (delta !== null) {
-            currentEl.dataset.current = target;
-            currentEl.textContent = target;
-            const nowLow = target <= 0 || (item.reorder_threshold !== null && target <= item.reorder_threshold);
-            currentEl.classList.toggle('low', nowLow);
-            flash.textContent = `${delta > 0 ? '+' : ''}${delta} logged`;
-          }
-          qtyInput.classList.remove('dirty');
-        } catch (err) {
-          alert(`Failed to save: ${err.message}`);
-          saveBtn.disabled = false;
+      tr.querySelectorAll('.sc-row').forEach((row) => {
+        const loc = row.dataset.loc;
+        const qtyInput = row.querySelector('.sc-qty');
+        const saveBtn = row.querySelector('.sc-save');
+        const flash = row.querySelector('.sc-flash');
+
+        function syncDirty() {
+          const dirty = qtyInput.value !== '' && Number(qtyInput.value) !== counts[loc];
+          qtyInput.classList.toggle('dirty', dirty);
+          saveBtn.disabled = !dirty;
         }
+        qtyInput.addEventListener('input', () => { flash.textContent = ''; syncDirty(); });
+        qtyInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !saveBtn.disabled) saveBtn.click(); });
+
+        saveBtn.addEventListener('click', async () => {
+          const target = Number(qtyInput.value);
+          if (qtyInput.value === '' || !Number.isInteger(target) || target < 0) { alert('Enter a whole number of 0 or more.'); return; }
+          saveBtn.disabled = true;
+          try {
+            const delta = await setStockQuantity(item.id, counts[loc], target, session?.id, null, loc);
+            if (delta !== null) {
+              counts[loc] = target;
+              flash.textContent = `${delta > 0 ? '+' : ''}${delta} logged`;
+            }
+            qtyInput.classList.remove('dirty');
+            refresh();
+          } catch (err) {
+            alert(`Failed to save: ${err.message}`);
+            saveBtn.disabled = false;
+          }
+        });
       });
 
+      tr.querySelectorAll('.sc-move button').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const from = btn.dataset.from;
+          const to = btn.dataset.to;
+          const answer = prompt(`Move how many "${item.name}" from ${stockLocationLabel(from).toLowerCase()} to ${stockLocationLabel(to).toLowerCase()}? (${counts[from]} there now)`, String(Math.max(counts[from], 0)));
+          if (answer === null) return;
+          const qty = Number(answer);
+          if (!Number.isInteger(qty) || qty <= 0) { alert('Enter a whole number above 0.'); return; }
+          if (qty > counts[from] && !confirm(`Only ${counts[from]} on record there. Move ${qty} anyway?`)) return;
+          btn.disabled = true;
+          try {
+            await transferStock({ itemId: item.id, quantity: qty, from, to, performedBy: session?.id });
+            counts[from] -= qty;
+            counts[to] += qty;
+            refresh();
+          } catch (err) {
+            alert(`Failed to move stock: ${err.message}`);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      refresh();
       itemsBody.appendChild(tr);
     });
   }
