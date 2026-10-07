@@ -230,6 +230,7 @@
 
   <main>
     <div class="success-box" id="successBox"></div>
+    <div class="success-box" id="copyBanner"></div>
     <div class="error-box" id="errorBox"></div>
 
     <!-- Customer (searched first -- picking one loads the vehicles they own below) -->
@@ -381,6 +382,7 @@
 <script src="js/auth.js"></script>
 <script src="js/workshop.js"></script>
 <script src="js/shift.js"></script>
+<script src="js/catalogue.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -412,7 +414,99 @@
     document.getElementById('submitJobBtn').disabled =
       !(selectedCustomer && selectedVehicle && selectedJobTypes().length > 0);
   }
-  typeCheckboxes.addEventListener('change', updateSubmitState);
+  typeCheckboxes.addEventListener('change', () => { updateSubmitState(); renderCopyBanner(); });
+
+  // --- Copy parts from another job (Workshop board "Copy to new job") ---
+  // ?copyFrom=<jobId>: once this new job is created, the source job's parts
+  // are added to it at today's catalogue prices, under the same work types.
+  const copyFromId = new URLSearchParams(location.search).get('copyFrom');
+  let copySource = null; // { job, items }
+
+  // A copied part keeps its work type; one with none (or one this form
+  // can't create, e.g. engine building) goes on the first ticked type.
+  function copyTargetType(line, jobTypes) {
+    return LEG_ORDER.includes(line.job_type) ? line.job_type : jobTypes[0];
+  }
+
+  function copyLinesFor(jobTypes) {
+    if (!copySource) return { keep: [], skipped: [] };
+    const keep = [];
+    const skipped = [];
+    copySource.items.forEach((line) => {
+      const t = copyTargetType(line, jobTypes);
+      if (t && jobTypes.includes(t)) keep.push({ ...line, targetType: t });
+      else skipped.push(line);
+    });
+    return { keep, skipped };
+  }
+
+  function renderCopyBanner() {
+    const banner = document.getElementById('copyBanner');
+    if (!copySource) { banner.style.display = 'none'; return; }
+    const { job, items } = copySource;
+    const { keep, skipped } = copyLinesFor(selectedJobTypes());
+    const list = items.map((l) => `${l.quantity} × ${l.catalogue_items?.name || 'Item'}`).join(', ');
+    banner.innerHTML = `
+      <strong>Copying the parts from Job #${job.job_number}</strong>
+      (${job.customers?.customer_name || 'Unknown customer'}): ${list}.<br>
+      They'll be added to the new job at today's prices once you create it.
+      ${skipped.length ? `<br><span style="color:var(--amber)">${skipped.length} won't be copied because its work type isn't ticked.</span>` : ''}
+      ${keep.length === 0 && items.length ? '<br><span style="color:var(--amber)">Tick a work type to copy the parts.</span>' : ''}
+      <a href="checkin.html" style="color:var(--text-dim); margin-left:8px;">Don't copy</a>`;
+    banner.style.display = 'block';
+  }
+
+  async function loadCopySource() {
+    if (!copyFromId) return;
+    try {
+      const [job, items] = await Promise.all([getJobSummary(copyFromId), listJobItems(copyFromId)]);
+      if (items.length === 0) {
+        showError(`Job #${job.job_number} has no parts to copy.`);
+        return;
+      }
+      copySource = { job, items };
+      // Pre-tick the same work types as the original.
+      const types = new Set([...(job.job_types || []), ...items.map((l) => l.job_type)].filter((t) => LEG_ORDER.includes(t)));
+      typeCheckboxes.querySelectorAll('input').forEach((cb) => { if (types.has(cb.value)) cb.checked = true; });
+      updateSubmitState();
+      renderCopyBanner();
+    } catch (err) {
+      showError(`Couldn't load the job to copy: ${err.message}`);
+    }
+  }
+  loadCopySource();
+
+  // Adds the copied parts to the freshly created job. Uses the live catalogue
+  // row so prices/costs are today's, and addJobItem takes the stock as usual.
+  // Returns names of any parts that couldn't be added (e.g. since retired).
+  async function copyPartsInto(jobId, jobTypes) {
+    const { keep } = copyLinesFor(jobTypes);
+    if (keep.length === 0) return { added: 0, failed: [] };
+    const ids = [...new Set(keep.map((l) => l.catalogue_item_id))];
+    const { data: rows, error } = await sb
+      .from('catalogue_items')
+      .select('id, name, customer_price, sourcing, craft_cost, purchase_cost, active')
+      .in('id', ids);
+    if (error) throw new Error(error.message);
+    const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+    let added = 0;
+    const failed = [];
+    for (const line of keep) {
+      const item = byId[line.catalogue_item_id];
+      const name = line.catalogue_items?.name || 'Item';
+      if (!item || item.active === false) { failed.push(`${name} (no longer in the catalogue)`); continue; }
+      try {
+        await addJobItem({
+          jobId, catalogueItem: item, quantity: Number(line.quantity),
+          sourcingChoice: line.sourcing_choice, performedBy: session?.id, jobType: line.targetType
+        });
+        added += 1;
+      } catch (err) {
+        failed.push(`${name} (${err.message})`);
+      }
+    }
+    return { added, failed };
+  }
 
   // --- Customer search / select / create ---
   async function runCustomerSearch() {
@@ -752,7 +846,26 @@
       await syncJobLegs(job.id, jobTypes);
       const legs = await listJobLegs(job.id);
 
-      successBox.textContent = `Job #${job.job_number} created — taking you to it now.`;
+      if (copySource) {
+        btn.textContent = 'Copying parts...';
+        const { added, failed } = await copyPartsInto(job.id, jobTypes);
+        logActivity({
+          actorId: session?.id, action: 'job_created_from_copy', entityType: 'job', entityId: job.id,
+          summary: `${session?.employee_name || 'Someone'} created Job #${job.job_number} copying ${added} part${added === 1 ? '' : 's'} from Job #${copySource.job.job_number}`
+        });
+        if (failed.length) {
+          // Don't rush off -- the mechanic needs to see what didn't copy.
+          successBox.innerHTML = `Job #${job.job_number} created with ${added} part${added === 1 ? '' : 's'} copied. Couldn't copy: ${failed.join(', ')}.
+            <a href="${jobFlowUrlFor(job.id, legs)}" style="color:var(--text); margin-left:6px;">Open the job &rarr;</a>`;
+          successBox.style.display = 'block';
+          document.getElementById('copyBanner').style.display = 'none';
+          return;
+        }
+      }
+
+      successBox.textContent = copySource
+        ? `Job #${job.job_number} created with the copied parts — taking you to it now.`
+        : `Job #${job.job_number} created — taking you to it now.`;
       successBox.style.display = 'block';
       setTimeout(() => { window.location.href = jobFlowUrlFor(job.id, legs); }, 800);
     } catch (err) {

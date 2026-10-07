@@ -389,16 +389,21 @@
         <span>${formatDateTime(job.arrival_time)}</span>
       </div>
     `;
-    if (withEditLink) {
-      const editRow = document.createElement('div');
-      editRow.style.cssText = 'margin-top:8px; text-align:right;';
-      editRow.innerHTML = '<button type="button" class="card-edit-btn">Edit status</button>';
-      editRow.querySelector('.card-edit-btn').addEventListener('click', (e) => {
+    const actionRow = document.createElement('div');
+    actionRow.style.cssText = 'margin-top:8px; display:flex; justify-content:flex-end; gap:12px;';
+    // Start another job with this one's parts (e.g. a repeat build for a
+    // different customer) -- opens New Job with them pre-attached.
+    actionRow.innerHTML = `<a href="checkin.html?copyFrom=${job.id}" class="card-edit-btn" title="Start a new job with the same parts">Copy to new job</a>`
+      + (withEditLink ? '<button type="button" class="card-edit-btn" data-edit>Edit status</button>' : '');
+    actionRow.querySelector('a').addEventListener('click', (e) => e.stopPropagation());
+    const editBtn = actionRow.querySelector('[data-edit]');
+    if (editBtn) {
+      editBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         openStatusModal(job);
       });
-      card.appendChild(editRow);
     }
+    card.appendChild(actionRow);
     return card;
   }
 
