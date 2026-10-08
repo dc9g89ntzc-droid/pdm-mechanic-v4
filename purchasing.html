@@ -109,6 +109,9 @@
   .src-badge.private_citizen { background: rgba(34,197,94,0.15); color: var(--green); }
   .board-empty { color: var(--text-dim); font-size: 13px; padding: 40px; text-align: center; background: var(--panel); border: 1px dashed var(--panel-border); border-radius: 12px; }
 
+  .search-bar { padding: 14px 24px 0; }
+  .search-bar input { width: 100%; max-width: 560px; background: var(--panel); border: 1px solid var(--panel-border); color: var(--text); padding: 10px 12px; border-radius: 8px; font-size: 13px; }
+  .search-bar input:focus { outline: none; border-color: var(--red); }
   .cart-view-bar { display: flex; align-items: center; gap: 14px; padding: 16px 24px 0; flex-wrap: wrap; }
   .cart-view-bar .cv-title { font-weight: 600; font-size: 14px; }
   .cart-owner-note { font-size: 12px; color: var(--text-dim); background: var(--bg); border: 1px solid var(--panel-border); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; line-height: 1.45; }
@@ -275,6 +278,9 @@
       <div class="cart-view-bar">
         <button type="button" class="btn secondary" id="backToBoardBtn">&larr; All purchases</button>
         <div class="cv-title" id="cartViewTitle"></div>
+      </div>
+      <div class="search-bar" id="cartSearchBar">
+        <input type="search" id="itemSearchInput" placeholder="Search all parts by name (e.g. &quot;brake pads&quot;)…" autocomplete="off" />
       </div>
       <div class="breadcrumb" id="breadcrumb"></div>
 
@@ -608,6 +614,8 @@
     notesEl.value = cart.notes || '';
     notesEl.disabled = !mine;
     document.getElementById('cartEditActions').style.display = mine ? 'block' : 'none';
+    document.getElementById('cartSearchBar').style.display = mine ? 'block' : 'none';
+    itemSearchInput.value = '';
     document.getElementById('scrapyardGuide').style.display = cart.source_type === 'scrapyard' ? 'block' : 'none';
     showStatus('', '');
 
@@ -912,6 +920,38 @@
     }
   }
 
+  // Item cards with qty + "Add to cart" -- shared by category browsing and search.
+  function renderItemGrid(items) {
+    const grid = document.createElement('div');
+    grid.className = 'item-grid';
+    items.forEach((item) => {
+      const card = document.createElement('div');
+      card.className = 'item-card';
+      const low = item.reorder_threshold !== null && item.stock_quantity <= item.reorder_threshold;
+      const img = item.image_url
+        ? `<img src="${item.image_url}" alt="${item.name}" />`
+        : `<div style="width:100%;height:100px;background:var(--bg);border-radius:8px;"></div>`;
+      card.innerHTML = `
+        ${img}
+        <div class="item-name">${item.name}</div>
+        <div class="item-price">${item.shop_price !== null ? `Last paid ${formatMoney(item.shop_price)}` : 'No shop price on file yet'}</div>
+        <div class="item-meta ${low ? 'low' : ''}">Stock: ${item.stock_quantity}</div>
+        <div class="add-row">
+          <input type="number" class="qty-input" min="1" step="1" value="1" />
+          <button class="add-btn">Add to cart</button>
+        </div>
+      `;
+      card.querySelector('.add-btn').addEventListener('click', async () => {
+        const qty = Number(card.querySelector('.qty-input').value || 1);
+        const btn = card.querySelector('.add-btn');
+        btn.disabled = true;
+        try { await addToCurrentCart(item, qty); } finally { btn.disabled = false; }
+      });
+      grid.appendChild(card);
+    });
+    return grid;
+  }
+
   async function showItems(category, subcategory) {
     level = 'items'; currentCategory = category; currentSubcategory = subcategory;
     renderBreadcrumb();
@@ -919,40 +959,44 @@
     try {
       const items = await listItemsForTile(category, subcategory.id);
       if (items.length === 0) { mainArea.innerHTML = '<div class="empty-msg">No items here.</div>'; return; }
-      const grid = document.createElement('div');
-      grid.className = 'item-grid';
-      items.forEach((item) => {
-        const card = document.createElement('div');
-        card.className = 'item-card';
-        const low = item.reorder_threshold !== null && item.stock_quantity <= item.reorder_threshold;
-        const img = item.image_url
-          ? `<img src="${item.image_url}" alt="${item.name}" />`
-          : `<div style="width:100%;height:100px;background:var(--bg);border-radius:8px;"></div>`;
-        card.innerHTML = `
-          ${img}
-          <div class="item-name">${item.name}</div>
-          <div class="item-price">${item.shop_price !== null ? `Last paid ${formatMoney(item.shop_price)}` : 'No shop price on file yet'}</div>
-          <div class="item-meta ${low ? 'low' : ''}">Stock: ${item.stock_quantity}</div>
-          <div class="add-row">
-            <input type="number" class="qty-input" min="1" step="1" value="1" />
-            <button class="add-btn">Add to cart</button>
-          </div>
-        `;
-        card.querySelector('.add-btn').addEventListener('click', async () => {
-          const qty = Number(card.querySelector('.qty-input').value || 1);
-          const btn = card.querySelector('.add-btn');
-          btn.disabled = true;
-          try { await addToCurrentCart(item, qty); } finally { btn.disabled = false; }
-        });
-        grid.appendChild(card);
-      });
       mainArea.innerHTML = '';
-      mainArea.appendChild(grid);
+      mainArea.appendChild(renderItemGrid(items));
     } catch (err) {
       mainArea.innerHTML = `<div class="empty-msg">Failed to load items: ${err.message}</div>`;
     }
   }
 
+
+  // ---- Search (cart view) ----
+  const itemSearchInput = document.getElementById('itemSearchInput');
+  async function showSearchResults(query) {
+    level = 'search';
+    breadcrumb.innerHTML = `<span>Search results for "${esc(query)}"</span> <a id="bcClearSearch" style="margin-left:8px;">&times; Clear</a>`;
+    document.getElementById('bcClearSearch').addEventListener('click', () => {
+      itemSearchInput.value = '';
+      showCategories();
+    });
+    mainArea.innerHTML = '<div class="empty-msg">Searching…</div>';
+    try {
+      // PostgREST's .or() filter treats these as syntax (see getCatalogueItemByExactName).
+      const safe = query.replace(/[(),.%]/g, ' ').trim();
+      const items = await listCatalogueItems({ search: safe, activeOnly: true });
+      if (items.length === 0) { mainArea.innerHTML = '<div class="empty-msg">No parts match that search.</div>'; return; }
+      mainArea.innerHTML = '';
+      mainArea.appendChild(renderItemGrid(items));
+    } catch (err) {
+      mainArea.innerHTML = `<div class="empty-msg">Search failed: ${esc(err.message)}</div>`;
+    }
+  }
+  itemSearchInput.addEventListener('input', () => {
+    clearTimeout(itemSearchInput._t);
+    const q = itemSearchInput.value.trim();
+    itemSearchInput._t = setTimeout(() => {
+      if (!cartIsMine(currentCart)) return;
+      if (q.length >= 2) showSearchResults(q);
+      else if (!q) showCategories();
+    }, 300);
+  });
 
   // ---- Tabs ----
   document.getElementById('tabBuyBtn').addEventListener('click', () => switchTab('buy'));
