@@ -28,6 +28,33 @@ async function fitStoredEngine(engineId, jobId) {
   return data;
 }
 
+// The car's original engine, kept for spares when a new one is installed
+// (sql/063). spec: { valvetrain, configuration }.
+async function recordRemovedEngine(jobId, spec, condition, notes = null) {
+  const { data, error } = await sb.rpc('record_removed_engine', { p_job_id: jobId, p_spec: spec, p_condition: condition, p_notes: notes });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+const ENGINE_CONDITIONS = [
+  { value: 'good', label: 'Good' },
+  { value: 'worn', label: 'Worn' },
+  { value: 'bad', label: 'Bad' },
+  { value: 'destroyed', label: 'Destroyed' }
+];
+
+function engineConditionLabel(value) {
+  return ENGINE_CONDITIONS.find((c) => c.value === value)?.label || value || '';
+}
+
+// 'built' (for resale) or 'removed' (original engine, for spares). Rows
+// from before sql/063 have no kind and are all built.
+function storedEngineKind(engine) {
+  return engine?.kind || 'built';
+}
+
+// Strips a built engine (parts back into shop stock) or marks a removed
+// one as used for spares.
 async function stripStoredEngine(engineId) {
   const { error } = await sb.rpc('strip_stored_engine', { p_engine_id: engineId });
   if (error) throw new Error(error.message);
@@ -38,7 +65,9 @@ async function stripStoredEngine(engineId) {
 function storedEngineLabel(engine) {
   const spec = engine?.engine_spec;
   let what = 'Engine';
-  if (spec && typeof engineSpecLabel === 'function') what = engineSpecLabel(spec);
+  if (spec && storedEngineKind(engine) === 'removed') {
+    what = spec.valvetrain === 'Rotary' ? `${spec.configuration} rotary` : `${spec.valvetrain} ${spec.configuration}`;
+  } else if (spec && typeof engineSpecLabel === 'function') what = engineSpecLabel(spec);
   else if (spec) {
     const style = spec.style === 'fleet' ? 'Emergency / Fleet'
       : String(spec.style || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());

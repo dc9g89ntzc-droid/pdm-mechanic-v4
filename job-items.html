@@ -111,6 +111,13 @@
   .leg-action-btn:hover { background: var(--red-dim); }
   .leg-action-btn.secondary-action { background: transparent; border: 1px solid var(--panel-border); color: var(--text); margin-top: 8px; font-weight: 400; }
   .leg-action-btn.secondary-action:hover { background: transparent; border-color: var(--amber); color: var(--amber); }
+  .orig-engine { background: var(--bg); border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px; margin-bottom: 10px; font-size: 13px; }
+  .orig-engine-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .orig-engine-toggle input { width: auto; }
+  .orig-engine-fields { display: grid; gap: 8px; margin-top: 10px; }
+  .orig-engine-fields[hidden] { display: none; }
+  .orig-engine-fields label { display: grid; gap: 4px; font-size: 11px; color: var(--text-dim); }
+  .orig-engine-fields select, .orig-engine-fields input { width: 100%; padding: 7px 8px; font-size: 13px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 6px; color: var(--text); }
   .engine-storage-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--bg); border: 1px dashed var(--panel-border); border-radius: 8px; padding: 8px 10px; margin: 0 0 12px; font-size: 13px; }
   .engine-storage-row select { flex: 1 1 260px; min-width: 0; }
   .engine-storage-row .from-storage { color: var(--amber); }
@@ -484,11 +491,45 @@
       });
     } else if (status === 'ready_for_installation') {
       title.textContent = 'Engine ready for installation';
+      // Original engine kept for spares (sql/063): recorded as the new one
+      // is installed. Defaults to the new engine's layout -- usually the same.
+      const spec = currentLeg?.engine_spec || {};
       area.innerHTML = `
+        <div class="orig-engine">
+          <label class="orig-engine-toggle"><input type="checkbox" id="origEngineStored" /> Original engine stored</label>
+          <div class="orig-engine-fields" id="origEngineFields" hidden>
+            <label>Engine type<select id="origEngineType">${VALVETRAIN_OPTIONS.map((v) => `<option value="${v}" ${v === (spec.valvetrain || 'DOHC') ? 'selected' : ''}>${v === 'Rotary' ? 'Rotary (Wankel)' : v}</option>`).join('')}</select></label>
+            <label>Cylinders / layout<select id="origEngineLayout"></select></label>
+            <label>Condition<select id="origEngineCondition"><option value="">Pick one…</option>${ENGINE_CONDITIONS.map((c) => `<option value="${c.value}">${c.label}</option>`).join('')}</select></label>
+            <label>Note (optional)<input type="text" id="origEngineNotes" placeholder="e.g. spun bearing, block fine" /></label>
+          </div>
+        </div>
         <button type="button" class="leg-action-btn" id="engineInstalledBtn">Engine installed → Work complete</button>
         <button type="button" class="leg-action-btn secondary-action" id="engineStoreBtn">Customer changed their mind → Put engine in storage</button>`;
+      const typeSel = document.getElementById('origEngineType');
+      const layoutSel = document.getElementById('origEngineLayout');
+      const fillLayouts = (preferred) => {
+        const layouts = engineConfigurationsFor(typeSel.value);
+        layoutSel.innerHTML = layouts.map((c) => `<option value="${c}" ${c === preferred ? 'selected' : ''}>${c}</option>`).join('');
+      };
+      fillLayouts(spec.configuration);
+      typeSel.addEventListener('change', () => fillLayouts(layoutSel.value));
+      document.getElementById('origEngineStored').addEventListener('change', (e) => {
+        document.getElementById('origEngineFields').hidden = !e.target.checked;
+      });
       document.getElementById('engineInstalledBtn').addEventListener('click', async () => {
+        const keepOriginal = document.getElementById('origEngineStored').checked;
+        const condition = document.getElementById('origEngineCondition').value;
+        if (keepOriginal && !condition) { alert('Pick the original engine\'s condition.'); return; }
         try {
+          if (keepOriginal) {
+            const origSpec = { valvetrain: typeSel.value, configuration: layoutSel.value };
+            const engine = await recordRemovedEngine(jobId, origSpec, condition, document.getElementById('origEngineNotes').value.trim() || null);
+            logActivity({
+              actorId: session?.id, action: 'engine_stored', entityType: 'job', entityId: jobId,
+              summary: `${session?.employee_name || 'Someone'} stored the original ${origSpec.valvetrain} ${origSpec.configuration} (${engineConditionLabel(condition)}) from Job #${job?.job_number ?? ''} as Engine #${engine?.engine_number ?? '?'}`
+            });
+          }
           await updateLegStatus(jobId, jobType, 'completed');
           const legs = await listJobLegs(jobId);
           window.location.href = jobFlowUrlFor(jobId, legs);
@@ -1294,7 +1335,7 @@
     if (!quoting) { row.style.display = 'none'; return; }
     let engines = [];
     try {
-      engines = await listStoredEngines();
+      engines = (await listStoredEngines()).filter((e) => storedEngineKind(e) === 'built');
     } catch (err) {
       console.warn('[engine storage] failed to load:', err);
     }
