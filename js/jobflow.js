@@ -106,11 +106,16 @@ function renderFlowSidebar(container, { jobId, jobTypes, legs, onAdded }) {
     '<div class="flow-step done"><span class="flow-dot">&#10003;</span><div><div class="flow-label">New Job</div><div class="flow-state">Completed</div></div></div>'
   ];
 
+  const perfWithEngine = performanceRidesWithEngine(legs);
   LEG_ORDER.filter((t) => jobTypes.includes(t)).forEach((t) => {
-    const states = legStepStates(legByType[t], !!(active && active.job_type === t));
+    // Performance agreed with the engine: quoted, then fitted at installation.
+    const states = t === 'performance' && perfWithEngine
+      ? { discovery: 'done', quote: 'done', work: 'pending' }
+      : legStepStates(legByType[t], !!(active && active.job_type === t));
     FLOW_STEP_DEFS[t].forEach((stepDef) => {
       const state = states[stepDef.key];
-      const stateLabel = state === 'done' ? 'Completed' : state === 'current' ? 'In progress' : 'Pending';
+      let stateLabel = state === 'done' ? 'Completed' : state === 'current' ? 'In progress' : 'Pending';
+      if (t === 'performance' && perfWithEngine && stepDef.key === 'work') stateLabel = 'Fitted at engine installation';
       const icon = state === 'done' ? '&#10003;' : state === 'current' ? '&#9679;' : '';
       const href = flowStepHref(jobId, t, stepDef.key, legByType[t]);
       const tag = href ? 'a' : 'div';

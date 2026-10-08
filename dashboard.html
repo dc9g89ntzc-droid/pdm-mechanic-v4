@@ -582,7 +582,21 @@
   }
   // Quote agreed assumes work starts in the same step -- no separate
   // "approved, not yet started" wait in the normal flow.
-  document.getElementById('approveQuickBtn').addEventListener('click', () => quickSetLegStatus('work_in_progress'));
+  // A Performance + Engine Building job agrees both at once (agreeLegQuote).
+  document.getElementById('approveQuickBtn').addEventListener('click', async () => {
+    if (!activeJobId) return;
+    try {
+      await agreeLegQuote(activeJobId, area);
+      logActivity({
+        actorId: session?.id, action: 'job_leg_status_changed', entityType: 'job', entityId: activeJobId,
+        summary: `${session?.employee_name || 'Someone'} agreed Job #${activeJobNumber}'s ${jobTypeLabel(area)} quote and started work`
+      });
+      closeStatusModal();
+      loadBoard();
+    } catch (err) {
+      alert(`Failed to update job: ${err.message}`);
+    }
+  });
   document.getElementById('completeQuickBtn').addEventListener('click', () => quickSetLegStatus('completed'));
 
   document.getElementById('statusSaveBtn').addEventListener('click', async () => {

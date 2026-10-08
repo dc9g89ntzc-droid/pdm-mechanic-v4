@@ -749,15 +749,51 @@ async function listJobLegs(jobId) {
   return data;
 }
 
+// Performance upgrades on a job that's also getting a built engine are
+// quoted together with the engine and fitted in one go at its installation
+// (Joanna, 2026-10-08). Agreeing that quote parks the Performance leg at
+// 'approved' -- the marker for "fitted with the engine" (a normal agreed
+// quote goes straight to work_in_progress) -- while the engine is built.
+function performanceRidesWithEngine(legs) {
+  const perf = legs.find((l) => l.job_type === 'performance');
+  const engine = legs.find((l) => l.job_type === 'engine_building');
+  return !!(perf && engine && perf.status === 'approved'
+    && engine.status !== 'completed' && engine.status !== 'cancelled');
+}
+
+// Performance and Engine Building both still quoting -> one quote covers both.
+function quotesPerformanceWithEngine(legs) {
+  const perf = legs.find((l) => l.job_type === 'performance');
+  const engine = legs.find((l) => l.job_type === 'engine_building');
+  return !!(perf && engine && perf.status === 'quote_preparation' && engine.status === 'quote_preparation');
+}
+
 // First leg (in LEG_ORDER) that isn't completed/cancelled, or null if every
 // selected leg is finished -- that's what puts a job on a given area board,
-// and null is what moves it to Billing.
+// and null is what moves it to Billing. Performance waiting to be fitted
+// with the engine is skipped, so the engine build is what's active.
 function activeLegForJob(legs) {
+  const skipPerformance = performanceRidesWithEngine(legs);
   for (const type of LEG_ORDER) {
+    if (type === 'performance' && skipPerformance) continue;
     const leg = legs.find((l) => l.job_type === type);
     if (leg && leg.status !== 'completed' && leg.status !== 'cancelled') return leg;
   }
   return null;
+}
+
+// "Quote agreed": starts that leg's work -- except a Performance + Engine
+// Building quote, which approves both and starts the engine build (the
+// performance parts go on at installation). Returns the leg type to open.
+async function agreeLegQuote(jobId, jobType) {
+  const legs = await listJobLegs(jobId);
+  if ((jobType === 'performance' || jobType === 'engine_building') && quotesPerformanceWithEngine(legs)) {
+    await updateLegStatus(jobId, 'performance', 'approved');
+    await updateLegStatus(jobId, 'engine_building', 'work_in_progress');
+    return 'engine_building';
+  }
+  await updateLegStatus(jobId, jobType, 'work_in_progress');
+  return jobType;
 }
 
 // Keeps job_legs in sync with jobs.job_types -- called at check-in and

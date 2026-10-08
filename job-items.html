@@ -109,6 +109,8 @@
     cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none;
   }
   .leg-action-btn:hover { background: var(--red-dim); }
+  .leg-note { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.5; }
+  .leg-note a { color: var(--amber); }
   .leg-action-btn.secondary-action { background: transparent; border: 1px solid var(--panel-border); color: var(--text); margin-top: 8px; font-weight: 400; }
   .leg-action-btn.secondary-action:hover { background: transparent; border-color: var(--amber); color: var(--amber); }
   .orig-engine { background: var(--bg); border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px; margin-bottom: 10px; font-size: 13px; }
@@ -400,6 +402,7 @@
   let job = null;
   let jobType = params.get('type');
   let currentLeg = null;
+  let allLegs = [];
   let level = 'categories'; // categories | subcategories | items
   let currentCategory = null;
   let currentSubcategory = null; // { id, name }
@@ -421,6 +424,7 @@
       jobType = active ? active.job_type : null;
     }
     currentLeg = legs.find((l) => l.job_type === jobType) || null;
+    allLegs = legs;
   }
 
   async function loadJobBar() {
@@ -458,7 +462,12 @@
     const area = document.getElementById('legActionArea');
     const title = document.getElementById('quotePanelTitle');
     const status = currentLeg ? currentLeg.status : null;
-    if (status === 'approved') {
+    if (jobType === 'performance' && status === 'approved' && performanceRidesWithEngine(allLegs)) {
+      // Agreed together with the engine: fitted at its installation.
+      title.textContent = 'Fitted with the engine';
+      area.innerHTML = `<div class="leg-note">These upgrades go on when the engine is installed.</div>
+        <a href="job-items.html?job=${jobId}&type=engine_building" class="leg-action-btn">Go to Engine Building →</a>`;
+    } else if (status === 'approved') {
       title.textContent = 'Materials required';
       area.innerHTML = `<button type="button" class="leg-action-btn" id="startWorkBtn">Start Work →</button>`;
       document.getElementById('startWorkBtn').addEventListener('click', async () => {
@@ -494,7 +503,9 @@
       // Original engine kept for spares (sql/063): recorded as the new one
       // is installed. Defaults to the new engine's layout -- usually the same.
       const spec = currentLeg?.engine_spec || {};
+      const withPerformance = performanceRidesWithEngine(allLegs);
       area.innerHTML = `
+        ${withPerformance ? `<div class="leg-note" id="perfInstallNote">Performance upgrades go on at the same time: <a href="job-items.html?job=${jobId}&type=performance">view the list</a>.</div>` : ''}
         <div class="orig-engine">
           <label class="orig-engine-toggle"><input type="checkbox" id="origEngineStored" /> Original engine stored</label>
           <div class="orig-engine-fields" id="origEngineFields" hidden>
@@ -504,7 +515,7 @@
             <label>Note (optional)<input type="text" id="origEngineNotes" placeholder="e.g. spun bearing, block fine" /></label>
           </div>
         </div>
-        <button type="button" class="leg-action-btn" id="engineInstalledBtn">Engine installed → Work complete</button>
+        <button type="button" class="leg-action-btn" id="engineInstalledBtn">${withPerformance ? 'Engine &amp; performance upgrades installed → Work complete' : 'Engine installed → Work complete'}</button>
         <button type="button" class="leg-action-btn secondary-action" id="engineStoreBtn">Customer changed their mind → Put engine in storage</button>`;
       const typeSel = document.getElementById('origEngineType');
       const layoutSel = document.getElementById('origEngineLayout');
@@ -530,6 +541,9 @@
               summary: `${session?.employee_name || 'Someone'} stored the original ${origSpec.valvetrain} ${origSpec.configuration} (${engineConditionLabel(condition)}) from Job #${job?.job_number ?? ''} as Engine #${engine?.engine_number ?? '?'}`
             });
           }
+          // Performance first, so the engine leg is the last to finish and
+          // tips the job into Billing.
+          if (withPerformance) await updateLegStatus(jobId, 'performance', 'completed');
           await updateLegStatus(jobId, jobType, 'completed');
           const legs = await listJobLegs(jobId);
           window.location.href = jobFlowUrlFor(jobId, legs);

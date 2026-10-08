@@ -360,7 +360,9 @@
 
     const agreedBtn = document.getElementById('quoteAgreedBtn');
     if (activeLeg && activeLeg.status === 'quote_preparation') {
-      agreedBtn.textContent = `Quote Agreed — ${jobTypeLabel(activeLeg.job_type)} →`;
+      agreedBtn.textContent = activeLeg.job_type === 'performance' && quotesPerformanceWithEngine(legs)
+        ? 'Quote Agreed — Performance + Engine Building →'
+        : `Quote Agreed — ${jobTypeLabel(activeLeg.job_type)} →`;
       agreedBtn.style.display = 'inline-block';
     } else {
       agreedBtn.style.display = 'none';
@@ -550,12 +552,15 @@
     const btn = document.getElementById('quoteAgreedBtn');
     btn.disabled = true;
     try {
-      await updateLegStatus(jobId, activeLeg.job_type, 'work_in_progress');
+      const combined = activeLeg.job_type === 'performance' && quotesPerformanceWithEngine(legs);
+      const openType = await agreeLegQuote(jobId, activeLeg.job_type);
       logActivity({
         actorId: session?.id, action: 'job_leg_status_changed', entityType: 'job', entityId: jobId,
-        summary: `${session?.employee_name || 'Someone'} agreed the ${jobTypeLabel(activeLeg.job_type)} quote for Job #${job.job_number} and started work`
+        summary: combined
+          ? `${session?.employee_name || 'Someone'} agreed the Performance + Engine Building quote for Job #${job.job_number} and started the engine build`
+          : `${session?.employee_name || 'Someone'} agreed the ${jobTypeLabel(activeLeg.job_type)} quote for Job #${job.job_number} and started work`
       });
-      window.location.href = `job-items.html?job=${jobId}&type=${activeLeg.job_type}`;
+      window.location.href = `job-items.html?job=${jobId}&type=${openType}`;
     } catch (err) {
       alert(`Failed to agree quote: ${err.message}`);
       btn.disabled = false;
