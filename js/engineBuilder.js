@@ -154,9 +154,22 @@ function buildEngineSpec({ valvetrain, configuration, style }) {
     add({ key: 'rotor_housing', label: 'Rotor housing', quantity: 1,
       match: (name) => name.toLowerCase().includes(`${configuration} Rotor Housing`.toLowerCase()),
       defaultNames: profile.block.map((m) => `${m} ${configuration} Rotor Housing`) });
+    // The in-game rotary build (Joanna's Three Rotor screen, 2026-10-08) has
+    // no rotary-specific internals yet, so piston-engine parts stand in: a
+    // piston per rotor, the crankshaft as the eccentric shaft, a conrod
+    // bearing per rotor and 2 main bearings carrying the eccentric shaft.
+    // No cams, heads, rods, valve springs, head gasket or timing kit.
+    add({ key: 'rotors', label: 'Rotors (piston stands in)', quantity: rotors,
+      match: (name) => /piston$/i.test(name), defaultNames: profile.piston.map((pc) => `${pc} Piston`) });
+    add({ key: 'eccentric_shaft', label: 'Eccentric shaft (crankshaft)', quantity: 1,
+      match: (name) => /crankshaft$/i.test(name), defaultNames: [`${profile.crank} Crankshaft`] });
     add({ key: 'apex_seals', label: 'Apex seals', quantity: rotors * 3,
       match: (name) => /apex seals?$/i.test(name), defaultNames: ['Apex Seals'] });
-    // Real Wankels run twin plugs per rotor (leading + trailing).
+    add({ key: 'rotor_bearings', label: 'Rotor bearings (conrod bearing)', quantity: rotors,
+      match: (name) => /conrod bearing$/i.test(name), defaultNames: [`${profile.bearings} Conrod Bearing`] });
+    add({ key: 'eshaft_bearings', label: 'Eccentric shaft bearings (main bearing)', quantity: 2,
+      match: (name) => /main bearing$/i.test(name), defaultNames: [`${profile.bearings} Main Bearing`] });
+    // Twin plugs per rotor (leading + trailing), as in game and on real Wankels.
     add({ key: 'spark_plugs', label: 'Spark plugs', quantity: rotors * 2,
       match: (name) => /spark plug$/i.test(name), defaultNames: [profile.plugs] });
     return { isRotary, rotors, cylinders: 0, banks: 0, totalValves: 0, profile, slots };
