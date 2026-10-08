@@ -109,6 +109,11 @@
     cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none;
   }
   .leg-action-btn:hover { background: var(--red-dim); }
+  .leg-action-btn.secondary-action { background: transparent; border: 1px solid var(--panel-border); color: var(--text); margin-top: 8px; font-weight: 400; }
+  .leg-action-btn.secondary-action:hover { background: transparent; border-color: var(--amber); color: var(--amber); }
+  .engine-storage-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--bg); border: 1px dashed var(--panel-border); border-radius: 8px; padding: 8px 10px; margin: 0 0 12px; font-size: 13px; }
+  .engine-storage-row select { flex: 1 1 260px; min-width: 0; }
+  .engine-storage-row .from-storage { color: var(--amber); }
 
   .build-panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
 
@@ -325,6 +330,7 @@
             </div>
           </div>
           <p class="engine-style-hint" id="engineStyleHint"></p>
+          <div class="engine-storage-row" id="engineStorageRow" style="display:none;"></div>
           <div class="engine-top">
             <div>
               <div class="engine-picture"><img id="enginePicture" alt="Engine" /><div id="enginePictureMissing" class="engine-picture-missing" style="display:none;"></div></div>
@@ -370,6 +376,7 @@
 <script src="js/shoppingList.js"></script>
 <script src="js/performanceBuild.js"></script>
 <script src="js/engineBuilder.js"></script>
+<script src="js/storedEngines.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -455,6 +462,59 @@
           renderExportButton();
         } catch (err) {
           alert(`Failed to start work: ${err.message}`);
+        }
+      });
+    } else if (jobType === 'engine_building' && (status === 'work_in_progress' || status === 'waiting_for_parts')) {
+      // Engines are built ahead of the customer coming in (sql/062).
+      title.textContent = 'Materials required';
+      area.innerHTML = `<button type="button" class="leg-action-btn" id="engineBuiltBtn">Engine built → Ready for installation</button>`;
+      document.getElementById('engineBuiltBtn').addEventListener('click', async () => {
+        try {
+          await updateLegStatus(jobId, jobType, 'ready_for_installation');
+          currentLeg.status = 'ready_for_installation';
+          logActivity({
+            actorId: session?.id, action: 'job_leg_status_changed', entityType: 'job', entityId: jobId,
+            summary: `${session?.employee_name || 'Someone'} finished building the engine for Job #${job?.job_number ?? ''} -- ready for installation`
+          });
+          renderLegAction();
+          renderFlowChrome();
+        } catch (err) {
+          alert(`Failed to update the job: ${err.message}`);
+        }
+      });
+    } else if (status === 'ready_for_installation') {
+      title.textContent = 'Engine ready for installation';
+      area.innerHTML = `
+        <button type="button" class="leg-action-btn" id="engineInstalledBtn">Engine installed → Work complete</button>
+        <button type="button" class="leg-action-btn secondary-action" id="engineStoreBtn">Customer changed their mind → Put engine in storage</button>`;
+      document.getElementById('engineInstalledBtn').addEventListener('click', async () => {
+        try {
+          await updateLegStatus(jobId, jobType, 'completed');
+          const legs = await listJobLegs(jobId);
+          window.location.href = jobFlowUrlFor(jobId, legs);
+        } catch (err) {
+          alert(`Failed to complete work: ${err.message}`);
+        }
+      });
+      document.getElementById('engineStoreBtn').addEventListener('click', async () => {
+        const others = (job?.job_types || []).filter((t) => t !== 'engine_building');
+        const msg = `Put this engine into storage?\n\nIts parts come off Job #${job?.job_number ?? ''} and the customer is not charged for it. `
+          + (others.length ? 'The rest of the job carries on as normal.' : 'There is nothing else on this job, so the job is cancelled.')
+          + '\n\nThe shop keeps the engine to fit to another job or strip for parts (Engine Building board).';
+        if (!confirm(msg)) return;
+        const notes = prompt('Any note for the stored engine? (optional)', '') || null;
+        try {
+          const engine = await storeJobEngine(jobId, { cancelLeg: true, notes });
+          logActivity({
+            actorId: session?.id, action: 'engine_stored', entityType: 'job', entityId: jobId,
+            summary: `${session?.employee_name || 'Someone'} put the engine from Job #${job?.job_number ?? ''} into storage as Engine #${engine?.engine_number ?? '?'}`
+          });
+          const legs = await listJobLegs(jobId);
+          window.location.href = activeLegForJob(legs) || legs.some((l) => l.status === 'completed')
+            ? jobFlowUrlFor(jobId, legs)
+            : 'dashboard.html?area=engine_building';
+        } catch (err) {
+          alert(`Failed to store the engine: ${err.message}`);
         }
       });
     } else if (status === 'work_in_progress' || status === 'waiting_for_parts') {
@@ -636,7 +696,7 @@
   // Materials-required mode is any leg status past quoting -- approved,
   // in progress, or waiting on parts -- matching renderLegAction()'s own
   // three-way split below.
-  const MATERIALS_REQUIRED_STATUSES = ['approved', 'work_in_progress', 'waiting_for_parts'];
+  const MATERIALS_REQUIRED_STATUSES = ['approved', 'work_in_progress', 'waiting_for_parts', 'ready_for_installation'];
   let lastQuoteLines = [];
 
   // Sends this leg's materials to the shopping list (purchasing.html),
@@ -1156,16 +1216,26 @@
     document.getElementById('engineConfig').addEventListener('change', () => renderEngineBuilder());
     styleSel.addEventListener('change', () => renderEngineBuilder());
 
+    renderEngineStorageRow();
+
     document.getElementById('engineApplyBtn').addEventListener('click', async () => {
       const spec = engineCurrentSpec();
       const lines = engineBuildLines();
       if (lines.length === 0) { alert('No parts to add.'); return; }
-      const existing = await listJobItems(jobId, 'engine_building');
-      if (existing.length && !confirm(`Replace the ${existing.length} engine part line${existing.length === 1 ? '' : 's'} already on this job with this ${engineSpecLabel(spec)} build? Removed parts go back into stock.`)) return;
+      let existing = await listJobItems(jobId, 'engine_building');
+      const fromStorage = currentLeg?.engine_spec?.stored_engine_id;
+      if (existing.length && !confirm(fromStorage
+        ? `This job has a stored engine fitted. Put it back into storage and add this ${engineSpecLabel(spec)} build instead?`
+        : `Replace the ${existing.length} engine part line${existing.length === 1 ? '' : 's'} already on this job with this ${engineSpecLabel(spec)} build? Removed parts go back into stock.`)) return;
       const btn = document.getElementById('engineApplyBtn');
       btn.disabled = true;
       btn.textContent = 'Adding parts…';
       try {
+        // A stored engine goes back on the shelf whole, not stripped into stock.
+        if (fromStorage && existing.length) {
+          await storeJobEngine(jobId, { cancelLeg: false });
+          existing = [];
+        }
         for (const line of existing) {
           await removeJobItem(line.id, line.catalogue_item_id, Number(line.quantity), session?.id, jobId);
         }
@@ -1174,6 +1244,7 @@
         }
         await updateLegEngineSpec(jobId, spec);
         if (currentLeg) currentLeg.engine_spec = spec;
+        renderEngineStorageRow();
         logActivity({
           actorId: session?.id, action: 'engine_build_applied', entityType: 'job', entityId: jobId,
           summary: `${session?.employee_name || 'Someone'} ${existing.length ? 'replaced' : 'added'} the engine build on Job #${job?.job_number ?? ''}: ${engineSpecLabel(spec)} (${lines.length} part types)`
@@ -1188,6 +1259,78 @@
       }
     });
   }
+
+  // Engine storage (sql/062) inside the Engine Builder: while the engine is
+  // still being quoted, a stored engine can be fitted instead of building a
+  // new one -- or a fitted one put back. Fitting replaces the builder's
+  // dropdowns with what's on the job, so the page reloads afterwards.
+  async function renderEngineStorageRow() {
+    const row = document.getElementById('engineStorageRow');
+    if (!row || jobType !== 'engine_building') return;
+    const quoting = currentLeg?.status === 'quote_preparation';
+    const fromStorage = currentLeg?.engine_spec?.stored_engine_id;
+
+    if (fromStorage) {
+      row.style.display = 'flex';
+      row.innerHTML = `<span class="from-storage">&#128230; This engine came out of storage, already built.</span>`
+        + (quoting ? '<button type="button" class="btn secondary" id="engineUnfitBtn" style="margin-left:auto;">Put back in storage</button>' : '');
+      const unfit = document.getElementById('engineUnfitBtn');
+      if (unfit) unfit.addEventListener('click', async () => {
+        if (!confirm('Take this engine off the job and put it back into storage?')) return;
+        try {
+          const engine = await storeJobEngine(jobId, { cancelLeg: false });
+          logActivity({
+            actorId: session?.id, action: 'engine_stored', entityType: 'job', entityId: jobId,
+            summary: `${session?.employee_name || 'Someone'} took Engine #${engine?.engine_number ?? '?'} off Job #${job?.job_number ?? ''} and put it back into storage`
+          });
+          location.reload();
+        } catch (err) {
+          alert(`Failed to put the engine back: ${err.message}`);
+        }
+      });
+      return;
+    }
+
+    if (!quoting) { row.style.display = 'none'; return; }
+    let engines = [];
+    try {
+      engines = await listStoredEngines();
+    } catch (err) {
+      console.warn('[engine storage] failed to load:', err);
+    }
+    if (engines.length === 0) { row.style.display = 'none'; return; }
+
+    row.style.display = 'flex';
+    row.innerHTML = `
+      <span>&#128230; ${engines.length} built engine${engines.length === 1 ? '' : 's'} in storage:</span>
+      <select id="storedEngineSelect">${engines.map((e) => `<option value="${e.id}">${storedEngineLabel(e)} (${storedEnginePartsSummary(e)})</option>`).join('')}</select>
+      <button type="button" class="btn secondary" id="fitStoredBtn">Fit to this job</button>`;
+    document.getElementById('fitStoredBtn').addEventListener('click', async () => {
+      const engine = engines.find((e) => e.id === document.getElementById('storedEngineSelect').value);
+      if (!engine) return;
+      const existing = await listJobItems(jobId, 'engine_building');
+      if (!confirm(`Fit ${storedEngineLabel(engine)} to Job #${job?.job_number ?? ''}?`
+        + (existing.length ? `\n\nThe ${existing.length} engine part line${existing.length === 1 ? '' : 's'} already on this job come off and go back into stock.` : '')
+        + '\n\nIts parts go on the quote at today\'s prices.')) return;
+      const btn = document.getElementById('fitStoredBtn');
+      btn.disabled = true;
+      try {
+        for (const line of existing) {
+          await removeJobItem(line.id, line.catalogue_item_id, Number(line.quantity), session?.id, jobId);
+        }
+        await fitStoredEngine(engine.id, jobId);
+        logActivity({
+          actorId: session?.id, action: 'engine_fitted_from_storage', entityType: 'job', entityId: jobId,
+          summary: `${session?.employee_name || 'Someone'} fitted stored ${storedEngineLabel(engine)} to Job #${job?.job_number ?? ''}`
+        });
+        location.reload();
+      } catch (err) {
+        alert(`Failed to fit the engine: ${err.message}`);
+        btn.disabled = false;
+      }
+    });
+  }
+
 
   resolveJobType().then(() => {
     renderLegAction();

@@ -18,7 +18,8 @@ const FLOW_STEP_DEFS = {
   engine_building: [
     { key: 'discovery', label: 'Engine Spec' },
     { key: 'quote', label: 'Engine Quote' },
-    { key: 'work', label: 'Engine Build' }
+    { key: 'work', label: 'Engine Build' },
+    { key: 'install', label: 'Installation' }
   ],
   performance: [
     { key: 'discovery', label: 'Performance Additions' },
@@ -43,23 +44,26 @@ const FLOW_STEP_DEFS = {
 // at all (initialLegStatus skips straight to quote_preparation for them),
 // so their first step is trivially done as soon as they become active.
 function legStepStates(leg, isActive) {
-  if (!leg) return { discovery: 'pending', quote: 'pending', work: 'pending' };
+  if (!leg) return { discovery: 'pending', quote: 'pending', work: 'pending', install: 'pending' };
   if (leg.status === 'completed' || leg.status === 'cancelled') {
-    return { discovery: 'done', quote: 'done', work: 'done' };
+    return { discovery: 'done', quote: 'done', work: 'done', install: 'done' };
   }
-  if (!isActive) return { discovery: 'pending', quote: 'pending', work: 'pending' };
+  if (!isActive) return { discovery: 'pending', quote: 'pending', work: 'pending', install: 'pending' };
 
   const s = leg.status;
   const isRepair = leg.job_type === 'repair';
   const discoveryCurrent = isRepair && ['awaiting_inspection', 'inspection_in_progress'].includes(s);
   const discoveryDone = !discoveryCurrent;
   const quoteCurrent = s === 'quote_preparation';
-  const quoteDone = ['approved', 'waiting_for_parts', 'work_in_progress'].includes(s);
+  const quoteDone = ['approved', 'waiting_for_parts', 'work_in_progress', 'ready_for_installation'].includes(s);
   const workCurrent = ['approved', 'waiting_for_parts', 'work_in_progress'].includes(s);
+  // Engine Building's extra step: built, waiting for the customer (sql/062).
+  const installCurrent = s === 'ready_for_installation';
   return {
     discovery: discoveryDone ? 'done' : discoveryCurrent ? 'current' : 'pending',
     quote: quoteDone ? 'done' : quoteCurrent ? 'current' : 'pending',
-    work: workCurrent ? 'current' : 'pending'
+    work: installCurrent ? 'done' : workCurrent ? 'current' : 'pending',
+    install: installCurrent ? 'current' : 'pending'
   };
 }
 

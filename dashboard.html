@@ -159,6 +159,16 @@
     font-size: 13px;
   }
   .card:hover { border-color: var(--red); }
+  /* Engine storage (Engine Building tab): built engines customers didn't take. */
+  .storage { margin-top: 18px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 14px; }
+  .storage h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 0 0 4px; }
+  .storage .storage-hint { font-size: 12px; color: var(--text-dim); margin: 0 0 12px; }
+  .storage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .storage .card { cursor: default; margin: 0; }
+  .storage .card:hover { border-color: var(--panel-border); }
+  .storage .parts { font-size: 12px; color: var(--text-dim); margin: 6px 0 8px; line-height: 1.5; }
+  .storage .strip-btn { background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim); border-radius: 6px; padding: 4px 10px; font-size: 11px; cursor: pointer; }
+  .storage .strip-btn:hover { color: var(--red); border-color: var(--red); }
   .card.overdue { border-color: var(--red); box-shadow: inset 3px 0 0 var(--red); }
   .badge.overdue { background: rgba(216,31,39,0.25); color: #ff6b6f; }
   .card .job-number { color: var(--text-dim); font-size: 12px; margin-bottom: 4px; }
@@ -287,6 +297,7 @@
 
   <main>
     <div class="board" id="board"></div>
+    <section class="storage" id="engineStorage" style="display:none;"></section>
   </main>
 
   <div class="modal-backdrop" id="statusModalBackdrop">
@@ -316,6 +327,7 @@
 <script src="js/auth.js"></script>
 <script src="js/workshop.js"></script>
 <script src="js/shift.js"></script>
+<script src="js/storedEngines.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -336,7 +348,7 @@
   const AREA_COLUMNS = {
     repair: ['awaiting_inspection', 'inspection_in_progress', 'quote_preparation', 'approved', 'work_in_progress'],
     customisation: ['quote_preparation', 'approved', 'work_in_progress'],
-    engine_building: ['quote_preparation', 'approved', 'work_in_progress'],
+    engine_building: ['quote_preparation', 'approved', 'work_in_progress', 'ready_for_installation'],
     performance: ['quote_preparation', 'approved', 'work_in_progress']
   };
   const LEG_STATUS_OPTIONS = {
@@ -587,7 +599,59 @@
     }
   });
 
-  loadMechanicFilter().then(loadBoard);
+  // Engine storage (sql/062), under the Engine Building board: built engines
+  // customers didn't take. Fitting one happens from a job's Engine Builder;
+  // here they can be reviewed or stripped back into shop stock.
+  async function loadEngineStorage() {
+    const el = document.getElementById('engineStorage');
+    if (area !== 'engine_building') return;
+    let engines;
+    try {
+      engines = await listStoredEngines();
+    } catch (err) {
+      el.style.display = 'block';
+      el.innerHTML = `<h2>Engine storage</h2><div class="empty-msg">Failed to load: ${err.message}</div>`;
+      return;
+    }
+    el.style.display = 'block';
+    el.innerHTML = `
+      <h2>Engine storage (${engines.length})</h2>
+      <p class="storage-hint">Built engines the customer didn't take. To sell one, open a job's Engine Building leg and choose <em>Fit to this job</em> in the Engine Builder.</p>
+      ${engines.length === 0 ? '<div class="empty-msg">No engines in storage.</div>' : '<div class="storage-grid"></div>'}`;
+    const grid = el.querySelector('.storage-grid');
+    engines.forEach((engine) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const from = engine.source_job
+        ? `From Job #${engine.source_job.job_number}${engine.source_job.customers?.customer_name ? ` (${engine.source_job.customers.customer_name})` : ''}`
+        : 'Source job unknown';
+      const storedBy = engine.stored_by ? (mechanicsById[engine.stored_by] || 'Unknown') : 'Unknown';
+      card.innerHTML = `
+        <div class="job-number">Engine #${engine.engine_number}</div>
+        <div class="customer">${storedEngineLabel(engine).replace(/^Engine #\d+ — /, '')}</div>
+        <div class="vehicle">${from} · stored ${formatDateTime(engine.stored_at)} by ${storedBy}</div>
+        ${engine.notes ? `<div class="desc">${engine.notes}</div>` : ''}
+        <div class="parts">${(engine.parts || []).map((p) => `${Number(p.quantity)}× ${p.name}`).join('<br>')}</div>
+        <div class="meta-row"><span class="total">${storedEnginePartsSummary(engine)}</span><button type="button" class="strip-btn">Strip for parts</button></div>`;
+      card.querySelector('.strip-btn').addEventListener('click', async () => {
+        if (!confirm(`Strip Engine #${engine.engine_number}? All ${engine.parts.length} part types go back into shop stock and the engine is gone.`)) return;
+        try {
+          await stripStoredEngine(engine.id);
+          logActivity({
+            actorId: session?.id, action: 'engine_stripped', entityType: 'stored_engine', entityId: engine.id,
+            summary: `${session?.employee_name || 'Someone'} stripped stored ${storedEngineLabel(engine)} back into shop stock`
+          });
+          loadEngineStorage();
+        } catch (err) {
+          alert(`Failed to strip the engine: ${err.message}`);
+        }
+      });
+      grid.appendChild(card);
+    });
+  }
+
+
+  loadMechanicFilter().then(() => { loadBoard(); loadEngineStorage(); });
 </script>
 </body>
 </html>

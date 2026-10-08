@@ -8,6 +8,9 @@ const JOB_STATUSES = [
   { value: 'approved', label: 'Approved' },
   { value: 'waiting_for_parts', label: 'Waiting for Parts' },
   { value: 'work_in_progress', label: 'Work in progress' },
+  // Engine Building only (sql/062): built, waiting for the customer to come
+  // in and have it fitted. Billing still happens after installation.
+  { value: 'ready_for_installation', label: 'Ready for installation' },
   { value: 'ready_to_bill', label: 'Ready to bill' },
   { value: 'completed', label: 'Completed' },
   { value: 'cancelled', label: 'Cancelled' }
