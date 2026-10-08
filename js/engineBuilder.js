@@ -78,6 +78,17 @@ const ENGINE_STYLE_PROFILES = {
     piston: ['Flat Top Forged Steel'], rings: 'Steel Performance Ring Pack', bearings: 'Tri-Metal',
     head: ['Factory Cast Iron'], cam: 'Torque/Tow Camshaft', tappet: 'Hydraulic Roller Tappet Set',
     spring: 'Billet Steel', timing: 'Timing Gears', plugs: 'Iridium Spark Plug' },
+  // Ambulances, police, taxis: huge mileage at sustained high rpm. Reciprocating
+  // load rises with rpm squared, so this keeps the moving parts LIGHT (forged
+  // aluminium pistons, forged steel H-beams -- Durability's steel pistons
+  // suit slow-revving diesels, not this), uses the heavy-duty bearing, and
+  // makes power low (torque cam) so the engine needn't rev. Best on DOHC
+  // (pushrods float/wear at sustained revs) with more cylinders.
+  fleet: { label: 'Emergency / Fleet', hint: 'Huge mileage at sustained high revs (ambulances, police, taxis): light forged internals, heavy-duty bearings, torque cam, gear timing. Best on a DOHC with plenty of cylinders.',
+    block: ['Compacted Graphite Iron', 'Cast Iron'], crank: 'Forged', rod: ['H-Beam Forged Steel', 'I-Beam Forged Steel'],
+    piston: ['Flat Top Forged Aluminum', 'Flat Top Cast Aluminum'], rings: 'Moly-Coated Race Ring Pack', bearings: 'Tri-Metal',
+    head: ['Factory Cast Aluminum', 'Factory Cast Iron'], cam: 'Torque/Tow Camshaft', tappet: 'Hydraulic Roller Tappet Set',
+    spring: 'Billet Steel', timing: 'Timing Gears', plugs: 'Iridium Spark Plug' },
   offroad: { label: 'Off-Road', hint: 'Tough, torquey and forgiving: iron block, forged internals, heavy-duty bearings, torque cam.',
     block: ['Cast Iron', 'Compacted Graphite Iron'], crank: 'Forged', rod: ['H-Beam Forged Steel'],
     piston: ['Flat Top Forged Aluminum'], rings: 'Steel Performance Ring Pack', bearings: 'Tri-Metal',
