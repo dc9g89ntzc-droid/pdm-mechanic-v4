@@ -88,6 +88,9 @@
   .quote-line .ql-top { display: flex; align-items: flex-start; gap: 8px; }
   .quote-line img { width: 32px; height: 32px; object-fit: contain; background: var(--bg); border-radius: 6px; flex: 0 0 auto; }
   .quote-line .ql-name { flex: 1; min-width: 0; line-height: 1.35; padding-top: 2px; }
+  .quote-line .ql-stock { display: block; font-size: 10.5px; color: var(--text-dim); margin-top: 2px; }
+  .quote-line .ql-stock.short { color: var(--amber); }
+  .quote-line .ql-stock.out { color: var(--red); }
   .quote-line .ql-store { color: var(--amber); font-size: 10px; font-weight: 700; white-space: nowrap; flex: 0 0 auto; padding-top: 2px; }
   .quote-line .ql-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-left: 40px; }
   .quote-line .ql-qty { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
@@ -560,6 +563,7 @@
         <div class="item-name">${item.name}</div>
         <div class="item-price">${item.customer_price !== null ? formatMoney(item.customer_price) : 'To confirm'}</div>
         <div class="item-meta ${low ? 'low' : ''}">${sourcingLabel(item.sourcing)} · Stock: ${item.stock_quantity}</div>
+        <div class="item-meta">${stockSplitLabel(item)}</div>
         ${storeLabel ? `<div class="item-store">${storeLabel}</div>` : ''}
         <div class="add-row">
           <input type="number" class="qty-input" min="0.01" step="1" value="1" />
@@ -668,6 +672,17 @@
     }
   }
 
+  // Live stock left after this job's own use (parts are taken out of stock as
+  // they're added). Jobs draw from the shop first, so it's flagged amber when
+  // the shop has run out and red when there's none anywhere.
+  function stockLine(item) {
+    if (!item || item.stock_quantity === undefined) return '';
+    const total = Number(item.stock_quantity) || 0;
+    const shop = Number(item.stock_shop) || 0;
+    const cls = total <= 0 ? 'out' : shop <= 0 ? 'short' : '';
+    return `<span class="ql-stock ${cls}">In stock: ${total} (${stockSplitLabel(item)})</span>`;
+  }
+
   async function refreshQuote() {
     const linesEl = document.getElementById('quoteLines');
     try {
@@ -717,7 +732,7 @@
           row.innerHTML = `
             <div class="ql-top">
               ${img}
-              <div class="ql-name">${line.catalogue_items?.name || 'Unknown item'}</div>
+              <div class="ql-name">${line.catalogue_items?.name || 'Unknown item'}${stockLine(line.catalogue_items)}</div>
               ${storeLabel ? `<span class="ql-store">${storeLabel}</span>` : ''}
             </div>
             <div class="ql-bottom">

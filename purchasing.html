@@ -936,6 +936,7 @@
         <div class="item-name">${item.name}</div>
         <div class="item-price">${item.shop_price !== null ? `Last paid ${formatMoney(item.shop_price)}` : 'No shop price on file yet'}</div>
         <div class="item-meta ${low ? 'low' : ''}">Stock: ${item.stock_quantity}</div>
+        <div class="item-meta">${stockSplitLabel(item)}</div>
         <div class="add-row">
           <input type="number" class="qty-input" min="1" step="1" value="1" />
           <button class="add-btn">Add to cart</button>

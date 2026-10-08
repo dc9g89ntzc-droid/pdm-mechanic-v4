@@ -34,6 +34,11 @@ function stockLocationLabel(value, short) {
   return loc ? (short ? loc.short : loc.label) : value;
 }
 
+// "Shop 4 · Autoparts 8" -- where the stock physically is (sql/058).
+function stockSplitLabel(item) {
+  return `Shop ${Number(item?.stock_shop) || 0} · Autoparts ${Number(item?.stock_autoparts) || 0}`;
+}
+
 function stockAtLocation(item, location) {
   return Number(location === 'autoparts' ? item.stock_autoparts : item.stock_shop) || 0;
 }
@@ -368,7 +373,7 @@ async function listSubcategoriesForCategory(category) {
 async function listItemsForTile(category, subcategoryId) {
   const { data, error } = await sb
     .from('catalogue_items')
-    .select('id, name, description, sourcing, customer_price, craft_cost, purchase_cost, shop_price, image_url, usage_type, stock_quantity, reorder_threshold, available_autoparts, available_scrapyard')
+    .select('id, name, description, sourcing, customer_price, craft_cost, purchase_cost, shop_price, image_url, usage_type, stock_quantity, stock_shop, stock_autoparts, reorder_threshold, available_autoparts, available_scrapyard')
     .contains('categories', [category])
     .eq('subcategory_id', subcategoryId)
     .eq('active', true)
@@ -426,7 +431,7 @@ function suggestedCustomerPrice(purchaseCost) {
 async function listJobItems(jobId, jobType) {
   let query = sb
     .from('job_items')
-    .select('id, quantity, unit_price, sourcing_choice, catalogue_item_id, job_type, catalogue_items ( name, image_url, available_autoparts, available_scrapyard, install_time_minutes ) ')
+    .select('id, quantity, unit_price, sourcing_choice, catalogue_item_id, job_type, catalogue_items ( name, image_url, available_autoparts, available_scrapyard, install_time_minutes, stock_quantity, stock_shop, stock_autoparts ) ')
     .eq('job_id', jobId)
     .order('created_at');
   if (jobType) query = query.eq('job_type', jobType);
