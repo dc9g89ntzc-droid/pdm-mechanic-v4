@@ -235,16 +235,16 @@ function valveSpringMismatch(tappetName, springName) {
     : `${tappetName} works best with ${expected} valve springs -- the in-game builder flags this pairing for extra wear.`;
 }
 
-// Joanna supplies the real engine pictures: upload them to the
-// mechanic-item-icons bucket's engines/ folder as
-//   <engine type>-<layout>.png   e.g. dohc-v8.png, ohv-inline-6.png, rotary-twin-rotor.png
-//   or just <layout>.png         e.g. v8.png (used for any engine type)
+// Joanna's engine renders live in the mechanic-item-icons bucket's engines/
+// folder as 512x768 transparent WebP (2026-10-08, ~70 files):
+//   <engine type>-<layout>.webp  e.g. dohc-v8.webp, ohv-inline-6.webp, rotary-twin-rotor.webp
+//   or just <layout>.webp        e.g. v8.webp (used for any engine type)
 // The page tries those in order, then falls back to the selected block's own
 // catalogue image.
 function engineImageCandidates(valvetrain, configuration) {
   const slug = (v) => String(v).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const base = `${SUPABASE_URL}/storage/v1/object/public/mechanic-item-icons/engines/`;
-  return [`${base}${slug(valvetrain)}-${slug(configuration)}.png`, `${base}${slug(configuration)}.png`];
+  return [`${base}${slug(valvetrain)}-${slug(configuration)}.webp`, `${base}${slug(configuration)}.webp`];
 }
 
 function engineSpecLabel(spec) {
