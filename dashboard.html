@@ -268,6 +268,7 @@
   <div class="tabs" id="tabs">
     <a href="dashboard.html?area=repair" data-area="repair">Repair and Service</a>
     <a href="dashboard.html?area=customisation" data-area="customisation">Customisation</a>
+    <a href="dashboard.html?area=engine_building" data-area="engine_building">Engine Building</a>
     <a href="dashboard.html?area=performance" data-area="performance">Performance</a>
     <a href="dashboard.html?area=billing" data-area="billing">Billing</a>
   </div>
@@ -325,7 +326,7 @@
 
   const params = new URLSearchParams(location.search);
   let area = params.get('area');
-  if (!['repair', 'customisation', 'performance', 'billing'].includes(area)) area = 'repair';
+  if (!['repair', 'customisation', 'engine_building', 'performance', 'billing'].includes(area)) area = 'repair';
   document.querySelectorAll('#tabs a').forEach((el) => {
     if (el.dataset.area === area) el.classList.add('active');
   });
@@ -335,11 +336,13 @@
   const AREA_COLUMNS = {
     repair: ['awaiting_inspection', 'inspection_in_progress', 'quote_preparation', 'approved', 'work_in_progress'],
     customisation: ['quote_preparation', 'approved', 'work_in_progress'],
+    engine_building: ['quote_preparation', 'approved', 'work_in_progress'],
     performance: ['quote_preparation', 'approved', 'work_in_progress']
   };
   const LEG_STATUS_OPTIONS = {
     repair: [...AREA_COLUMNS.repair, 'completed', 'cancelled'],
     customisation: [...AREA_COLUMNS.customisation, 'completed', 'cancelled'],
+    engine_building: [...AREA_COLUMNS.engine_building, 'completed', 'cancelled'],
     performance: [...AREA_COLUMNS.performance, 'completed', 'cancelled']
   };
 

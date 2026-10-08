@@ -563,6 +563,7 @@
     showModalError('');
     setModalBusy(true, 'Saving…');
     try {
+      await labourRatesReady;
       const totals = quickJobTotals(lineRows(), discountType);
 
       if (!saved.jobId) {
@@ -630,6 +631,8 @@
   });
 
   renderCart();
+  // Labour is priced from the live rates (sql/060) -- redraw once they're in.
+  labourRatesReady.then(renderCart);
 </script>
 </body>
 </html>

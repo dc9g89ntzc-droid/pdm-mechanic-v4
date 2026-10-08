@@ -108,6 +108,29 @@
   .leg-action-btn:hover { background: var(--red-dim); }
 
   .build-panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+
+  /* ---- Engine Builder (engine_building leg, js/engineBuilder.js) ---- */
+  .engine-style-hint { color: var(--text-dim); font-size: 12px; margin: 8px 0 0; min-height: 16px; }
+  .engine-top { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; gap: 16px; margin-top: 16px; align-items: start; }
+  @media (max-width: 900px) { .engine-top { grid-template-columns: 1fr; } }
+  .engine-picture { background: #f2f2f2; border-radius: 10px; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .engine-picture img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .engine-picture-missing { color: #777; font-size: 12px; text-align: center; padding: 16px; line-height: 1.5; }
+  .engine-picture-missing code { color: #333; }
+  .engine-facts { font-size: 12px; color: var(--text-dim); margin-top: 8px; line-height: 1.6; }
+  .engine-facts strong { color: var(--text); }
+  .engine-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .engine-table th { text-align: left; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; padding: 4px 6px; border-bottom: 1px solid var(--panel-border); }
+  .engine-table td { padding: 6px; border-bottom: 1px solid var(--panel-border); vertical-align: middle; }
+  .engine-table td.num, .engine-table th.num { text-align: right; white-space: nowrap; }
+  .engine-table select { width: 100%; padding: 6px 8px; font-size: 12px; }
+  .engine-table .slot-label { font-weight: 600; white-space: nowrap; }
+  .engine-table .stock-short { color: var(--amber); font-size: 11px; }
+  .engine-table tr.changed td:first-child { box-shadow: inset 3px 0 0 var(--amber); }
+  .engine-warning { color: var(--amber); font-size: 12px; margin-top: 8px; }
+  .engine-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--panel-border); }
+  .engine-footer .totals { font-size: 13px; color: var(--text-dim); }
+  .engine-footer .totals strong { color: var(--text); font-size: 15px; }
   .build-panel h2 { font-size: 14px; margin: 0 0 12px; }
   .build-panel .build-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
   .attached-service-row {
@@ -281,6 +304,41 @@
           </div>
           <div class="build-tiers" id="buildTiers"></div>
         </div>
+        <div class="build-panel" id="enginePanel" style="display:none;">
+          <h2>Engine builder</h2>
+          <div class="build-row">
+            <div class="build-field">
+              <label for="engineValvetrain">Engine type</label>
+              <select id="engineValvetrain"></select>
+            </div>
+            <div class="build-field">
+              <label for="engineConfig">Cylinders / layout</label>
+              <select id="engineConfig"></select>
+            </div>
+            <div class="build-field">
+              <label for="engineStyle">Style</label>
+              <select id="engineStyle"></select>
+            </div>
+          </div>
+          <p class="engine-style-hint" id="engineStyleHint"></p>
+          <div class="engine-top">
+            <div>
+              <div class="engine-picture"><img id="enginePicture" alt="Engine" /><div id="enginePictureMissing" class="engine-picture-missing" style="display:none;"></div></div>
+              <div class="engine-facts" id="engineFacts"></div>
+            </div>
+            <div>
+              <table class="engine-table">
+                <thead><tr><th>Part</th><th class="num">Qty</th><th>Choice</th><th class="num">Line total</th></tr></thead>
+                <tbody id="engineParts"></tbody>
+              </table>
+              <div id="engineWarnings"></div>
+            </div>
+          </div>
+          <div class="engine-footer">
+            <div class="totals" id="engineTotals"></div>
+            <button type="button" class="btn" id="engineApplyBtn">Add engine to job</button>
+          </div>
+        </div>
         <main id="mainArea"></main>
       </div>
       <aside class="quote-panel">
@@ -307,6 +365,7 @@
 <script src="js/services.js"></script>
 <script src="js/shoppingList.js"></script>
 <script src="js/performanceBuild.js"></script>
+<script src="js/engineBuilder.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -612,8 +671,12 @@
   async function refreshQuote() {
     const linesEl = document.getElementById('quoteLines');
     try {
+      await labourRatesReady;
       const lines = await listJobItems(jobId, jobType);
       lastQuoteLines = lines;
+      if (jobType === 'engine_building') {
+        document.getElementById('engineApplyBtn').textContent = lines.length ? 'Replace engine on job' : 'Add engine to job';
+      }
       renderExportButton();
       // Prefer the real flat fee from attached services (sql/043) once one
       // exists -- a hand-picked price for a named job. Otherwise the
@@ -904,9 +967,216 @@
     });
   }
 
+  // ---- Engine builder (engine_building leg) ----
+  // Engine type + layout + style -> every engine part with a default pick
+  // per style; each part's dropdown offers every matching catalogue part.
+  // "Add engine to job" puts the whole build on this leg (replacing a
+  // previous build) and saves the spec for the quote and bill.
+  let engineItems = [];           // every active catalogue row (name-matched per slot)
+  let engineChoice = {};          // slot key -> catalogue item id
+  let engineSpecView = null;      // buildEngineSpec() result on screen
+
+  async function loadEngineCatalogue() {
+    const rows = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from('catalogue_items')
+        .select('id, name, customer_price, purchase_cost, craft_cost, sourcing, image_url, stock_quantity')
+        .eq('active', true).order('name').range(from, from + 999);
+      if (error) throw new Error(error.message);
+      rows.push(...data);
+      if (data.length < 1000) return rows;
+    }
+  }
+
+  function engineCurrentSpec() {
+    return {
+      valvetrain: document.getElementById('engineValvetrain').value,
+      configuration: document.getElementById('engineConfig').value,
+      style: document.getElementById('engineStyle').value
+    };
+  }
+
+  function refreshEngineConfigOptions(preferred) {
+    const vt = document.getElementById('engineValvetrain').value;
+    const select = document.getElementById('engineConfig');
+    const options = engineConfigurationsFor(vt);
+    const keep = preferred || select.value;
+    select.innerHTML = options.map((c) => `<option value="${c}">${c}</option>`).join('');
+    if (options.includes(keep)) select.value = keep;
+  }
+
+  // Tries the uploaded engine pictures, then the block's catalogue image;
+  // if none exist yet, says which file to upload instead of a broken image.
+  function setEnginePicture(spec, blockItem) {
+    const img = document.getElementById('enginePicture');
+    const missing = document.getElementById('enginePictureMissing');
+    const candidates = [...engineImageCandidates(spec.valvetrain, spec.configuration)];
+    if (blockItem?.image_url) candidates.push(blockItem.image_url);
+    let i = 0;
+    img.style.display = '';
+    missing.style.display = 'none';
+    img.onerror = () => {
+      i += 1;
+      if (i < candidates.length) { img.src = candidates[i]; return; }
+      img.onerror = null;
+      img.style.display = 'none';
+      const file = candidates[0].split('/').pop();
+      missing.innerHTML = `No picture for ${engineSpecLabel(spec).split(' · ')[0]} yet.<br>Upload <code>engines/${file}</code> to the item icons bucket.`;
+      missing.style.display = 'block';
+    };
+    img.src = candidates[0];
+    img.alt = engineSpecLabel(spec);
+  }
+
+  // keepChoices: keep the mechanic's dropdown picks where they still apply
+  // (e.g. only the style changed) instead of resetting every part.
+  function renderEngineBuilder({ keepChoices = false } = {}) {
+    const spec = engineCurrentSpec();
+    engineSpecView = buildEngineSpec(spec);
+    document.getElementById('engineStyleHint').textContent = ENGINE_STYLE_PROFILES[spec.style]?.hint || '';
+    const byId = Object.fromEntries(engineItems.map((it) => [it.id, it]));
+
+    const rows = engineSpecView.slots.map((slot) => {
+      const { options, preferred } = engineSlotOptions(slot, engineItems);
+      const kept = keepChoices && engineChoice[slot.key] && options.some((o) => o.id === engineChoice[slot.key]);
+      if (!kept) engineChoice[slot.key] = (preferred || options[0])?.id || null;
+      return { slot, options, preferred };
+    });
+
+    document.getElementById('engineParts').innerHTML = rows.map(({ slot, options, preferred }) => {
+      const chosen = byId[engineChoice[slot.key]];
+      const lineTotal = chosen && chosen.customer_price != null ? formatMoney(Number(chosen.customer_price) * slot.quantity) : 'To confirm';
+      const short = chosen && Number(chosen.stock_quantity) < slot.quantity
+        ? `<div class="stock-short">${Math.max(0, Number(chosen.stock_quantity) || 0)} in stock</div>` : '';
+      const changed = preferred && chosen && chosen.id !== preferred.id;
+      return `
+        <tr class="${changed ? 'changed' : ''}" title="${changed ? `Style default: ${preferred.name}` : ''}">
+          <td class="slot-label">${slot.label}</td>
+          <td class="num">${slot.quantity}</td>
+          <td>
+            ${options.length
+              ? `<select data-slot="${slot.key}">${options.map((o) => `<option value="${o.id}" ${o.id === engineChoice[slot.key] ? 'selected' : ''}>${o.name}${o.customer_price != null ? ` — ${formatMoney(o.customer_price)}` : ''}${preferred && o.id === preferred.id ? '  ★' : ''}</option>`).join('')}</select>${short}`
+              : '<span class="stock-short">No matching parts in the catalogue</span>'}
+          </td>
+          <td class="num">${lineTotal}</td>
+        </tr>`;
+    }).join('');
+
+    document.querySelectorAll('#engineParts select[data-slot]').forEach((sel) => {
+      sel.addEventListener('change', () => {
+        engineChoice[sel.dataset.slot] = sel.value;
+        renderEngineBuilder({ keepChoices: true });
+      });
+    });
+
+    // Picture, facts, warnings, totals
+    const blockSlot = engineSpecView.slots.find((sl) => sl.key === 'block' || sl.key === 'rotor_housing');
+    setEnginePicture(spec, blockSlot ? byId[engineChoice[blockSlot.key]] : null);
+    const v = engineSpecView;
+    document.getElementById('engineFacts').innerHTML = v.isRotary
+      ? `<strong>${engineSpecLabel(spec)}</strong><br>${v.rotors} rotor${v.rotors === 1 ? '' : 's'}`
+      : `<strong>${engineSpecLabel(spec)}</strong><br>${v.cylinders} cylinder${v.cylinders === 1 ? '' : 's'} · ${v.banks} bank${v.banks === 1 ? '' : 's'} · ${v.totalValves} valves`;
+
+    const warnings = [];
+    const tappet = byId[engineChoice.tappets];
+    const spring = byId[engineChoice.valve_springs];
+    const mismatch = tappet && spring ? valveSpringMismatch(tappet.name, spring.name) : null;
+    if (mismatch) warnings.push(mismatch);
+    rows.filter((r) => r.options.length && !r.preferred).forEach((r) => warnings.push(`${r.slot.label}: the usual ${ENGINE_STYLE_PROFILES[spec.style].label} part isn't in the catalogue -- check the pick.`));
+    document.getElementById('engineWarnings').innerHTML = warnings.map((w) => `<div class="engine-warning">⚠ ${w}</div>`).join('');
+
+    const lines = engineBuildLines();
+    const parts = lines.reduce((sum, l) => sum + (l.item.customer_price != null ? Number(l.item.customer_price) * l.quantity : 0), 0);
+    const distinct = new Set(lines.map((l) => l.item.id)).size;
+    const labour = distinct * (INSTALL_CHARGE_BY_JOB_TYPE.engine_building || 0);
+    document.getElementById('engineTotals').innerHTML =
+      `Parts <strong>${formatMoney(parts)}</strong> · Labour ${distinct} part types × ${formatMoney(INSTALL_CHARGE_BY_JOB_TYPE.engine_building)} = <strong>${formatMoney(labour)}</strong> · Total <strong>${formatMoney(parts + labour)}</strong>`;
+    document.getElementById('engineApplyBtn').textContent =
+      lastQuoteLines.length ? 'Replace engine on job' : 'Add engine to job';
+  }
+
+  function engineBuildLines() {
+    if (!engineSpecView) return [];
+    const byId = Object.fromEntries(engineItems.map((it) => [it.id, it]));
+    return engineSpecView.slots
+      .map((slot) => ({ slot, item: byId[engineChoice[slot.key]], quantity: slot.quantity }))
+      .filter((l) => l.item);
+  }
+
+  async function initEnginePanel() {
+    if (jobType !== 'engine_building') return;
+    document.getElementById('enginePanel').style.display = 'block';
+    const vtSel = document.getElementById('engineValvetrain');
+    const styleSel = document.getElementById('engineStyle');
+    vtSel.innerHTML = VALVETRAIN_OPTIONS.map((v) => `<option value="${v}">${v === 'Rotary' ? 'Rotary (Wankel)' : v}</option>`).join('');
+    styleSel.innerHTML = ENGINE_STYLE_OPTIONS.map((st) => `<option value="${st.value}">${st.label}</option>`).join('');
+
+    const saved = currentLeg?.engine_spec;
+    vtSel.value = saved?.valvetrain || 'DOHC';
+    refreshEngineConfigOptions(saved?.configuration || (vtSel.value === 'Rotary' ? 'Twin Rotor' : 'Inline 4'));
+    styleSel.value = saved?.style || 'street';
+
+    document.getElementById('engineParts').innerHTML = '<tr><td colspan="4" class="empty-msg">Loading parts…</td></tr>';
+    try {
+      [engineItems] = await Promise.all([loadEngineCatalogue(), labourRatesReady]);
+    } catch (err) {
+      document.getElementById('engineParts').innerHTML = `<tr><td colspan="4" class="empty-msg">Couldn't load parts: ${err.message}</td></tr>`;
+      return;
+    }
+
+    // Returning to a saved build: start each dropdown on what's actually on the job.
+    renderEngineBuilder();
+    if (saved) {
+      const onJob = await listJobItems(jobId, 'engine_building');
+      engineSpecView.slots.forEach((slot) => {
+        const { options } = engineSlotOptions(slot, engineItems);
+        const match = onJob.find((l) => options.some((o) => o.id === l.catalogue_item_id));
+        if (match) engineChoice[slot.key] = match.catalogue_item_id;
+      });
+      renderEngineBuilder({ keepChoices: true });
+    }
+
+    vtSel.addEventListener('change', () => { refreshEngineConfigOptions(); renderEngineBuilder(); });
+    document.getElementById('engineConfig').addEventListener('change', () => renderEngineBuilder());
+    styleSel.addEventListener('change', () => renderEngineBuilder());
+
+    document.getElementById('engineApplyBtn').addEventListener('click', async () => {
+      const spec = engineCurrentSpec();
+      const lines = engineBuildLines();
+      if (lines.length === 0) { alert('No parts to add.'); return; }
+      const existing = await listJobItems(jobId, 'engine_building');
+      if (existing.length && !confirm(`Replace the ${existing.length} engine part line${existing.length === 1 ? '' : 's'} already on this job with this ${engineSpecLabel(spec)} build? Removed parts go back into stock.`)) return;
+      const btn = document.getElementById('engineApplyBtn');
+      btn.disabled = true;
+      btn.textContent = 'Adding parts…';
+      try {
+        for (const line of existing) {
+          await removeJobItem(line.id, line.catalogue_item_id, Number(line.quantity), session?.id, jobId);
+        }
+        for (const line of lines) {
+          await addJobItem({ jobId, catalogueItem: line.item, quantity: line.quantity, sourcingChoice: null, performedBy: session?.id, jobType: 'engine_building' });
+        }
+        await updateLegEngineSpec(jobId, spec);
+        if (currentLeg) currentLeg.engine_spec = spec;
+        logActivity({
+          actorId: session?.id, action: 'engine_build_applied', entityType: 'job', entityId: jobId,
+          summary: `${session?.employee_name || 'Someone'} ${existing.length ? 'replaced' : 'added'} the engine build on Job #${job?.job_number ?? ''}: ${engineSpecLabel(spec)} (${lines.length} part types)`
+        });
+        await refreshQuote();
+      } catch (err) {
+        alert(`Failed to add the engine: ${err.message}. Check the items list -- some parts may already have been added.`);
+        await refreshQuote();
+      } finally {
+        btn.disabled = false;
+        renderEngineBuilder({ keepChoices: true });
+      }
+    });
+  }
+
   resolveJobType().then(() => {
     renderLegAction();
     initBuildPanel();
+    initEnginePanel();
     initServicesPanel();
     return loadJobBar();
   }).then(() => Promise.all([renderFlowChrome(), showCategories(), refreshQuote()]));

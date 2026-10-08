@@ -15,6 +15,11 @@ const FLOW_STEP_DEFS = {
     { key: 'quote', label: 'Customisation Quote' },
     { key: 'work', label: 'Customisation Work' }
   ],
+  engine_building: [
+    { key: 'discovery', label: 'Engine Spec' },
+    { key: 'quote', label: 'Engine Quote' },
+    { key: 'work', label: 'Engine Build' }
+  ],
   performance: [
     { key: 'discovery', label: 'Performance Additions' },
     { key: 'quote', label: 'Performance Quote' },

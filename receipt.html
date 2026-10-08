@@ -72,6 +72,7 @@
   #quoteSheet td { padding: 8px 6px; border-bottom: 1px solid #ddd; }
   #quoteSheet td.num, #quoteSheet th.num { text-align: right; }
   #quoteSheet .subtotal-row td { border-bottom: none; color: #555; font-size: 20.5px; padding-top: 6px; padding-bottom: 2px; }
+  #quoteSheet .engine-heading td { font-weight: 700; font-size: 20px; padding-top: 14px; border-bottom: 2px solid #1a1a1a; }
   #quoteSheet .total-row td { border-bottom: none; border-top: 2px solid #1a1a1a; font-weight: 700; font-size: 23px; padding-top: 10px; }
   #quoteSheet .sheet-footer { font-size: 19px; color: #777; margin-top: 24px; border-top: 1px solid #ddd; padding-top: 12px; }
   #quoteSheet .empty-note { color: #777; font-style: italic; font-size: 21px; padding: 20px 0; }
@@ -267,7 +268,7 @@
         <tbody id="sheetLines"></tbody>
         <tfoot>
           <tr class="subtotal-row"><td colspan="3">Parts Subtotal</td><td class="num" id="sheetSubtotal">To confirm</td></tr>
-          <tr class="subtotal-row"><td colspan="3">Labour Fee (10%)</td><td class="num" id="sheetLabourFee">To confirm</td></tr>
+          <tr class="subtotal-row"><td colspan="3">Labour</td><td class="num" id="sheetLabourFee">To confirm</td></tr>
           <tr class="total-row"><td colspan="3">Total Paid</td><td class="num" id="sheetTotal">To confirm</td></tr>
         </tfoot>
       </table>
@@ -299,6 +300,8 @@
 <script src="js/catalogue.js"></script>
 <script src="js/services.js"></script>
 <script src="js/inspection.js"></script>
+<script src="js/performanceBuild.js"></script>
+<script src="js/engineBuilder.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -368,6 +371,7 @@
     const legs = await listJobLegs(jobId);
     const jobServices = await listJobServices(jobId);
     const jobItemsForLabour = await listJobItems(jobId);
+    await labourRatesReady;
     finalLabourFee = totalLabourFee(legs, jobServices, jobItemsForLabour);
     document.getElementById('sheetSubtotal').textContent = formatMoney(job.quoted_total);
     document.getElementById('sheetLabourFee').textContent = finalLabourFee !== null ? formatMoney(finalLabourFee) : 'To confirm';
@@ -398,17 +402,25 @@
   }
 
   async function loadLines() {
-    const lines = await listJobItems(jobId);
+    const [allLines, legs] = await Promise.all([listJobItems(jobId), listJobLegs(jobId)]);
     const tbody = document.getElementById('sheetLines');
-    if (lines.length === 0) {
+    if (allLines.length === 0) {
       tbody.innerHTML = '<tr><td colspan="4" class="empty-note">No items added to this job yet.</td></tr>';
       return;
     }
-    tbody.innerHTML = lines.map((line) => {
+    // Engine parts are grouped at the end under the engine's spec (sql/060).
+    const engineSpec = legs.find((l) => l.job_type === 'engine_building')?.engine_spec;
+    const engineLines = allLines.filter((l) => l.job_type === 'engine_building');
+    const lines = engineLines.length ? allLines.filter((l) => l.job_type !== 'engine_building') : allLines;
+    const engineHeading = engineLines.length
+      ? `<tr class="engine-heading"><td colspan="4">Engine build${engineSpec ? `: ${engineSpecLabel(engineSpec)}` : ''}</td></tr>`
+      : '';
+    const renderLine = (line) => {
       const lineTotal = line.unit_price !== null ? formatMoney(Number(line.unit_price) * Number(line.quantity)) : 'To confirm';
       const unit = line.unit_price !== null ? formatMoney(line.unit_price) : 'To confirm';
       return `<tr><td>${line.catalogue_items?.name || 'Unknown item'}</td><td class="num">${line.quantity}</td><td class="num">${unit}</td><td class="num">${lineTotal}</td></tr>`;
-    }).join('');
+    };
+    tbody.innerHTML = lines.map(renderLine).join('') + engineHeading + engineLines.map(renderLine).join('');
   }
 
   async function loadInspectionResults() {

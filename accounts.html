@@ -55,6 +55,14 @@
   tr:last-child td { border-bottom: none; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .empty-msg { color: var(--text-dim); font-size: 13px; padding: 20px; text-align: center; }
+  .rate-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .rate-row { background: var(--bg); border: 1px solid var(--panel-border); border-radius: 10px; padding: 12px; }
+  .rate-row label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+  .rate-row .rate-edit { display: flex; gap: 8px; align-items: center; }
+  .rate-row input { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 14px; }
+  .rate-row button { background: var(--red); border: none; color: white; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .rate-row button:disabled { opacity: 0.5; cursor: default; }
+  .rate-row .rate-flash { font-size: 11px; color: var(--green); margin-top: 6px; min-height: 14px; }
 </style>
 </head>
 <body>
@@ -127,6 +135,12 @@
     <div class="card">
       <h2>Billed Jobs This Week</h2>
       <div id="jobsTable"></div>
+    </div>
+
+    <div class="card">
+      <h2>Labour Rates</h2>
+      <div class="caveat" style="margin:0 0 12px;">Charged once per distinct part type installed under each kind of work (quantity doesn't matter). A service with its own labour fee overrides this for its work type. Changes apply to jobs billed from now on; bills already issued keep their labour.</div>
+      <div class="rate-grid" id="labourRates"></div>
     </div>
   </main>
 
@@ -237,6 +251,47 @@
     loadPeriod();
   });
 
+  // ---- Labour rates (sql/060) ----
+  async function renderLabourRates() {
+    await labourRatesReady;
+    const container = document.getElementById('labourRates');
+    container.innerHTML = LEG_ORDER.map((type) => `
+      <div class="rate-row">
+        <label for="rate-${type}">${jobTypeLabel(type)} -- per part type</label>
+        <div class="rate-edit">
+          <input type="number" id="rate-${type}" min="0" step="1" value="${INSTALL_CHARGE_BY_JOB_TYPE[type] ?? 0}" />
+          <button type="button" data-type="${type}" disabled>Save</button>
+        </div>
+        <div class="rate-flash" id="rate-flash-${type}"></div>
+      </div>`).join('');
+    container.querySelectorAll('.rate-row').forEach((row) => {
+      const input = row.querySelector('input');
+      const btn = row.querySelector('button');
+      const type = btn.dataset.type;
+      input.addEventListener('input', () => {
+        btn.disabled = input.value === '' || Number(input.value) === Number(INSTALL_CHARGE_BY_JOB_TYPE[type]);
+        document.getElementById(`rate-flash-${type}`).textContent = '';
+      });
+      btn.addEventListener('click', async () => {
+        const rate = Number(input.value);
+        if (!Number.isFinite(rate) || rate < 0) { alert('Enter a rate of 0 or more.'); return; }
+        const old = INSTALL_CHARGE_BY_JOB_TYPE[type];
+        btn.disabled = true;
+        try {
+          await updateLabourRate(type, rate, session?.id);
+          logActivity({
+            actorId: session?.id, action: 'labour_rate_changed', entityType: 'labour_rate', entityId: null,
+            summary: `${session?.employee_name || 'Someone'} changed ${jobTypeLabel(type)} labour from ${formatMoney(old)} to ${formatMoney(rate)} per part type`
+          });
+          document.getElementById(`rate-flash-${type}`).textContent = 'Saved';
+        } catch (err) {
+          alert(`Failed to save: ${err.message}`);
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
   // hasAreaAccess is DB-backed (role_permissions, sql/027) -- real
   // enforcement is RLS, this just decides what to render.
   (async () => {
@@ -245,6 +300,7 @@
       return;
     }
     loadStaff().then(loadPeriod);
+    renderLabourRates();
   })();
 </script>
 </body>

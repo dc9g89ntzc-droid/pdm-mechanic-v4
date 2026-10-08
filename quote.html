@@ -72,6 +72,7 @@
 
   #quoteSheet .section-title { font-size: 21px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 26px 0 10px; border-bottom: 1px solid #1a1a1a; padding-bottom: 4px; }
   #quoteSheet .section-title.first { margin-top: 0; }
+  #quoteSheet .engine-spec-line { font-size: 20px; font-style: italic; color: #333; margin: -4px 0 10px; }
   #quoteSheet .inspection-category { font-size: 20px; font-weight: 700; margin: 12px 0 4px; color: #333; }
   #quoteSheet .inspection-cols { columns: 2; column-gap: 24px; font-size: 20px; }
   #quoteSheet .inspection-row { break-inside: avoid; padding: 2px 0; }
@@ -265,6 +266,8 @@
 <script src="js/catalogue.js"></script>
 <script src="js/services.js"></script>
 <script src="js/inspection.js"></script>
+<script src="js/performanceBuild.js"></script>
+<script src="js/engineBuilder.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -385,7 +388,10 @@
     jobTypes.forEach((type, idx) => {
       const lines = allLines.filter((l) => l.job_type === type);
       const isFirst = idx === 0 && !inspectionShown;
+      // Engine Building names the engine being built (sql/060 engine_spec).
+      const engineSpec = type === 'engine_building' ? (legs || []).find((l) => l.job_type === 'engine_building')?.engine_spec : null;
       html += `<div class="section-title${isFirst ? ' first' : ''}">${jobTypeLabel(type)} — Parts &amp; Labour</div>`;
+      if (engineSpec) html += `<div class="engine-spec-line">Engine: ${engineSpecLabel(engineSpec)}</div>`;
       html += `<table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit Price</th><th class="num">Total</th></tr></thead><tbody>`;
       if (lines.length === 0) {
         html += `<tr><td colspan="4" class="empty-note">No items added yet.</td></tr>`;
@@ -412,6 +418,7 @@
     // -- both are real numbers known the moment a part's added, not
     // something that has to wait for work to start or finish.
     const jobServices = await listJobServices(jobId);
+    await labourRatesReady;
     const labourFee = totalLabourFee(legs, jobServices, allLines);
     document.getElementById('sheetLabourFee').textContent = labourFee !== null
       ? formatMoney(labourFee)

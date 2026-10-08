@@ -22,9 +22,9 @@ const JOB_TYPES = [
 
 // The fixed sequence a job's selected legs run in -- a job with more than
 // one type doesn't work them at once, it finishes one fully before the next
-// starts (sql/031_job_legs.sql). Engine Building is intentionally excluded
-// here -- no checkbox, no leg -- until it gets its own later slice.
-const LEG_ORDER = ['repair', 'customisation', 'performance'];
+// starts (sql/031_job_legs.sql). Engine Building (its own area since
+// sql/060) runs before Performance: the engine goes in, then it's tuned.
+const LEG_ORDER = ['repair', 'customisation', 'engine_building', 'performance'];
 
 // Coarse job-level state (sql/031) -- what Billing and the history/reports
 // pages actually need. Distinct from JOB_STATUSES/job_legs.status, which
@@ -738,7 +738,7 @@ function initialLegStatus(jobType) {
 async function listJobLegs(jobId) {
   const { data, error } = await sb
     .from('job_legs')
-    .select('id, job_type, status, approved_at, work_started_at, completed_at, cancelled_at')
+    .select('id, job_type, status, engine_spec, approved_at, work_started_at, completed_at, cancelled_at')
     .eq('job_id', jobId);
   if (error) throw new Error(error.message);
   return data;
@@ -950,14 +950,42 @@ const LABOUR_RATE_PER_HOUR = 12500;
 
 // Rate per distinct catalogue item added under that job_type -- quantity
 // doesn't matter (64 tappet sets on one Engine Building leg is still one
-// charge). Confirmed with Joanna directly; Engine Building is its own rate,
-// not tied to Performance's.
+// charge). The live rates are in labour_rates (sql/060), editable on the
+// Accounts page; these are only the fallback if that read fails. Anything
+// that calculates labour must `await labourRatesReady` first.
 const INSTALL_CHARGE_BY_JOB_TYPE = {
   repair: 100,
   customisation: 250,
   performance: 450,
-  engine_building: 1000
+  engine_building: 450
 };
+
+async function loadLabourRates() {
+  try {
+    const { data, error } = await sb.from('labour_rates').select('job_type, rate_per_part');
+    if (error) throw new Error(error.message);
+    (data || []).forEach((r) => { INSTALL_CHARGE_BY_JOB_TYPE[r.job_type] = Number(r.rate_per_part); });
+  } catch (err) {
+    console.error('Using default labour rates:', err.message);
+  }
+}
+// Kicked off as soon as this file loads (sb already exists by then).
+const labourRatesReady = loadLabourRates();
+
+async function updateLabourRate(jobType, rate, updatedBy) {
+  const { error } = await sb.from('labour_rates')
+    .update({ rate_per_part: rate, updated_at: new Date().toISOString(), updated_by: updatedBy || null })
+    .eq('job_type', jobType);
+  if (error) throw new Error(error.message);
+  INSTALL_CHARGE_BY_JOB_TYPE[jobType] = Number(rate);
+}
+
+// Engine Building leg's engine (sql/060): { valvetrain, configuration, style }.
+async function updateLegEngineSpec(jobId, spec) {
+  const { error } = await sb.from('job_legs').update({ engine_spec: spec })
+    .eq('job_id', jobId).eq('job_type', 'engine_building');
+  if (error) throw new Error(error.message);
+}
 
 // Maps a leg's job_type to the matching catalogue_items.categories tag
 // (sql/046 synced these from Joanna's own master list) -- used to filter
