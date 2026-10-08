@@ -360,7 +360,7 @@
 
     const agreedBtn = document.getElementById('quoteAgreedBtn');
     if (activeLeg && activeLeg.status === 'quote_preparation') {
-      agreedBtn.textContent = activeLeg.job_type === 'performance' && quotesPerformanceWithEngine(legs)
+      agreedBtn.textContent = ['performance', 'engine_building'].includes(activeLeg.job_type) && quotesPerformanceWithEngine(legs)
         ? 'Quote Agreed — Performance + Engine Building →'
         : `Quote Agreed — ${jobTypeLabel(activeLeg.job_type)} →`;
       agreedBtn.style.display = 'inline-block';
@@ -552,7 +552,7 @@
     const btn = document.getElementById('quoteAgreedBtn');
     btn.disabled = true;
     try {
-      const combined = activeLeg.job_type === 'performance' && quotesPerformanceWithEngine(legs);
+      const combined = ['performance', 'engine_building'].includes(activeLeg.job_type) && quotesPerformanceWithEngine(legs);
       const openType = await agreeLegQuote(jobId, activeLeg.job_type);
       logActivity({
         actorId: session?.id, action: 'job_leg_status_changed', entityType: 'job', entityId: jobId,

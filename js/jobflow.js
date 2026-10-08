@@ -107,12 +107,24 @@ function renderFlowSidebar(container, { jobId, jobTypes, legs, onAdded }) {
   ];
 
   const perfWithEngine = performanceRidesWithEngine(legs);
+  const quotingTogether = quotesPerformanceWithEngine(legs);
+  // Engine Building is split around Performance: Engine Spec + Engine Quote
+  // after Customisation, Engine Build + Installation after Performance.
+  const sequence = [];
   LEG_ORDER.filter((t) => jobTypes.includes(t)).forEach((t) => {
+    if (t === 'performance' && jobTypes.includes('engine_building')) {
+      sequence.push(['engine_building', ['discovery', 'quote']], ['performance', null], ['engine_building', ['work', 'install']]);
+    } else if (!(t === 'engine_building' && jobTypes.includes('performance'))) {
+      sequence.push([t, null]);
+    }
+  });
+  sequence.forEach(([t, keys]) => {
     // Performance agreed with the engine: quoted, then fitted at installation.
-    const states = t === 'performance' && perfWithEngine
-      ? { discovery: 'done', quote: 'done', work: 'pending' }
-      : legStepStates(legByType[t], !!(active && active.job_type === t));
-    FLOW_STEP_DEFS[t].forEach((stepDef) => {
+    // While both are quoting, one combined quote is in progress.
+    let states = legStepStates(legByType[t], !!(active && active.job_type === t));
+    if (t === 'performance' && perfWithEngine) states = { discovery: 'done', quote: 'done', work: 'pending' };
+    if (t === 'performance' && quotingTogether) states = { discovery: 'done', quote: 'current', work: 'pending' };
+    FLOW_STEP_DEFS[t].filter((stepDef) => !keys || keys.includes(stepDef.key)).forEach((stepDef) => {
       const state = states[stepDef.key];
       let stateLabel = state === 'done' ? 'Completed' : state === 'current' ? 'In progress' : 'Pending';
       if (t === 'performance' && perfWithEngine && stepDef.key === 'work') stateLabel = 'Fitted at engine installation';

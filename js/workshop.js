@@ -770,11 +770,19 @@ function quotesPerformanceWithEngine(legs) {
 
 // First leg (in LEG_ORDER) that isn't completed/cancelled, or null if every
 // selected leg is finished -- that's what puts a job on a given area board,
-// and null is what moves it to Billing. Performance waiting to be fitted
-// with the engine is skipped, so the engine build is what's active.
+// and null is what moves it to Billing. Engine Building is split around
+// Performance (Joanna, 2026-10-08): its spec and quote come straight after
+// Customisation, its build and installation after Performance. So a
+// still-quoting engine leg goes ahead of Performance, and Performance
+// waiting to be fitted with the engine is skipped.
 function activeLegForJob(legs) {
   const skipPerformance = performanceRidesWithEngine(legs);
+  const engine = legs.find((l) => l.job_type === 'engine_building');
   for (const type of LEG_ORDER) {
+    if (type === 'performance' && engine && engine.status === 'quote_preparation') {
+      const before = legs.find((l) => l.job_type === 'performance');
+      if (before && before.status === 'quote_preparation') return engine;
+    }
     if (type === 'performance' && skipPerformance) continue;
     const leg = legs.find((l) => l.job_type === type);
     if (leg && leg.status !== 'completed' && leg.status !== 'cancelled') return leg;
