@@ -26,8 +26,10 @@ const JOB_TYPES = [
 // The fixed sequence a job's selected legs run in -- a job with more than
 // one type doesn't work them at once, it finishes one fully before the next
 // starts (sql/031_job_legs.sql). Engine Building (its own area since
-// sql/060) runs before Performance: the engine goes in, then it's tuned.
-const LEG_ORDER = ['repair', 'customisation', 'engine_building', 'performance'];
+// sql/060) is last: the engine is built after everything else, then
+// installed and billed (Joanna, 2026-10-08). Its parts can still be picked
+// up front -- the flow sidebar links to every leg's items page.
+const LEG_ORDER = ['repair', 'customisation', 'performance', 'engine_building'];
 
 // Coarse job-level state (sql/031) -- what Billing and the history/reports
 // pages actually need. Distinct from JOB_STATUSES/job_legs.status, which

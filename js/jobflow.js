@@ -67,6 +67,33 @@ function legStepStates(leg, isActive) {
   };
 }
 
+// Where clicking a sidebar step goes, so a mechanic can hop between work
+// types while quoting -- e.g. pick the engine's parts, then add performance
+// or customisation items -- without finishing one leg first (a queued leg
+// sits at quote_preparation, so its items page is already in add mode).
+// Repair's inspection is only linked while it's still open: opening
+// inspection.html after it's completed would start a fresh, empty one.
+function flowStepHref(jobId, jobType, stepKey, leg) {
+  if (!leg || leg.status === 'cancelled') return null;
+  if (stepKey === 'quote') return `quote.html?job=${jobId}`;
+  if (jobType === 'repair' && ['awaiting_inspection', 'inspection_in_progress'].includes(leg.status)) {
+    return `inspection.html?job=${jobId}`;
+  }
+  if (jobType === 'repair' && stepKey === 'discovery') return null;
+  return `job-items.html?job=${jobId}&type=${jobType}`;
+}
+
+// The per-page CSS (copied onto each flow page) styles .flow-step as a div;
+// this keeps the linked ones looking the same, just clickable.
+(function injectFlowLinkStyles() {
+  if (typeof document === 'undefined' || document.getElementById('flowLinkStyles')) return;
+  const style = document.createElement('style');
+  style.id = 'flowLinkStyles';
+  style.textContent = 'a.flow-step.flow-link { color: inherit; text-decoration: none; cursor: pointer; }'
+    + ' a.flow-step.flow-link:hover .flow-label { text-decoration: underline; }';
+  document.head.appendChild(style);
+})();
+
 // onAdded: called (and awaited) after a work type is added mid-flow, so the
 // calling page can reload its own leg/job data and re-render everything
 // that depends on it (this function only re-renders itself).
@@ -85,11 +112,13 @@ function renderFlowSidebar(container, { jobId, jobTypes, legs, onAdded }) {
       const state = states[stepDef.key];
       const stateLabel = state === 'done' ? 'Completed' : state === 'current' ? 'In progress' : 'Pending';
       const icon = state === 'done' ? '&#10003;' : state === 'current' ? '&#9679;' : '';
+      const href = flowStepHref(jobId, t, stepDef.key, legByType[t]);
+      const tag = href ? 'a' : 'div';
       steps.push(`
-        <div class="flow-step ${state}">
+        <${tag} class="flow-step ${state}${href ? ' flow-link' : ''}"${href ? ` href="${href}" title="Open ${stepDef.label}"` : ''}>
           <span class="flow-dot">${icon}</span>
           <div><div class="flow-label">${stepDef.label}</div><div class="flow-state">${stateLabel}</div></div>
-        </div>
+        </${tag}>
       `);
     });
   });
