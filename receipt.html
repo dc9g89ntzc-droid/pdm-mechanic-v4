@@ -439,7 +439,9 @@
     const mechFindings = findings.filter((f) => f.finding_type === 'mechanical' && f.item_label);
     const customFindings = findings.filter((f) => f.finding_type === 'mechanical' && !f.item_label);
 
-    if (bodyFindings.length === 0 && mechFindings.length === 0 && customFindings.length === 0) {
+    const testsHtml = inspectionTestsSheetHtml(inspection);
+
+    if (bodyFindings.length === 0 && mechFindings.length === 0 && customFindings.length === 0 && !testsHtml) {
       container.innerHTML = '<div class="no-inspection">No issues recorded during inspection.</div>';
       return;
     }
@@ -473,6 +475,8 @@
       }).join('');
       html += '</div>';
     }
+
+    html += testsHtml;
 
     container.innerHTML = html;
   }

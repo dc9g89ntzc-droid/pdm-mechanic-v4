@@ -324,7 +324,7 @@ async function getJobContext(jobId) {
   const { data, error } = await sb
     .from('jobs')
     .select(`
-      id, job_number, status, mileage_at_checkin,
+      id, job_number, status, mileage_at_checkin, owned_vehicle_id,
       customers ( customer_name ),
       owned_vehicles ( registration, make, model )
     `)
@@ -352,7 +352,7 @@ async function getJobContext(jobId) {
 async function getOrCreateInspection(jobId, staffId) {
   const { data: existing, error: existingError } = await sb
     .from('inspections')
-    .select('id, job_id, started_at, completed_at, mileage_at_inspection')
+    .select('id, job_id, started_at, completed_at, mileage_at_inspection, tread_depth, compression')
     .eq('job_id', jobId)
     .is('completed_at', null)
     .order('started_at', { ascending: false })
@@ -363,7 +363,7 @@ async function getOrCreateInspection(jobId, staffId) {
   const { data: created, error: createError } = await sb
     .from('inspections')
     .insert({ job_id: jobId, performed_by: staffId })
-    .select('id, job_id, started_at, completed_at, mileage_at_inspection')
+    .select('id, job_id, started_at, completed_at, mileage_at_inspection, tread_depth, compression')
     .single();
   if (createError) throw new Error(createError.message);
 
@@ -383,13 +383,171 @@ async function getOrCreateInspection(jobId, staffId) {
 async function getLatestInspectionForJob(jobId) {
   const { data, error } = await sb
     .from('inspections')
-    .select('id, completed_at')
+    .select('id, completed_at, tread_depth, compression')
     .eq('job_id', jobId)
     .order('started_at', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data;
+}
+
+// --- Tread depth & compression (sql/061) ------------------------------------
+// Optional RP tests copied off the in-game Tread Depth Gauge and Compression
+// Tester. Stored as { wheels|cylinders, readings[] } on the inspection; every
+// pass/fail below is derived here so the thresholds can be tuned in one place.
+// Tread: under 4/32" is worn, under 2/32" fails (real-world rules; the gauge
+// reads a new tyre as ~9.5/32" = 100%). Compression: a cylinder fails under
+// 100 PSI or more than 15% below the strongest, and is marginal over 10% below.
+const TREAD_NEW_32NDS = 9.5;
+const TREAD_WORN_BELOW = 4;
+const TREAD_FAIL_BELOW = 2;
+const TREAD_WHEEL_LAYOUTS = {
+  2: ['Front', 'Rear'],
+  4: ['Front Left', 'Front Right', 'Rear Left', 'Rear Right'],
+  6: ['Front Left', 'Front Right', 'Middle Left', 'Middle Right', 'Rear Left', 'Rear Right']
+};
+const COMPRESSION_MIN_PSI = 100;
+const COMPRESSION_MARGINAL_SPREAD = 10;
+const COMPRESSION_FAIL_SPREAD = 15;
+const COMPRESSION_MAX_CYLINDERS = 18;
+const TEST_TIER_RANK = { ok: 0, advisory: 1, fail: 2 };
+
+function worstTier(tiers) {
+  return tiers.reduce((worst, t) => (TEST_TIER_RANK[t] > TEST_TIER_RANK[worst] ? t : worst), 'ok');
+}
+
+function testReadings(test) {
+  return (test?.readings || []).map((v) => (v === null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v)));
+}
+
+function treadTier(value) {
+  if (value < TREAD_FAIL_BELOW) return 'fail';
+  if (value < TREAD_WORN_BELOW) return 'advisory';
+  return 'ok';
+}
+
+function treadPercent(value) {
+  return Math.max(0, Math.min(100, Math.round((value / TREAD_NEW_32NDS) * 100)));
+}
+
+// { wheels, labels, readings, tiers, entered, complete, min, avg, tier, statusLabel, worn, failed }
+function summariseTread(test) {
+  const wheels = TREAD_WHEEL_LAYOUTS[test?.wheels] ? Number(test.wheels) : 4;
+  const labels = TREAD_WHEEL_LAYOUTS[wheels];
+  const all = testReadings(test);
+  const readings = labels.map((_, i) => all[i] ?? null);
+  const entered = readings.filter((v) => v !== null);
+  const tiers = readings.map((v) => (v === null ? null : treadTier(v)));
+  const tier = entered.length ? worstTier(tiers.filter(Boolean)) : null;
+  return {
+    wheels, labels, readings, tiers,
+    entered: entered.length,
+    complete: entered.length === wheels,
+    min: entered.length ? Math.min(...entered) : null,
+    avg: entered.length ? entered.reduce((a, b) => a + b, 0) / entered.length : null,
+    tier,
+    statusLabel: tier ? { ok: 'PASS', advisory: 'WORN', fail: 'FAIL' }[tier] : null,
+    worn: labels.filter((_, i) => tiers[i] === 'advisory'),
+    failed: labels.filter((_, i) => tiers[i] === 'fail')
+  };
+}
+
+function compressionCylinderTier(value, strongest) {
+  if (value < COMPRESSION_MIN_PSI) return 'fail';
+  const below = strongest > 0 ? ((strongest - value) / strongest) * 100 : 0;
+  if (below > COMPRESSION_FAIL_SPREAD) return 'fail';
+  if (below > COMPRESSION_MARGINAL_SPREAD) return 'advisory';
+  return 'ok';
+}
+
+// Reads the pattern of weak cylinders the way a mechanic would. Cylinder
+// numbers are as the tester shows them; "neighbouring" = consecutive numbers.
+function compressionDiagnosis(weakCylinders, cylinders) {
+  if (weakCylinders.length === 0) return null;
+  if (cylinders > 2 && weakCylinders.length >= Math.max(3, Math.ceil(cylinders * 0.75))) {
+    return 'Low across the engine: general wear (rings, bores and valves). Worth quoting an engine rebuild.';
+  }
+  const neighbours = weakCylinders.some((c, i) => i > 0 && c - weakCylinders[i - 1] === 1);
+  if (neighbours) {
+    return 'Neighbouring cylinders low: classic sign of a head gasket leaking between them.';
+  }
+  return weakCylinders.length === 1
+    ? 'One cylinder low: rings or valves. A wet test (a little oil down the bore) tells them apart: it rises if it is the rings, stays low if it is the valves.'
+    : 'Separate cylinders low: rings or valves on each. Wet test each one to tell them apart.';
+}
+
+// { cylinders, readings, tiers, entered, complete, avg, spread, tier, statusLabel, weakCylinders, diagnosis }
+function summariseCompression(test) {
+  const cylinders = Math.min(COMPRESSION_MAX_CYLINDERS, Math.max(1, Math.round(Number(test?.cylinders)) || 4));
+  const all = testReadings(test);
+  const readings = Array.from({ length: cylinders }, (_, i) => all[i] ?? null);
+  const entered = readings.filter((v) => v !== null);
+  const strongest = entered.length ? Math.max(...entered) : 0;
+  const weakest = entered.length ? Math.min(...entered) : 0;
+  const tiers = readings.map((v) => (v === null ? null : compressionCylinderTier(v, strongest)));
+  const tier = entered.length ? worstTier(tiers.filter(Boolean)) : null;
+  const weakCylinders = tiers.map((t, i) => (t && t !== 'ok' ? i + 1 : null)).filter(Boolean);
+  return {
+    cylinders, readings, tiers,
+    entered: entered.length,
+    complete: entered.length === cylinders,
+    avg: entered.length ? Math.round(entered.reduce((a, b) => a + b, 0) / entered.length) : null,
+    // Rounded up, like the in-game tester's VAR (178 vs 170 PSI shows 5%).
+    spread: strongest > 0 ? Math.ceil(((strongest - weakest) / strongest) * 100) : null,
+    tier,
+    statusLabel: tier ? { ok: 'PASS', advisory: 'MARGINAL', fail: 'FAIL' }[tier] : null,
+    weakCylinders,
+    diagnosis: compressionDiagnosis(weakCylinders, cylinders)
+  };
+}
+
+function formatTread(value) {
+  return value === null || value === undefined ? '—' : `${Number(value).toFixed(1)}/32"`;
+}
+
+async function saveInspectionTest(inspectionId, column, value) {
+  if (column !== 'tread_depth' && column !== 'compression') throw new Error('Unknown test');
+  const { error } = await sb.from('inspections').update({ [column]: value }).eq('id', inspectionId);
+  if (error) throw new Error(error.message);
+}
+
+// The most recent earlier inspection of this vehicle (any job) that recorded
+// each test, so the page can show "last visit" next to today's readings.
+async function getPreviousVehicleTests(ownedVehicleId, currentInspectionId) {
+  if (!ownedVehicleId) return { tread: null, compression: null };
+  const { data, error } = await sb
+    .from('inspections')
+    .select('id, started_at, tread_depth, compression, jobs!inner ( job_number, owned_vehicle_id )')
+    .eq('jobs.owned_vehicle_id', ownedVehicleId)
+    .neq('id', currentInspectionId)
+    .or('tread_depth.not.is.null,compression.not.is.null')
+    .order('started_at', { ascending: false })
+    .limit(20);
+  if (error) throw new Error(error.message);
+  const pick = (col) => {
+    const row = (data || []).find((r) => r[col] && testReadings(r[col]).some((v) => v !== null));
+    return row ? { test: row[col], jobNumber: row.jobs?.job_number, date: row.started_at } : null;
+  };
+  return { tread: pick('tread_depth'), compression: pick('compression') };
+}
+
+// Quote/bill block: one line per recorded test, styled like the checklist
+// rows on those sheets. '' when neither test was recorded.
+function inspectionTestsSheetHtml(inspection) {
+  const cls = (tier) => (tier === 'fail' ? 'cond-fail' : tier === 'advisory' ? 'cond-advisory' : '');
+  const rows = [];
+  const tread = inspection?.tread_depth ? summariseTread(inspection.tread_depth) : null;
+  if (tread && tread.entered) {
+    const wheels = tread.readings.map((v, i) => `${tread.labels[i]} ${formatTread(v)}`).join(' · ');
+    rows.push(`<div class="inspection-row">Tread Depth: ${wheels} — <span class="${cls(tread.tier)}">${tread.statusLabel}</span></div>`);
+  }
+  const comp = inspection?.compression ? summariseCompression(inspection.compression) : null;
+  if (comp && comp.entered) {
+    const weak = comp.weakCylinders.length ? ` (low: cyl ${comp.weakCylinders.join(', ')})` : '';
+    rows.push(`<div class="inspection-row">Compression, ${comp.cylinders} cyl: avg ${comp.avg} PSI, ${comp.spread}% spread${weak} — <span class="${cls(comp.tier)}">${comp.statusLabel}</span></div>`);
+  }
+  return rows.length ? `<div class="inspection-category">Tests</div>${rows.join('')}` : '';
 }
 
 function bodyZoneLabel(key) {

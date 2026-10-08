@@ -271,6 +271,33 @@
   .checklist-row .item-label { flex: 1; font-size: 13px; }
   .checklist-row select { padding: 6px 8px; font-size: 12px; width: auto; max-width: 170px; }
 
+  /* Optional RP tests (tread depth / compression), laid out like the
+     in-game gauge screens: a box per wheel/cylinder, then MIN/AVG/STATUS. */
+  .optional-tag { font-size: 10px; text-transform: none; letter-spacing: 0; color: var(--text-dim); border: 1px solid var(--panel-border); border-radius: 10px; padding: 1px 8px; margin-left: 6px; vertical-align: middle; }
+  .tests-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .test-card { background: var(--bg); border: 1px solid var(--panel-border); border-radius: 10px; padding: 14px; }
+  .test-card .test-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .test-card .test-head .title { font-weight: 600; font-size: 14px; flex: 1; }
+  .test-card .test-head select { width: auto; padding: 5px 8px; font-size: 12px; }
+  .test-card .hint { color: var(--text-dim); font-size: 12px; margin-bottom: 10px; }
+  .test-card .start-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .test-card .start-row select { width: auto; padding: 6px 8px; font-size: 12px; }
+  .test-boxes { display: grid; gap: 8px; }
+  .test-boxes.cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .test-boxes.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  .test-box { border: 2px solid var(--panel-border); border-radius: 8px; padding: 8px 6px; text-align: center; }
+  .test-box.tier-ok { border-color: var(--green); }
+  .test-box.tier-advisory { border-color: var(--amber); }
+  .test-box.tier-fail { border-color: var(--red); }
+  .test-box .box-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); margin-bottom: 4px; }
+  .test-box input { text-align: center; padding: 6px 4px; font-size: 15px; font-weight: 600; }
+  .test-box .box-sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; min-height: 14px; }
+  .test-summary { display: flex; justify-content: space-around; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--panel-border); text-align: center; }
+  .test-summary .k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim); }
+  .test-summary .v { font-size: 16px; font-weight: 700; font-family: ui-monospace, Consolas, monospace; margin-top: 2px; }
+  .test-note { font-size: 12px; margin-top: 10px; color: var(--text-dim); }
+  .test-note.diag { color: var(--amber); }
+
   .add-finding-form { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--panel-border); }
   .add-finding-form.open { display: block; }
   label { display: block; font-size: 12px; color: var(--text-dim); margin: 12px 0 6px; }
@@ -425,6 +452,14 @@
       <div class="findings-list" id="customFindingsList"></div>
     </div>
 
+    <div class="section">
+      <h2>Tests <span class="optional-tag">optional</span></h2>
+      <div class="tests-grid">
+        <div class="test-card" id="treadCard"></div>
+        <div class="test-card" id="compressionCard"></div>
+      </div>
+    </div>
+
     <div class="section" id="suggestedPartsSection" style="display:none;">
       <h2>Suggested parts</h2>
       <p style="margin:0 0 14px; color:var(--text-dim); font-size:13px;">Anything the mechanical checklist marked below its best condition. Fail-tier items are added to the job automatically; advisory items are one click away. (Body/glass/lighting parts from the diagram above are added via the zone popup instead.)</p>
@@ -500,7 +535,9 @@
       renderBodyFindings();
       renderChecklist();
       renderCustomFindings();
+      renderTestCards();
       renderSuggestedParts();
+      loadPreviousTests(job.owned_vehicle_id);
     } catch (err) {
       showError(err.message);
     }
@@ -817,6 +854,8 @@
       }
     });
 
+    candidates.push(...testSuggestionCandidates());
+
     console.log('[suggestedParts] mapped candidates:', candidates);
 
     if (candidates.length === 0) {
@@ -836,19 +875,11 @@
         console.log('[suggestedParts]', c.serviceName, '->', materials.length, 'material(s)');
         if (materials.length === 0) continue; // labour-only or unlinked service -- nothing to suggest
 
-        if (c.tier === 'fail') {
-          for (const m of materials) {
-            if (hasJobItem(m.catalogue_item_id)) continue;
-            const full = await getCatalogueItem(m.catalogue_item_id);
-            await addJobItem({
-              jobId, catalogueItem: full, quantity: Number(m.quantity),
-              sourcingChoice: null, performedBy: session ? session.id : null, jobType: 'repair'
-            });
-          }
-          jobItemsForLeg = await listJobItems(jobId, 'repair');
+        if (c.tier === 'fail' && !c.neverAutoAdd) {
+          await ensureSuggestionOnJob(c, materials);
         }
 
-        rows.push({ ...c, materials, present: materials.every((m) => hasJobItem(m.catalogue_item_id)) });
+        rows.push({ ...c, materials, present: materials.every((m) => jobHasEnough(m, c)) });
       }
 
       if (rows.length === 0) {
@@ -862,6 +893,31 @@
       console.error('[suggestedParts] failed:', err);
       showError('Suggested parts failed to load: ' + err.message);
     }
+  }
+
+  // A suggestion's parts count as on the job once the job has at least the
+  // quantity it asks for (tyres: one per worn/failed wheel). Adding tops an
+  // existing line up rather than adding a duplicate.
+  function suggestionQuantity(m, c) {
+    return Number(c.quantity ?? m.quantity);
+  }
+  function jobHasEnough(m, c) {
+    const line = jobItemsForLeg.find((ji) => ji.catalogue_item_id === m.catalogue_item_id);
+    return !!line && Number(line.quantity) >= suggestionQuantity(m, c);
+  }
+  async function ensureSuggestionOnJob(c, materials) {
+    const performedBy = session ? session.id : null;
+    for (const m of materials) {
+      const wanted = suggestionQuantity(m, c);
+      const line = jobItemsForLeg.find((ji) => ji.catalogue_item_id === m.catalogue_item_id);
+      if (!line) {
+        const full = await getCatalogueItem(m.catalogue_item_id);
+        await addJobItem({ jobId, catalogueItem: full, quantity: wanted, sourcingChoice: null, performedBy, jobType: 'repair' });
+      } else if (c.quantity != null && Number(line.quantity) < wanted) {
+        await updateJobItemQuantity(line.id, m.catalogue_item_id, wanted, Number(line.quantity), performedBy, jobId);
+      }
+    }
+    jobItemsForLeg = await listJobItems(jobId, 'repair');
   }
 
   // Suggestions never check stock before suggesting or auto-adding (this
@@ -896,9 +952,9 @@
     const list = document.getElementById('suggestedPartsList');
     list.innerHTML = rows.map((row) => {
       const materialsText = row.materials
-        .map((m) => `${m.quantity}x ${m.catalogue_items?.name || 'Item'}${stockNote(m.catalogue_items)}`)
+        .map((m) => `${row.quantity ?? m.quantity}x ${m.catalogue_items?.name || 'Item'}${stockNote(m.catalogue_items)}`)
         .join(', ');
-      const isFail = row.tier === 'fail';
+      const isFail = row.tier === 'fail' && !row.neverAutoAdd;
       const tierLabel = isFail ? 'Required' : 'Suggested';
       const tierColor = isFail ? 'var(--red)' : 'var(--amber)';
       const status = row.present
@@ -922,14 +978,7 @@
         const row = rows.find((r) => r.key === btn.dataset.key);
         if (!row) return;
         try {
-          for (const m of row.materials) {
-            if (hasJobItem(m.catalogue_item_id)) continue;
-            const full = await getCatalogueItem(m.catalogue_item_id);
-            await addJobItem({
-              jobId, catalogueItem: full, quantity: Number(m.quantity),
-              sourcingChoice: null, performedBy: session ? session.id : null, jobType: 'repair'
-            });
-          }
+          await ensureSuggestionOnJob(row, row.materials);
           await renderSuggestedParts();
         } catch (err) {
           showError(err.message);
@@ -937,6 +986,199 @@
       });
     });
   }
+
+  // --- Optional tests: tread depth + compression (sql/061) ---
+  // Mechanics copy the readings off the in-game gauges; every box re-tiers as
+  // they type, the whole reading set saves when a box is left, and Enter
+  // jumps to the next box. Thresholds and the pass/fail maths live in
+  // js/inspection.js (summariseTread / summariseCompression).
+  const TEST_KINDS = {
+    tread: {
+      column: 'tread_depth', cardId: 'treadCard', title: 'Tread Depth', icon: '🛞',
+      countKey: 'wheels', counts: [2, 4, 6], countLabel: (n) => `${n} wheels`, defaultCount: 4,
+      hint: 'Copy each wheel off the in-game Tread Depth Gauge, in 32nds of an inch (e.g. 9.5).',
+      step: '0.1', unit: '/32"', cols: 'cols-2',
+      summarise: summariseTread,
+      boxLabel: (sum, i) => sum.labels[i],
+      boxSub: (v) => (v === null ? '' : `${treadPercent(v)}%`),
+      summary: (sum) => [['Min', formatTread(sum.min)], ['Avg', sum.avg === null ? '—' : formatTread(sum.avg)]],
+      previousText: (sum) => `min ${formatTread(sum.min)}, avg ${formatTread(sum.avg)}`
+    },
+    compression: {
+      column: 'compression', cardId: 'compressionCard', title: 'Compression Test', icon: '🔧',
+      countKey: 'cylinders', counts: Array.from({ length: COMPRESSION_MAX_CYLINDERS }, (_, i) => i + 1),
+      countLabel: (n) => `${n} cylinder${n === 1 ? '' : 's'}`, defaultCount: 4,
+      hint: 'Copy each cylinder\'s PSI off the in-game Compression Tester.',
+      step: '1', unit: 'PSI', cols: 'cols-4',
+      summarise: summariseCompression,
+      boxLabel: (sum, i) => `Cyl ${i + 1}`,
+      boxSub: () => '',
+      summary: (sum) => [['Avg', sum.avg === null ? '—' : `${sum.avg} PSI`], ['Spread', sum.spread === null ? '—' : `${sum.spread}%`]],
+      previousText: (sum) => `avg ${sum.avg} PSI, ${sum.spread}% spread`
+    }
+  };
+  let previousTests = { tread: null, compression: null };
+
+  async function loadPreviousTests(ownedVehicleId) {
+    try {
+      previousTests = await getPreviousVehicleTests(ownedVehicleId, inspection.id);
+      renderTestCards();
+    } catch (err) {
+      console.warn('[tests] previous results failed to load:', err);
+    }
+  }
+
+  function renderTestCards() {
+    Object.keys(TEST_KINDS).forEach(renderTestCard);
+  }
+
+  function tierStatusColor(tier) {
+    return tier ? TIER_COLORS[tier] : 'var(--text-dim)';
+  }
+
+  function previousTestLine(kind) {
+    const prev = previousTests[kind];
+    if (!prev) return '';
+    const sum = TEST_KINDS[kind].summarise(prev.test);
+    if (!sum.entered) return '';
+    const when = prev.date ? new Date(prev.date).toLocaleDateString() : '';
+    return `<div class="test-note">Last visit (Job #${prev.jobNumber ?? '?'}${when ? `, ${when}` : ''}): ${TEST_KINDS[kind].previousText(sum)} — <span style="color:${tierStatusColor(sum.tier)};">${sum.statusLabel}</span></div>`;
+  }
+
+  function renderTestCard(kind) {
+    const cfg = TEST_KINDS[kind];
+    const card = document.getElementById(cfg.cardId);
+    const test = inspection[cfg.column];
+    const head = `<span>${cfg.icon}</span><span class="title">${cfg.title}</span>`;
+
+    if (!test) {
+      // Not recorded yet: pick wheels/cylinders to start. Prefill the count
+      // from this vehicle's last test where there is one.
+      const prevCount = previousTests[kind]?.test?.[cfg.countKey];
+      const startCount = cfg.counts.includes(Number(prevCount)) ? Number(prevCount) : cfg.defaultCount;
+      card.innerHTML = `
+        <div class="test-head">${head}</div>
+        <div class="hint">${cfg.hint}</div>
+        <div class="start-row">
+          <select class="count-select">${cfg.counts.map((n) => `<option value="${n}" ${n === startCount ? 'selected' : ''}>${cfg.countLabel(n)}</option>`).join('')}</select>
+          <button type="button" class="deselect-btn start-btn">+ Record ${cfg.title.toLowerCase()}</button>
+        </div>
+        ${previousTestLine(kind)}
+      `;
+      card.querySelector('.start-btn').addEventListener('click', () => {
+        const count = Number(card.querySelector('.count-select').value);
+        saveTest(kind, { [cfg.countKey]: count, readings: Array(count).fill(null) }, true);
+      });
+      return;
+    }
+
+    const sum = cfg.summarise(test);
+    const count = sum[cfg.countKey];
+    card.innerHTML = `
+      <div class="test-head">
+        ${head}
+        <select class="count-select" title="${kind === 'tread' ? 'Wheels' : 'Cylinders'}">${cfg.counts.map((n) => `<option value="${n}" ${n === count ? 'selected' : ''}>${cfg.countLabel(n)}</option>`).join('')}</select>
+        <button type="button" class="deselect-btn clear-btn" title="Remove this test from the inspection">Clear</button>
+      </div>
+      <div class="test-boxes ${count <= 2 ? 'cols-2' : cfg.cols}">
+        ${sum.readings.map((v, i) => `
+          <div class="test-box" data-i="${i}">
+            <div class="box-label">${cfg.boxLabel(sum, i)}</div>
+            <input type="number" inputmode="decimal" min="0" step="${cfg.step}" value="${v ?? ''}" placeholder="${cfg.unit}" data-i="${i}" />
+            <div class="box-sub"></div>
+          </div>`).join('')}
+      </div>
+      <div class="test-summary"></div>
+      <div class="test-diag"></div>
+      ${previousTestLine(kind)}
+    `;
+
+    const inputs = [...card.querySelectorAll('.test-boxes input')];
+    const currentReadings = () => inputs.map((inp) => (inp.value.trim() === '' ? null : Number(inp.value)));
+    const refresh = () => updateTestCardDisplay(kind, card, { [cfg.countKey]: count, readings: currentReadings() });
+    inputs.forEach((inp, i) => {
+      inp.addEventListener('input', refresh);
+      inp.addEventListener('change', () => saveTest(kind, { [cfg.countKey]: count, readings: currentReadings() }, false));
+      inp.addEventListener('keydown', (evt) => {
+        if (evt.key !== 'Enter') return;
+        evt.preventDefault();
+        (inputs[i + 1] || inp).focus();
+        if (!inputs[i + 1]) inp.blur();
+      });
+    });
+    card.querySelector('.count-select').addEventListener('change', (evt) => {
+      const n = Number(evt.target.value);
+      const readings = currentReadings().slice(0, n);
+      while (readings.length < n) readings.push(null);
+      saveTest(kind, { [cfg.countKey]: n, readings }, true);
+    });
+    card.querySelector('.clear-btn').addEventListener('click', () => {
+      if (sum.entered && !confirm(`Clear the ${cfg.title.toLowerCase()} readings?`)) return;
+      saveTest(kind, null, true);
+    });
+    refresh();
+  }
+
+  // Re-tiers the boxes and the summary in place, so typing never loses focus.
+  function updateTestCardDisplay(kind, card, test) {
+    const cfg = TEST_KINDS[kind];
+    const sum = cfg.summarise(test);
+    card.querySelectorAll('.test-box').forEach((box) => {
+      const i = Number(box.dataset.i);
+      box.className = `test-box${sum.tiers[i] ? ` tier-${sum.tiers[i]}` : ''}`;
+      box.querySelector('.box-sub').textContent = cfg.boxSub(sum.readings[i]);
+    });
+    const cells = [...cfg.summary(sum), ['Status', sum.statusLabel ? `<span style="color:${tierStatusColor(sum.tier)};">${sum.statusLabel}</span>` : '—']];
+    card.querySelector('.test-summary').innerHTML = cells.map(([k, v]) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+    const notes = [];
+    if (sum.entered && !sum.complete) notes.push(`<div class="test-note">${sum.entered} of ${sum.readings.length} read</div>`);
+    if (kind === 'compression' && sum.diagnosis) notes.push(`<div class="test-note diag">${sum.diagnosis}</div>`);
+    if (kind === 'tread' && (sum.failed.length || sum.worn.length)) {
+      notes.push(`<div class="test-note diag">${[
+        sum.failed.length ? `Below ${TREAD_FAIL_BELOW}/32" (replace): ${sum.failed.join(', ')}` : '',
+        sum.worn.length ? `Below ${TREAD_WORN_BELOW}/32" (worn): ${sum.worn.join(', ')}` : ''
+      ].filter(Boolean).join('<br>')}</div>`);
+    }
+    card.querySelector('.test-diag').innerHTML = notes.join('');
+  }
+
+  async function saveTest(kind, value, rerender) {
+    clearError();
+    const cfg = TEST_KINDS[kind];
+    try {
+      await saveInspectionTest(inspection.id, cfg.column, value);
+      inspection[cfg.column] = value;
+      if (rerender) renderTestCard(kind);
+      renderSuggestedParts();
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  // Feeds renderSuggestedParts: worn/failed tyres -> Base Tire (via the
+  // existing "Change Tire" service), one per wheel; failed tyres are added
+  // automatically like any failed checklist item. A weak compression result
+  // only ever *suggests* a head gasket -- the reading alone can't tell a
+  // gasket from rings/valves, so it is never auto-added.
+  function testSuggestionCandidates() {
+    const out = [];
+    const tread = inspection?.tread_depth ? summariseTread(inspection.tread_depth) : null;
+    if (tread && tread.failed.length) {
+      out.push({ key: 'test_tread_fail', label: 'Tread Depth', conditionText: `below ${TREAD_FAIL_BELOW}/32" on ${tread.failed.join(', ')}`,
+        tier: 'fail', serviceName: 'Change Tire — Front Left', quantity: tread.failed.length });
+    }
+    if (tread && tread.worn.length) {
+      out.push({ key: 'test_tread_worn', label: 'Tread Depth', conditionText: `worn on ${tread.worn.join(', ')}${tread.failed.length ? ' (replace these too)' : ''}`,
+        tier: 'advisory', serviceName: 'Change Tire — Front Left', quantity: tread.failed.length + tread.worn.length });
+    }
+    const comp = inspection?.compression ? summariseCompression(inspection.compression) : null;
+    if (comp && comp.tier && comp.tier !== 'ok') {
+      out.push({ key: 'test_compression', label: 'Compression', conditionText: `${comp.statusLabel}, low on cyl ${comp.weakCylinders.join(', ')}`,
+        tier: comp.tier, neverAutoAdd: true, serviceName: 'Head Gasket Replacement' });
+    }
+    return out;
+  }
+
 
   // --- Custom findings (anything off the standard checklist) ---
   function populateSelect(id, options, valueKey, labelKey) {
