@@ -115,6 +115,90 @@ const ENGINE_STYLE_PROFILES = {
     head: ['Ported & Polished Forged Aluminum'], cam: 'Race Camshaft', tappet: 'Solid Roller Tappet Set',
     spring: 'Billet Steel', timing: 'Timing Gears', plugs: 'Iridium Spark Plug' }
 };
+// Which engine type suits each style, with reasons a mechanic can pass on
+// to the customer. Real-world engine practice, kept consistent with this
+// builder's own limits (OHV only takes up to a Street Perf cam, so it's
+// never recommended for Race/Drag; Rotary's apex seals rule it out for the
+// mileage-heavy styles). `also` = sensible alternatives with their trade-off.
+const ENGINE_TYPE_ADVICE = {
+  economy: { pick: 'SOHC', reasons: [
+    'One camshaft per bank and fewer valves: fewer parts to buy and fewer to wear out.',
+    'Pulls well at low revs, which is where an everyday car spends its time.',
+    'The cheapest overhead-cam engine to build and service.'
+  ], also: { OHV: 'Even simpler and cheaper, if top-end power doesn\'t matter.' } },
+  comfort: { pick: 'OHV', reasons: [
+    'Big, relaxed torque low down: smooth and quiet without needing revs.',
+    'Compact pushrod design with a self-adjusting hydraulic valvetrain.',
+    'The classic luxury-cruiser choice, like the big pushrod V8s.'
+  ], also: { DOHC: 'More refined at higher revs, at a higher build cost.' } },
+  street: { pick: 'DOHC', reasons: [
+    'Four valves per cylinder, so it breathes well across the whole rev range.',
+    'Revs freely for fun on the road but stays easy-going in traffic.',
+    'The modern all-rounder that most performance road cars use.'
+  ], also: { SOHC: 'A cheaper build that still revs well.' } },
+  performance: { pick: 'DOHC', reasons: [
+    'The highest rev ceiling and the most aggressive cams we can fit.',
+    'The best airflow, so more power from the same size engine.',
+    'Separate intake and exhaust cams give a strong, wide powerband.'
+  ], also: { Rotary: 'Very light, smooth and loves revs, but thirstier, and the apex seals need looking after.' } },
+  durability: { pick: 'OHV', reasons: [
+    'The fewest moving parts in the top end, so less to go wrong.',
+    'Low-revving and unstressed, so everything lasts longer.',
+    'Simple to inspect and repair.'
+  ], also: { SOHC: 'Still simple, with a bit more top-end power.' } },
+  heavy_machinery: { pick: 'OHV', reasons: [
+    'Maximum low-rpm torque for pulling heavy loads.',
+    'Rugged and compact: the go-to for trucks and work vehicles.',
+    'Cheap to keep running.'
+  ], also: { SOHC: 'A little more power up top, still simple.' } },
+  fleet: { pick: 'DOHC', reasons: [
+    'Holds sustained high revs without valve float: four light valves per cylinder instead of two heavy ones.',
+    'Runs cooler and more efficiently at constant speed, so it lasts for big mileage.',
+    'Pairs with the heavy-duty bearings and gear timing in this build.'
+  ], also: { SOHC: 'Fewer parts to service, if the vehicle rarely runs at high revs.' } },
+  offroad: { pick: 'OHV', reasons: [
+    'Strong torque right off idle for crawling and climbing.',
+    'Compact and simple, so easy to fix far from a workshop.',
+    'Copes with water, mud and abuse.'
+  ], also: { SOHC: 'A bit more top-end for faster trails.' } },
+  rally: { pick: 'DOHC', reasons: [
+    'Responsive, high-revving power out of every corner.',
+    'Handles boost and long stages at full throttle.',
+    'What real rally engines use: compact four-valve turbo engines.'
+  ], also: { SOHC: 'A tougher, simpler option on a budget.' } },
+  drift: { pick: 'DOHC', reasons: [
+    'Holds high revs through long slides without running out of breath.',
+    'Instant throttle response for controlling the angle.',
+    'Takes the race cams and valvetrain this build uses.'
+  ], also: {
+    Rotary: 'Light, revs very high and a drift icon, but the apex seals wear under sustained abuse.',
+    OHV: 'Big pushrod V8 torque for easy smoke, but we can only fit up to a street cam.'
+  } },
+  drag: { pick: 'DOHC', reasons: [
+    'Takes the most aggressive cams and the solid-roller valvetrain we offer.',
+    'Moves the most air at high revs, which is what big boost needs.',
+    'The highest power potential for short, all-out runs.'
+  ], also: { OHV: 'The old-school pushrod V8: huge torque and compact, but limited to a street cam in our builds.' } },
+  race: { pick: 'DOHC', reasons: [
+    'The highest rpm and most aggressive valvetrain: the most power per litre.',
+    'Lightweight valve gear for fast, precise response.',
+    'The standard in modern motorsport.'
+  ], also: { Rotary: 'Tiny, light and smooth at high revs (it has won Le Mans), but the apex seals need frequent care.' } }
+};
+
+function engineTypeAdvice(style) {
+  return ENGINE_TYPE_ADVICE[style] || null;
+}
+
+// Short text the mechanic can paste to the customer.
+function engineTypeAdviceText(style) {
+  const advice = engineTypeAdvice(style);
+  if (!advice) return '';
+  const styleLabel = ENGINE_STYLE_PROFILES[style]?.label || style;
+  return `For a ${styleLabel} build we'd recommend a ${advice.pick} engine:\n`
+    + advice.reasons.map((r) => `- ${r}`).join('\n');
+}
+
 const ENGINE_STYLE_OPTIONS = Object.entries(ENGINE_STYLE_PROFILES).map(([value, p]) => ({ value, label: p.label, hint: p.hint }));
 
 // Which configurations each engine type can be built as. Rotary only ever
