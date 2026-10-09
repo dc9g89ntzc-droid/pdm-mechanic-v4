@@ -178,6 +178,8 @@
   .low-stock-banner .lsb-add:hover { border-color: var(--amber); color: var(--amber); }
   .low-stock-banner .lsb-toggle { background: none; border: none; color: var(--amber); font-size: 12px; cursor: pointer; padding: 8px 0 0; text-decoration: underline; }
   .shop-section { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .shop-section .send-to { font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--text-dim); display: flex; align-items: center; gap: 6px; font-weight: 400; }
+  .shop-section .send-to select { width: auto; max-width: 260px; padding: 5px 8px; font-size: 12px; background: var(--bg); color: var(--text); border: 1px solid var(--panel-border); border-radius: 6px; font-family: inherit; }
   .shop-section h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 0 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .transfer-cart-btn {
     background: transparent; border: 1px solid var(--panel-border); color: var(--text);
@@ -358,7 +360,7 @@
   <div class="modal-backdrop" id="newPurchaseBackdrop">
     <div class="modal">
       <h2>New purchase</h2>
-      <p class="hint">A cart is for one place only. You can have one active purchase at a time.</p>
+      <p class="hint">A cart is for one place only. You can have several on the go, e.g. one at the autoparts store and one at the scrapyard.</p>
       <div class="source-options" id="newPurchaseSources"></div>
       <div class="np-field">
         <label for="newPurchaseLocation">Put bought items into</label>
@@ -464,10 +466,6 @@
       const carts = await listActiveCarts();
       // Mine first, then oldest first -- the ones that have been sitting longest.
       carts.sort((a, b) => (cartIsMine(b) - cartIsMine(a)) || a.created_at.localeCompare(b.created_at));
-      const mine = carts.find(cartIsMine);
-      const newBtn = document.getElementById('newPurchaseBtn');
-      newBtn.textContent = mine ? `Open my cart (#${mine.cart_number})` : '+ New Purchase';
-      newBtn.dataset.cartId = mine ? mine.id : '';
       document.getElementById('tabBuyBtn').textContent = carts.length ? `Active Purchases (${carts.length})` : 'Active Purchases';
       document.getElementById('boardTitle').textContent = carts.length
         ? `${carts.length} purchase${carts.length === 1 ? '' : 's'} in progress`
@@ -531,11 +529,7 @@
     newPurchaseBackdrop.classList.add('open');
   }
 
-  document.getElementById('newPurchaseBtn').addEventListener('click', (e) => {
-    const mineId = e.currentTarget.dataset.cartId;
-    if (mineId) openCart(mineId);
-    else openNewPurchase();
-  });
+  document.getElementById('newPurchaseBtn').addEventListener('click', () => openNewPurchase());
   document.getElementById('newPurchaseCancelBtn').addEventListener('click', () => newPurchaseBackdrop.classList.remove('open'));
   newPurchaseBackdrop.addEventListener('click', (e) => { if (e.target === newPurchaseBackdrop) newPurchaseBackdrop.classList.remove('open'); });
 
@@ -716,24 +710,50 @@
     }
   }
 
-  // Shopping list "→ Cart": into *your* active cart. No cart yet -> start one
-  // for the store the item is listed under, then add it.
+  // Shopping list "→ Cart": into whichever of *your* carts the section's
+  // "Send to" picker says (sql/064 allows several), or a new one. The picker
+  // defaults to your most recently used cart for that store.
   const SECTION_SOURCE = { autoparts: 'autoparts_store', scrapyard: 'scrapyard' };
+  let myCarts = [];
+  const sectionCartChoice = {}; // section key -> cart id | 'new', for this visit
+
+  function defaultCartForSection(sectionKey) {
+    const chosen = sectionCartChoice[sectionKey];
+    if (chosen === 'new' || myCarts.some((c) => c.id === chosen)) return chosen;
+    const source = SECTION_SOURCE[sectionKey];
+    const match = myCarts.find((c) => !source || c.source_type === source); // newest first
+    return match ? match.id : 'new';
+  }
+
+  function cartPickerHtml(sectionKey) {
+    const selected = defaultCartForSection(sectionKey);
+    const opts = myCarts.map((c) => {
+      const n = (c.purchase_cart_lines || []).length;
+      return `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>#${c.cart_number} · ${sourceLabel(c.source_type)} · ${n} item${n === 1 ? '' : 's'}</option>`;
+    });
+    const newLabel = SECTION_SOURCE[sectionKey] ? `+ New ${sourceLabel(SECTION_SOURCE[sectionKey])} cart` : '+ New cart';
+    opts.push(`<option value="new" ${selected === 'new' ? 'selected' : ''}>${newLabel}</option>`);
+    return `<label class="send-to">Send to <select class="send-to-select" data-section="${sectionKey}">${opts.join('')}</select></label>`;
+  }
+
   async function addToMyCart(item, qty, sectionKey) {
-    let cart = await getMyActiveCart(session?.id);
-    if (!cart) {
+    const target = defaultCartForSection(sectionKey);
+    if (target === 'new') {
       return new Promise((resolve) => {
         openNewPurchase(SECTION_SOURCE[sectionKey], async (created) => {
           await addCartLine(created.id, item, qty, session?.id);
+          sectionCartChoice[sectionKey] = created.id;
           resolve(created);
         });
       });
     }
+    const cart = myCarts.find((c) => c.id === target);
     if (!cartSourceSellsItem(cart.source_type, item)
-        && !confirm(`Your active cart is a ${sourceLabel(cart.source_type)} purchase, but "${item.name}" isn't listed as sold there. Add it anyway?`)) {
+        && !confirm(`Cart #${cart.cart_number} is a ${sourceLabel(cart.source_type)} purchase, but "${item.name}" isn't listed as sold there. Add it anyway?`)) {
       return null;
     }
     await addCartLine(cart.id, item, qty, session?.id);
+    sectionCartChoice[sectionKey] = cart.id;
     return cart;
   }
 
@@ -1035,7 +1055,8 @@
   async function loadShoppingList() {
     const container = document.getElementById('shopListSections');
     try {
-      const rows = await listShoppingList();
+      const [rows, carts] = await Promise.all([listShoppingList(), listMyActiveCarts(session?.id)]);
+      myCarts = carts;
       renderShopListSections(rows);
       renderShopListTotal(rows);
       await renderLowStockSuggestions(rows);
@@ -1172,11 +1193,15 @@
       `).join('');
       return `
         <div class="shop-section">
-          <h3>${SHOP_SECTION_TITLES[key]}</h3>
+          <h3><span>${SHOP_SECTION_TITLES[key]}</span>${sections[key].some((r) => !r.bought) ? cartPickerHtml(key) : ''}</h3>
           ${rowsHtml}
         </div>
       `;
     }).join('');
+
+    container.querySelectorAll('.send-to-select').forEach((sel) => {
+      sel.addEventListener('change', () => { sectionCartChoice[sel.dataset.section] = sel.value; });
+    });
 
     // One item at a time into the purchase cart, at its list quantity --
     // stays on the list so several can be picked in a row.
@@ -1191,7 +1216,7 @@
           if (!cart) { btn.disabled = false; return; }
           await removeFromShoppingList(r.id);
           document.getElementById('shopListFlash').textContent =
-            `${r.quantity} × ${r.catalogue_items?.name || 'item'} moved to your cart (#${cart.cart_number}, Active Purchases tab).`;
+            `${r.quantity} × ${r.catalogue_items?.name || 'item'} moved to cart #${cart.cart_number} (Active Purchases tab).`;
           await loadShoppingList();
         } catch (err) {
           alert(`Failed to move to cart: ${err.message}`);

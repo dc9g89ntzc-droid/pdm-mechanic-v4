@@ -33,15 +33,17 @@ async function getCart(cartId) {
   return data;
 }
 
-async function getMyActiveCart(mechanicId) {
+// Your active carts, most recently used first (adding a line bumps
+// updated_at) -- several at once since sql/064, e.g. one per store.
+async function listMyActiveCarts(mechanicId) {
   const { data, error } = await sb
     .from('purchase_carts')
-    .select('id')
+    .select('id, cart_number, source_type, location, updated_at, purchase_cart_lines ( id )')
     .eq('assigned_to', mechanicId)
     .eq('status', 'active')
-    .maybeSingle();
+    .order('updated_at', { ascending: false });
   if (error) throw new Error(error.message);
-  return data ? getCart(data.id) : null;
+  return data || [];
 }
 
 async function createCart({ sourceType, location, notes, mechanicId }) {
@@ -53,10 +55,7 @@ async function createCart({ sourceType, location, notes, mechanicId }) {
     })
     .select('id')
     .single();
-  if (error) {
-    if (error.code === '23505') throw new Error('You already have an active purchase -- complete or cancel it first.');
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
   return getCart(data.id);
 }
 
