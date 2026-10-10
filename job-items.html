@@ -160,6 +160,17 @@
   .engine-footer .totals { font-size: 13px; color: var(--text-dim); }
   .engine-footer .totals strong { color: var(--text); font-size: 15px; }
   .build-panel h2 { font-size: 14px; margin: 0 0 12px; }
+  .wl-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .wl-cols h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); margin: 0 0 8px; }
+  .wl-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+  .wl-list li { padding: 6px 0; border-bottom: 1px solid var(--panel-border); display: flex; gap: 8px; align-items: baseline; line-height: 1.4; }
+  .wl-list li:last-child { border-bottom: none; }
+  .wl-list .wl-none { color: var(--text-dim); }
+  .wl-tag { flex: 0 0 auto; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 5px; }
+  .wl-tag.fail { background: rgba(216,31,39,0.18); color: #f0888c; }
+  .wl-tag.advisory { background: rgba(240,165,44,0.18); color: var(--amber); }
+  .wl-tag.service { background: rgba(124,58,237,0.18); color: #a78bfa; }
+  .wl-qty { flex: 0 0 auto; font-weight: 700; min-width: 28px; }
   .build-panel .build-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
   .attached-service-row {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -302,6 +313,10 @@
     <div class="flow-sidebar" id="flowSidebar"></div>
     <div class="layout" style="flex: 1 1 auto; padding: 0;">
       <div style="flex: 1 1 560px; min-width: 0;">
+        <div class="build-panel" id="workListPanel" style="display:none;">
+          <h2>Work to complete</h2>
+          <div id="workListBody"></div>
+        </div>
         <div class="build-panel" id="servicesPanel" style="display:none;">
           <h2>Services</h2>
           <div id="attachedServicesList"></div>
@@ -397,6 +412,7 @@
 <script src="js/performanceBuild.js"></script>
 <script src="js/engineBuilder.js"></script>
 <script src="js/storedEngines.js"></script>
+<script src="js/inspection.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -816,6 +832,7 @@
       await labourRatesReady;
       const lines = await listJobItems(jobId, jobType);
       lastQuoteLines = lines;
+      if (jobType === 'repair') renderWorkList();
       if (jobType === 'engine_building') {
         document.getElementById('engineApplyBtn').textContent = lines.length ? 'Replace engine on job' : 'Add engine to job';
       }
@@ -1444,6 +1461,66 @@
     });
   }
 
+
+  function wlEsc(value) {
+    return String(value ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  // Repair "Work to complete" (Joanna, 2026-10-10): once the repair quote is
+  // agreed, one read-only list of what the inspection flagged plus the parts
+  // and services to fit, so the mechanic doesn't have to flip back to the
+  // inspection. Failed items first.
+  async function renderWorkList() {
+    const panel = document.getElementById('workListPanel');
+    if (jobType !== 'repair' || !currentLeg || !MATERIALS_REQUIRED_STATUSES.includes(currentLeg.status)) {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = 'block';
+    const body = document.getElementById('workListBody');
+    body.innerHTML = '<div class="empty-msg">Loading…</div>';
+    try {
+      const [inspection, parts, services] = await Promise.all([
+        getLatestInspectionForJob(jobId), listJobItems(jobId, 'repair'), listJobServices(jobId, 'repair')
+      ]);
+      const findings = inspection ? await listFindings(inspection.id) : [];
+      const work = []; // { tier: 'fail'|'advisory', text }
+
+      findings.filter((f) => f.finding_type === 'body_area' && f.severity).forEach((f) => {
+        work.push({ tier: f.severity === 'minor' ? 'advisory' : 'fail', text: `${bodyZoneLabel(f.area)}: ${severityLabel(f.severity)}` });
+      });
+      findings.filter((f) => f.finding_type === 'mechanical' && ['fail', 'advisory'].includes(f.pass_status)).forEach((f) => {
+        const what = f.item_label
+          ? `${f.item_label}: ${f.condition}`
+          : `${f.area}${f.fault ? ` — ${f.fault}` : ''}${f.condition ? `: ${f.condition}` : ''}${f.recommended_service ? ` (${f.recommended_service})` : ''}`;
+        work.push({ tier: f.pass_status, text: what });
+      });
+      const tread = inspection?.tread_depth ? summariseTread(inspection.tread_depth) : null;
+      if (tread?.failed.length) work.push({ tier: 'fail', text: `Tyres below ${TREAD_FAIL_BELOW}/32": ${tread.failed.join(', ')}` });
+      if (tread?.worn.length) work.push({ tier: 'advisory', text: `Tyres worn: ${tread.worn.join(', ')}` });
+      const comp = inspection?.compression ? summariseCompression(inspection.compression) : null;
+      if (comp?.tier && comp.tier !== 'ok') {
+        work.push({ tier: comp.tier, text: `Compression ${comp.statusLabel.toLowerCase()} on cyl ${comp.weakCylinders.join(', ')}${comp.diagnosis ? ` — ${comp.diagnosis}` : ''}` });
+      }
+      work.sort((a, b) => (a.tier === 'fail' ? 0 : 1) - (b.tier === 'fail' ? 0 : 1));
+
+      const findingsHtml = work.length
+        ? work.map((w) => `<li><span class="wl-tag ${w.tier}">${w.tier === 'fail' ? 'Fix' : 'Advisory'}</span>${wlEsc(w.text)}</li>`).join('')
+        : `<li class="wl-none">${inspection ? 'Nothing flagged at inspection.' : 'No inspection recorded.'}</li>`;
+      const partsHtml = [
+        ...services.map((sv) => `<li><span class="wl-tag service">Service</span>${wlEsc(sv.services?.name || 'Service')}</li>`),
+        ...parts.map((p) => `<li><span class="wl-qty">${Number(p.quantity)}×</span>${wlEsc(p.catalogue_items?.name || 'Item')}</li>`)
+      ].join('') || '<li class="wl-none">No parts on the repair yet.</li>';
+
+      body.innerHTML = `
+        <div class="wl-cols">
+          <div><h3>From the inspection</h3><ul class="wl-list">${findingsHtml}</ul></div>
+          <div><h3>Parts &amp; services to fit</h3><ul class="wl-list">${partsHtml}</ul></div>
+        </div>`;
+    } catch (err) {
+      body.innerHTML = `<div class="empty-msg">Couldn't load the work list: ${wlEsc(err.message)}</div>`;
+    }
+  }
 
   resolveJobType().then(() => {
     renderLegAction();

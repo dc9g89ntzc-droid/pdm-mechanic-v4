@@ -7,11 +7,49 @@ async function listShoppingList() {
     .from('shopping_list_items')
     .select(`
       id, quantity, bought, bought_at, created_at,
-      catalogue_items ( id, name, image_url, purchase_cost, shop_price, available_autoparts, available_scrapyard )
+      catalogue_items ( id, name, image_url, purchase_cost, shop_price, available_autoparts, available_scrapyard,
+                        stock_quantity, stock_shop, stock_autoparts )
     `)
     .order('created_at');
   if (error) throw new Error(error.message);
   return data;
+}
+
+// Parts already promised to open work: on a job still in progress, under a
+// work type that isn't finished yet. They've already come off stock (a part
+// is taken out of stock as it's added to a job), so stock_quantity is what's
+// free; this just says how much is spoken for, and by which jobs.
+// -> { [catalogueItemId]: { quantity, jobNumbers: [] } }
+async function listPromisedQuantities(itemIds) {
+  const ids = [...new Set(itemIds.filter(Boolean))];
+  if (ids.length === 0) return {};
+  const { data: lines, error } = await sb
+    .from('job_items')
+    .select('job_id, job_type, quantity, catalogue_item_id, jobs!inner ( job_number, stage )')
+    .in('catalogue_item_id', ids)
+    .eq('jobs.stage', 'in_progress');
+  if (error) throw new Error(error.message);
+  if (!lines || lines.length === 0) return {};
+
+  const jobIds = [...new Set(lines.map((l) => l.job_id))];
+  const { data: legs, error: legError } = await sb
+    .from('job_legs')
+    .select('job_id, job_type, status')
+    .in('job_id', jobIds);
+  if (legError) throw new Error(legError.message);
+  const finished = new Set((legs || [])
+    .filter((l) => l.status === 'completed' || l.status === 'cancelled')
+    .map((l) => `${l.job_id}|${l.job_type}`));
+
+  const out = {};
+  lines.forEach((l) => {
+    if (finished.has(`${l.job_id}|${l.job_type}`)) return;
+    const entry = out[l.catalogue_item_id] || (out[l.catalogue_item_id] = { quantity: 0, jobNumbers: [] });
+    entry.quantity += Number(l.quantity) || 0;
+    const num = l.jobs?.job_number;
+    if (num != null && !entry.jobNumbers.includes(num)) entry.jobNumbers.push(num);
+  });
+  return out;
 }
 
 // One row per catalogue item -- adding the same item again increases its

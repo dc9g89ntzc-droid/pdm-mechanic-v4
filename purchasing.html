@@ -194,6 +194,9 @@
   .shop-row:last-child { border-bottom: none; }
   .shop-row input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 auto; cursor: pointer; }
   .shop-row .sr-name { flex: 1; min-width: 0; }
+  .shop-row .sr-stock { display: block; font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .shop-row .sr-stock .sr-none { color: var(--amber); }
+  .shop-row .sr-stock .sr-short { color: #f0888c; font-weight: 600; }
   .shop-row.bought .sr-name { text-decoration: line-through; color: var(--text-dim); }
   .shop-row .sr-qty { color: var(--text-dim); flex: 0 0 auto; }
   .shop-row .sr-qty-stepper { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
@@ -715,6 +718,7 @@
   // defaults to your most recently used cart for that store.
   const SECTION_SOURCE = { autoparts: 'autoparts_store', scrapyard: 'scrapyard' };
   let myCarts = [];
+  let promisedByItem = {}; // item id -> { quantity, jobNumbers } on open jobs
   const sectionCartChoice = {}; // section key -> cart id | 'new', for this visit
 
   function defaultCartForSection(sectionKey) {
@@ -1057,6 +1061,12 @@
     try {
       const [rows, carts] = await Promise.all([listShoppingList(), listMyActiveCarts(session?.id)]);
       myCarts = carts;
+      try {
+        promisedByItem = await listPromisedQuantities(rows.filter((r) => !r.bought).map((r) => r.catalogue_items?.id));
+      } catch (err) {
+        console.warn('[shopping list] promised quantities failed:', err);
+        promisedByItem = {};
+      }
       renderShopListSections(rows);
       renderShopListTotal(rows);
       await renderLowStockSuggestions(rows);
@@ -1164,6 +1174,23 @@
   // still exactly one $2,500 payment, not one per item.
   const selectedShopListIds = new Set();
 
+  // Free stock (already net of parts promised to open jobs -- they come off
+  // stock when added to a job), the shop/autoparts split, and what's
+  // promised. Red when stock has gone below zero (jobs need more than we have).
+  function shopRowStockHtml(item) {
+    if (!item || item.stock_quantity === undefined || item.stock_quantity === null) return '';
+    const free = Number(item.stock_quantity) || 0;
+    const promised = promisedByItem[item.id];
+    const split = typeof stockSplitLabel === 'function' ? ` (${stockSplitLabel(item)})` : '';
+    const freeText = free < 0
+      ? `<span class="sr-short">Short ${-free}</span>`
+      : `<span class="${free === 0 ? 'sr-none' : ''}">Free stock ${free}</span>${split}`;
+    const promisedText = promised && promised.quantity > 0
+      ? ` · ${promised.quantity} promised to Job${promised.jobNumbers.length === 1 ? '' : 's'} ${promised.jobNumbers.map((n) => `#${n}`).join(', ')}`
+      : '';
+    return `<span class="sr-stock" title="Free stock already has parts on open jobs taken off.">${freeText}${promisedText}</span>`;
+  }
+
   function renderShopListSections(rows) {
     const container = document.getElementById('shopListSections');
     if (rows.length === 0) {
@@ -1179,7 +1206,7 @@
         <div class="shop-row ${r.bought ? 'bought' : ''}" data-id="${r.id}">
           <input type="checkbox" class="sr-bought" data-id="${r.id}"
             ${r.bought ? 'checked disabled' : (selectedShopListIds.has(r.id) ? 'checked' : '')} />
-          <span class="sr-name">${r.catalogue_items?.name || 'Unknown item'}</span>
+          <span class="sr-name">${r.catalogue_items?.name || 'Unknown item'}${r.bought ? '' : shopRowStockHtml(r.catalogue_items)}</span>
           ${r.bought
             ? `<span class="sr-qty">${r.quantity}x</span>`
             : `<div class="sr-qty-stepper" data-id="${r.id}">
