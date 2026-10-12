@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDM Mechanic Shop — Engine Presets</title>
+<style>
+  :root {
+    --bg: #0c0c0d;
+    --panel: #17181a;
+    --panel-border: #2a2b2e;
+    --text: #f0ebe4;
+    --text-dim: #9c9691;
+    --red: #d81f27;
+    --red-dim: #b8181f;
+    --amber: #f0a52c;
+    --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 8px; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  nav a.active { color: var(--text); background: var(--red); }
+  header .who { color: var(--text-dim); font-size: 13px; }
+  header button, .btn { background: var(--red); border: none; color: white; padding: 10px 18px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-block; }
+  header button.secondary, .btn.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); font-weight: 400; }
+  header button:hover, .btn:hover { background: var(--red-dim); }
+
+  .actions-row { padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px; background: var(--panel); border-bottom: 1px solid var(--panel-border); flex-wrap: wrap; }
+  .actions-row .page-sub { color: var(--text-dim); font-size: 13px; }
+
+  main { padding: 20px 24px 60px; max-width: 900px; margin: 0 auto; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden; font-size: 13px; }
+  thead th { text-align: left; padding: 10px 12px; color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--panel-border); }
+  tbody td { padding: 10px 12px; border-bottom: 1px solid var(--panel-border); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.03); cursor: pointer; }
+  tbody tr.inactive { opacity: 0.5; }
+  .item-name { font-weight: 600; }
+  .item-desc { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; }
+  .badge.active { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.inactive { background: rgba(156,150,145,0.15); color: var(--text-dim); }
+  .empty-msg { color: var(--text-dim); font-size: 13px; padding: 40px; text-align: center; }
+
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); align-items: flex-start; justify-content: center; z-index: 10; overflow-y: auto; padding: 40px 16px; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 24px; width: 100%; max-width: 680px; }
+  .modal h2 { font-size: 16px; margin: 0 0 4px; }
+  .modal h3 { font-size: 13px; margin: 22px 0 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.03em; border-top: 1px solid var(--panel-border); padding-top: 16px; }
+  .modal label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+  .modal input, .modal select, .modal textarea {
+    width: 100%; background: var(--bg); border: 1px solid var(--panel-border); color: var(--text);
+    padding: 9px 10px; border-radius: 8px; font-size: 13px; font-family: inherit;
+  }
+  .modal input[readonly] { color: var(--text-dim); }
+  .modal textarea { resize: vertical; min-height: 44px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+  .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .form-grid .full { grid-column: 1 / -1; }
+  .field { margin-bottom: 4px; }
+  .hint { color: var(--text-dim); font-size: 11px; margin: 4px 0 0; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; }
+  .checkbox-row input { width: auto; }
+  .modal .actions { display: flex; gap: 10px; margin-top: 22px; }
+  .modal .actions button { flex: 1; padding: 10px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .modal .actions .save { background: var(--red); border: none; color: white; font-weight: 600; }
+  .modal .actions .cancel { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
+  .modal .actions .duplicate { background: transparent; border: 1px solid var(--panel-border); color: var(--text); flex: 0 0 auto; padding: 10px 16px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>PDM Mechanic Shop</h1>
+    <nav>
+      <a href="my-dashboard.html">Home</a>
+      <a href="dashboard.html?area=repair">Workshop</a>
+      <a href="checkin.html">New Job</a>
+      <a href="customers.html">Customers</a>
+      <a href="configure.html" class="active">Configure</a>
+      <a href="purchasing.html">Purchasing</a>
+      <a href="reports.html">Reports</a>
+      <a href="logs.html">Logs</a>
+      <a href="staff.html">Staff</a>
+      <a href="payroll.html">Payroll</a>
+      <a href="accounts.html">Accounts</a>
+    </nav>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span class="who" id="whoami"></span>
+      <button class="secondary" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <div class="actions-row">
+    <div class="page-sub">Engine Building's "style" dropdown -- what parts each preset picks by default, and which engine type it recommends.</div>
+    <button class="btn" id="newPresetBtn">+ New Preset</button>
+  </div>
+
+  <main>
+    <table>
+      <thead><tr><th>Preset</th><th>Key</th><th>Order</th><th>Status</th></tr></thead>
+      <tbody id="presetsBody"></tbody>
+    </table>
+  </main>
+
+  <!-- Preset modal -->
+  <div class="modal-backdrop" id="presetModalBackdrop">
+    <div class="modal">
+      <h2 id="presetModalTitle">New preset</h2>
+      <p class="hint" style="margin-bottom:14px;">Part fields take the exact catalogue item name. Where several materials are acceptable, list them comma-separated in preference order -- the first one the catalogue actually has for that engine wins.</p>
+
+      <div class="form-grid">
+        <div class="field full">
+          <label>Label (shown in the style dropdown)</label>
+          <input type="text" id="fLabel" placeholder="e.g. Sports Durable" />
+        </div>
+        <div class="field">
+          <label>Key (stable id -- set once)</label>
+          <input type="text" id="fKey" placeholder="e.g. sports_durable" />
+          <p class="hint" id="fKeyHint"></p>
+        </div>
+        <div class="field">
+          <label>Sort order (lower = earlier in the dropdown)</label>
+          <input type="number" id="fSortOrder" value="0" />
+        </div>
+        <div class="field full">
+          <label>Hint (shown under the dropdown)</label>
+          <textarea id="fHint" placeholder="Short description of the build's character and why."></textarea>
+        </div>
+        <div class="field">
+          <div class="checkbox-row">
+            <input type="checkbox" id="fActive" checked />
+            <label style="margin:0;">Active (shows up in the dropdown)</label>
+          </div>
+        </div>
+      </div>
+
+      <h3>Parts</h3>
+      <div class="form-grid cols-3">
+        <div class="field"><label>Block material(s)</label><input type="text" id="pBlock" placeholder="Cast Aluminum, Cast Iron" /></div>
+        <div class="field"><label>Crankshaft</label><input type="text" id="pCrank" placeholder="Forged" /></div>
+        <div class="field"><label>Connecting rod(s)</label><input type="text" id="pRod" placeholder="H-Beam Forged Steel" /></div>
+        <div class="field"><label>Piston(s)</label><input type="text" id="pPiston" placeholder="Dished Forged Steel" /></div>
+        <div class="field"><label>Ring pack</label><input type="text" id="pRings" placeholder="Steel Performance Ring Pack" /></div>
+        <div class="field"><label>Bearings</label><input type="text" id="pBearings" placeholder="Bi-Metal Race" /></div>
+        <div class="field"><label>Cylinder head(s)</label><input type="text" id="pHead" placeholder="Ported & Polished Forged Steel" /></div>
+        <div class="field"><label>Camshaft</label><input type="text" id="pCam" placeholder="Performance Camshaft" /></div>
+        <div class="field"><label>Tappet set</label><input type="text" id="pTappet" placeholder="Hydraulic Roller Tappet Set" /></div>
+        <div class="field"><label>Valve spring material</label><input type="text" id="pSpring" placeholder="Forged Steel" /></div>
+        <div class="field"><label>Timing system</label><input type="text" id="pTiming" placeholder="Timing Chain Kit" /></div>
+        <div class="field"><label>Spark plug</label><input type="text" id="pPlugs" placeholder="Iridium Spark Plug" /></div>
+      </div>
+
+      <h3>Engine type advice</h3>
+      <div class="form-grid">
+        <div class="field">
+          <label>Recommended valvetrain</label>
+          <select id="aPick">
+            <option value="">(none)</option>
+            <option value="OHV">OHV</option>
+            <option value="SOHC">SOHC</option>
+            <option value="DOHC">DOHC</option>
+            <option value="Rotary">Rotary</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label>Reasons (one per line)</label>
+          <textarea id="aReasons" placeholder="Four valves per cylinder, so it breathes well across the whole rev range."></textarea>
+        </div>
+        <div class="field full">
+          <label>Also suits (one per line, as "TYPE: reason")</label>
+          <textarea id="aAlso" placeholder="SOHC: A cheaper build that still revs well."></textarea>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="cancel" id="presetCancelBtn">Cancel</button>
+        <button class="duplicate" id="presetDuplicateBtn" style="display:none;">Duplicate as new</button>
+        <button class="save" id="presetSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/supabaseClient.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/workshop.js"></script>
+<script src="js/shift.js"></script>
+<script>
+  const session = requireSession();
+  if (session) {
+    document.getElementById('whoami').textContent = `${session.employee_name} (${session.role})`;
+  }
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  applyRoleNav(session);
+
+  let presets = [];
+  let editingId = null; // null while the modal holds a brand-new (unsaved) preset
+
+  function slugify(label) {
+    return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  }
+
+  function splitList(value) {
+    return value.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+
+  async function loadPresets() {
+    const body = document.getElementById('presetsBody');
+    try {
+      const { data, error } = await sb
+        .from('engine_style_profiles')
+        .select('id, key, label, hint, sort_order, active, parts, engine_type_pick, engine_type_reasons, engine_type_also')
+        .order('sort_order');
+      if (error) throw new Error(error.message);
+      presets = data;
+      if (presets.length === 0) {
+        body.innerHTML = '<tr><td colspan="4"><div class="empty-msg">No presets yet.</div></td></tr>';
+        return;
+      }
+      body.innerHTML = presets.map((p) => `
+        <tr class="${p.active ? '' : 'inactive'}" data-id="${p.id}">
+          <td><div class="item-name">${p.label}</div>${p.hint ? `<div class="item-desc">${p.hint}</div>` : ''}</td>
+          <td>${p.key}</td>
+          <td>${p.sort_order}</td>
+          <td><span class="badge ${p.active ? 'active' : 'inactive'}">${p.active ? 'Active' : 'Retired'}</span></td>
+        </tr>
+      `).join('');
+      body.querySelectorAll('tr[data-id]').forEach((tr) => {
+        tr.addEventListener('click', () => openPresetModal(presets.find((p) => p.id === tr.dataset.id)));
+      });
+    } catch (err) {
+      body.innerHTML = `<tr><td colspan="4"><div class="empty-msg">Failed to load presets: ${err.message}</div></td></tr>`;
+    }
+  }
+
+  function clearPresetForm() {
+    document.getElementById('fLabel').value = '';
+    document.getElementById('fKey').value = '';
+    document.getElementById('fKey').readOnly = false;
+    document.getElementById('fKey').dataset.touched = '';
+    document.getElementById('fKeyHint').textContent = 'Auto-filled from the label -- you can adjust it before the first save.';
+    document.getElementById('fSortOrder').value = presets.length ? Math.max(...presets.map((p) => p.sort_order)) + 1 : 0;
+    document.getElementById('fHint').value = '';
+    document.getElementById('fActive').checked = true;
+    ['pBlock', 'pCrank', 'pRod', 'pPiston', 'pRings', 'pBearings', 'pHead', 'pCam', 'pTappet', 'pSpring', 'pTiming', 'pPlugs'].forEach((id) => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('aPick').value = '';
+    document.getElementById('aReasons').value = '';
+    document.getElementById('aAlso').value = '';
+  }
+
+  const ARRAY_PART_FIELDS = { pBlock: 'block', pRod: 'rod', pPiston: 'piston', pHead: 'head' };
+  const TEXT_PART_FIELDS = { pCrank: 'crank', pRings: 'rings', pBearings: 'bearings', pCam: 'cam', pTappet: 'tappet', pSpring: 'spring', pTiming: 'timing', pPlugs: 'plugs' };
+
+  function fillPresetForm(preset) {
+    document.getElementById('fLabel').value = preset.label;
+    document.getElementById('fKey').value = preset.key;
+    document.getElementById('fKey').readOnly = true;
+    document.getElementById('fKeyHint').textContent = 'Locked -- jobs and stored engines already reference this key.';
+    document.getElementById('fSortOrder').value = preset.sort_order;
+    document.getElementById('fHint').value = preset.hint || '';
+    document.getElementById('fActive').checked = preset.active;
+    const parts = preset.parts || {};
+    Object.entries(ARRAY_PART_FIELDS).forEach(([fieldId, key]) => {
+      const v = parts[key];
+      document.getElementById(fieldId).value = Array.isArray(v) ? v.join(', ') : (v || '');
+    });
+    Object.entries(TEXT_PART_FIELDS).forEach(([fieldId, key]) => {
+      document.getElementById(fieldId).value = parts[key] || '';
+    });
+    document.getElementById('aPick').value = preset.engine_type_pick || '';
+    document.getElementById('aReasons').value = (preset.engine_type_reasons || []).join('\n');
+    document.getElementById('aAlso').value = Object.entries(preset.engine_type_also || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+  }
+
+  function readPresetForm() {
+    const parts = {};
+    Object.entries(ARRAY_PART_FIELDS).forEach(([fieldId, key]) => {
+      const list = splitList(document.getElementById(fieldId).value);
+      if (list.length) parts[key] = list;
+    });
+    Object.entries(TEXT_PART_FIELDS).forEach(([fieldId, key]) => {
+      const v = document.getElementById(fieldId).value.trim();
+      if (v) parts[key] = v;
+    });
+
+    const also = {};
+    document.getElementById('aAlso').value.split('\n').map((l) => l.trim()).filter(Boolean).forEach((line) => {
+      const idx = line.indexOf(':');
+      if (idx === -1) return;
+      also[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+    });
+
+    return {
+      label: document.getElementById('fLabel').value.trim(),
+      key: document.getElementById('fKey').value.trim(),
+      hint: document.getElementById('fHint').value.trim() || null,
+      sort_order: Number(document.getElementById('fSortOrder').value) || 0,
+      active: document.getElementById('fActive').checked,
+      parts,
+      engine_type_pick: document.getElementById('aPick').value || null,
+      engine_type_reasons: document.getElementById('aReasons').value.split('\n').map((l) => l.trim()).filter(Boolean),
+      engine_type_also: also
+    };
+  }
+
+  const presetModalBackdrop = document.getElementById('presetModalBackdrop');
+
+  function openPresetModal(preset) {
+    editingId = preset ? preset.id : null;
+    document.getElementById('presetModalTitle').textContent = preset ? preset.label : 'New preset';
+    document.getElementById('presetDuplicateBtn').style.display = preset ? 'block' : 'none';
+    if (preset) fillPresetForm(preset); else clearPresetForm();
+    presetModalBackdrop.classList.add('open');
+  }
+  document.getElementById('newPresetBtn').addEventListener('click', () => openPresetModal(null));
+  document.getElementById('presetCancelBtn').addEventListener('click', () => presetModalBackdrop.classList.remove('open'));
+  presetModalBackdrop.addEventListener('click', (e) => { if (e.target === presetModalBackdrop) presetModalBackdrop.classList.remove('open'); });
+
+  document.getElementById('fLabel').addEventListener('input', () => {
+    const keyField = document.getElementById('fKey');
+    if (!editingId && !keyField.dataset.touched) keyField.value = slugify(document.getElementById('fLabel').value);
+  });
+  document.getElementById('fKey').addEventListener('input', (e) => { e.target.dataset.touched = '1'; });
+
+  // Clones everything onto a brand-new (unsaved) preset -- key unlocks and
+  // needs a new value, since the original's key may already be on real jobs.
+  document.getElementById('presetDuplicateBtn').addEventListener('click', () => {
+    const source = readPresetForm();
+    editingId = null;
+    document.getElementById('presetModalTitle').textContent = `${source.label} (copy)`;
+    document.getElementById('presetDuplicateBtn').style.display = 'none';
+    document.getElementById('fLabel').value = `${source.label} (copy)`;
+    document.getElementById('fKey').value = '';
+    document.getElementById('fKey').readOnly = false;
+    document.getElementById('fKey').dataset.touched = '';
+    document.getElementById('fKeyHint').textContent = 'Auto-filled from the label -- you can adjust it before the first save.';
+    document.getElementById('fKey').value = slugify(document.getElementById('fLabel').value);
+  });
+
+  document.getElementById('presetSaveBtn').addEventListener('click', async () => {
+    const form = readPresetForm();
+    if (!form.label) { alert('Enter a label.'); return; }
+    if (!form.key) { alert('Enter a key.'); return; }
+    if (!/^[a-z0-9_]+$/.test(form.key)) { alert('Key can only contain lowercase letters, numbers and underscores.'); return; }
+    if (!editingId && presets.some((p) => p.key === form.key)) { alert('That key is already used by another preset.'); return; }
+
+    const btn = document.getElementById('presetSaveBtn');
+    btn.disabled = true;
+    try {
+      if (editingId) {
+        const { key, ...updateFields } = form; // key is locked once created
+        const { error } = await sb.from('engine_style_profiles').update(updateFields).eq('id', editingId);
+        if (error) throw new Error(error.message);
+        logActivity({
+          actorId: session?.id, action: 'engine_preset_updated', entityType: 'engine_style_profile', entityId: editingId,
+          summary: `${session?.employee_name || 'Someone'} updated engine preset "${form.label}"`
+        });
+      } else {
+        const { data, error } = await sb.from('engine_style_profiles').insert(form).select('id').single();
+        if (error) throw new Error(error.message);
+        logActivity({
+          actorId: session?.id, action: 'engine_preset_created', entityType: 'engine_style_profile', entityId: data.id,
+          summary: `${session?.employee_name || 'Someone'} created engine preset "${form.label}" (${form.key})`
+        });
+      }
+      presetModalBackdrop.classList.remove('open');
+      await loadPresets();
+    } catch (err) {
+      alert(`Failed to save: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // hasAreaAccess is DB-backed (role_permissions, sql/027/029) -- real
+  // enforcement is RLS, this just decides what to render. Reuses the
+  // 'services' area (same as services.html) -- engine presets are a
+  // configured-recipe admin tool, same domain, no new permission area.
+  (async () => {
+    if (!(await hasAreaAccess(session, 'services'))) {
+      document.querySelector('.actions-row').remove();
+      document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px;">This page is restricted to your role.</div>';
+      return;
+    }
+    loadPresets();
+  })();
+</script>
+</body>
+</html>

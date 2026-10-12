@@ -34,8 +34,9 @@
 //   rings    standard < steel performance < moly-coated race (boost/heat)
 //   bearings aluminium-tin = OEM economy; tri-metal = heavy-duty load
 //            bearing; bi-metal race = performance/race
-//   heads    iron = heavy duty; aluminium otherwise (steel heads aren't a
-//            real thing); ported & polished for performance styles
+//   heads    iron = heavy duty; aluminium for most builds; forged steel is
+//            a genuine tougher-but-heavier ported option (Sports Durable);
+//            ported & polished for performance styles
 //   cams     mild for economy/comfort/durability, torque/tow for low-end
 //            work (off-road, heavy machinery), broad Performance cam for
 //            rally, Race only for drift/drag/race -- always capped by what
@@ -48,163 +49,47 @@
 //            (durability, heavy machinery, drag/race)
 //   plugs    copper = cheapest; platinum = OEM long life; iridium = longest
 //            life and best spark
-const ENGINE_STYLE_PROFILES = {
-  economy: { label: 'Economy', hint: 'Cheapest sensible parts for a reliable daily engine: cast iron, cast aluminium pistons, mild cam.',
-    block: ['Cast Iron', 'Cast Aluminum'], crank: 'Cast', rod: ['I-Beam Powder Metal', 'I-Beam Cast Steel'],
-    piston: ['Flat Top Cast Aluminum'], rings: 'Cast Iron (Standard) Ring Pack', bearings: 'Aluminum-Tin',
-    head: ['Factory Cast Iron', 'Factory Cast Aluminum'], cam: 'Stock/Mild Camshaft', tappet: 'Hydraulic Flat Tappet Set',
-    spring: 'Cast Steel', timing: 'Timing Belt Kit', plugs: 'Copper Standard Spark Plug' },
-  comfort: { label: 'Comfort', hint: 'Smooth, quiet and long-lasting: light aluminium engine, mild cam, self-adjusting valvetrain.',
-    block: ['Cast Aluminum', 'Cast Iron'], crank: 'Cast', rod: ['I-Beam Powder Metal', 'I-Beam Forged Steel'],
-    piston: ['Flat Top Cast Aluminum'], rings: 'Cast Iron (Standard) Ring Pack', bearings: 'Aluminum-Tin',
-    head: ['Factory Cast Aluminum', 'Factory Cast Iron'], cam: 'Stock/Mild Camshaft', tappet: 'Hydraulic Roller Tappet Set',
-    spring: 'Forged Steel', timing: 'Timing Belt Kit', plugs: 'Iridium Spark Plug' },
-  street: { label: 'Street', hint: 'Balanced everyday performance: forged crank and pistons, ported heads, street cam.',
-    block: ['Cast Aluminum', 'Cast Iron'], crank: 'Forged', rod: ['I-Beam Forged Steel', 'H-Beam Forged Steel'],
-    piston: ['Flat Top Forged Aluminum', 'Flat Top Cast Aluminum'], rings: 'Steel Performance Ring Pack', bearings: 'Aluminum-Tin',
-    head: ['Ported & Polished Cast Aluminum'], cam: 'Street Perf Camshaft', tappet: 'Hydraulic Roller Tappet Set',
-    spring: 'Forged Steel', timing: 'Timing Chain Kit', plugs: 'Platinum Spark Plug' },
-  performance: { label: 'Performance', hint: 'Strong all-round power that still lasts: forged internals, high-compression domed pistons, naturally aspirated.',
-    block: ['Cast Aluminum', 'Compacted Graphite Iron', 'Cast Iron'], crank: 'Forged', rod: ['H-Beam Forged Steel'],
-    piston: ['Domed Forged Aluminum'], rings: 'Steel Performance Ring Pack', bearings: 'Bi-Metal Race',
-    head: ['Ported & Polished Forged Aluminum', 'Ported & Polished Cast Aluminum'], cam: 'Performance Camshaft', tappet: 'Hydraulic Roller Tappet Set',
-    spring: 'Billet Steel', timing: 'Timing Chain Kit', plugs: 'Iridium Spark Plug' },
-  // Added 2026-10-12 from a real in-game build Joanna tested on a DOHC
-  // Inline 4 and found both durable and strong: an aluminium block keeps
-  // weight down (the Performance side), but forged STEEL rods, pistons and
-  // a steel ported head carry the load instead of aluminium/titanium (the
-  // Durability side) -- it deliberately doesn't pick a side the way
-  // Performance (all-aluminium) or Durability (iron/CGI, mild cam) do.
-  // Dished pistons assume forced induction, matching the other boosted
-  // styles. Hydraulic roller tappets (not solid) keep it low-maintenance,
-  // which caps the cam just below Race -- Performance Camshaft, same as Rally.
-  sports_durable: { label: 'Sports Durable', hint: 'High horsepower that still takes abuse: aluminium block for weight, forged steel rods/pistons/head for toughness under boost. Splits the difference between Performance and Durability.',
-    block: ['Cast Aluminum', 'Compacted Graphite Iron', 'Cast Iron'], crank: 'Forged', rod: ['H-Beam Forged Steel', 'I-Beam Forged Steel'],
-    piston: ['Dished Forged Steel', 'Dished Cast Steel'], rings: 'Steel Performance Ring Pack', bearings: 'Bi-Metal Race',
-    head: ['Ported & Polished Forged Steel', 'Ported & Polished Forged Aluminum'], cam: 'Performance Camshaft', tappet: 'Hydraulic Roller Tappet Set',
-    spring: 'Forged Steel', timing: 'Timing Chain Kit', plugs: 'Iridium Spark Plug' },
-  durability: { label: 'Durability', hint: 'Built to last: CGI block, forged steel internals, heavy-duty bearings, mild cam and gear-driven timing.',
-    block: ['Compacted Graphite Iron', 'Cast Iron'], crank: 'Forged', rod: ['H-Beam Forged Steel', 'I-Beam Forged Steel'],
-    piston: ['Flat Top Forged Steel'], rings: 'Steel Performance Ring Pack', bearings: 'Tri-Metal',
-    head: ['Factory Cast Iron', 'Factory Cast Aluminum'], cam: 'Stock/Mild Camshaft', tappet: 'Hydraulic Roller Tappet Set',
-    spring: 'Billet Steel', timing: 'Timing Gears', plugs: 'Iridium Spark Plug' },
-  heavy_machinery: { label: 'Heavy Machinery', hint: 'Low-revving torque for hauling and work vehicles: CGI/iron, forged steel pistons, torque cam, gear timing.',
-    block: ['Compacted Graphite Iron', 'Cast Iron'], crank: 'Forged', rod: ['I-Beam Forged Steel', 'H-Beam Forged Steel'],
-    piston: ['Flat Top Forged Steel'], rings: 'Steel Performance Ring Pack', bearings: 'Tri-Metal',
-    head: ['Factory Cast Iron'], cam: 'Torque/Tow Camshaft', tappet: 'Hydraulic Roller Tappet Set',
-    spring: 'Billet Steel', timing: 'Timing Gears', plugs: 'Iridium Spark Plug' },
-  // Ambulances, police, taxis: huge mileage at sustained high rpm. Reciprocating
-  // load rises with rpm squared, so this keeps the moving parts LIGHT (forged
-  // aluminium pistons, forged steel H-beams -- Durability's steel pistons
-  // suit slow-revving diesels, not this), uses the heavy-duty bearing, and
-  // makes power low (torque cam) so the engine needn't rev. Best on DOHC
-  // (pushrods float/wear at sustained revs) with more cylinders.
-  fleet: { label: 'Emergency / Fleet', hint: 'Huge mileage at sustained high revs (ambulances, police, taxis): light forged internals, heavy-duty bearings, torque cam, gear timing. Best on a DOHC with plenty of cylinders.',
-    block: ['Compacted Graphite Iron', 'Cast Iron'], crank: 'Forged', rod: ['H-Beam Forged Steel', 'I-Beam Forged Steel'],
-    piston: ['Flat Top Forged Aluminum', 'Flat Top Cast Aluminum'], rings: 'Moly-Coated Race Ring Pack', bearings: 'Tri-Metal',
-    head: ['Factory Cast Aluminum', 'Factory Cast Iron'], cam: 'Torque/Tow Camshaft', tappet: 'Hydraulic Roller Tappet Set',
-    spring: 'Billet Steel', timing: 'Timing Gears', plugs: 'Iridium Spark Plug' },
-  offroad: { label: 'Off-Road', hint: 'Tough, torquey and forgiving: iron block, forged internals, heavy-duty bearings, torque cam.',
-    block: ['Cast Iron', 'Compacted Graphite Iron'], crank: 'Forged', rod: ['H-Beam Forged Steel'],
-    piston: ['Flat Top Forged Aluminum'], rings: 'Steel Performance Ring Pack', bearings: 'Tri-Metal',
-    head: ['Factory Cast Aluminum', 'Factory Cast Iron'], cam: 'Torque/Tow Camshaft', tappet: 'Hydraulic Roller Tappet Set',
-    spring: 'Forged Steel', timing: 'Timing Chain Kit', plugs: 'Platinum Spark Plug' },
-  rally: { label: 'Rally', hint: 'Boosted and abused for whole stages: strong block, forged internals, broad-powerband cam, reliable hydraulic valvetrain.',
-    block: ['Compacted Graphite Iron', 'Cast Aluminum', 'Cast Iron'], crank: 'Forged', rod: ['H-Beam Billet Steel', 'H-Beam Forged Steel'],
-    piston: ['Dished Forged Aluminum'], rings: 'Moly-Coated Race Ring Pack', bearings: 'Bi-Metal Race',
-    head: ['Ported & Polished Forged Aluminum'], cam: 'Performance Camshaft', tappet: 'Hydraulic Roller Tappet Set',
-    spring: 'Billet Steel', timing: 'Timing Chain Kit', plugs: 'Iridium Spark Plug' },
-  drift: { label: 'Drift', hint: 'Sustained high revs under boost: strong block, billet steel rods, forged pistons, race valvetrain.',
-    block: ['Compacted Graphite Iron', 'Cast Aluminum', 'Cast Iron'], crank: 'Forged', rod: ['H-Beam Billet Steel', 'H-Beam Forged Steel'],
-    piston: ['Dished Forged Aluminum'], rings: 'Moly-Coated Race Ring Pack', bearings: 'Bi-Metal Race',
-    head: ['Ported & Polished Forged Aluminum'], cam: 'Race Camshaft', tappet: 'Solid Roller Tappet Set',
-    spring: 'Billet Steel', timing: 'Timing Chain Kit', plugs: 'Iridium Spark Plug' },
-  drag: { label: 'Drag', hint: 'Maximum power in short bursts under big boost: billet block and crank, aluminium rods, billet pistons.',
-    block: ['Billet Aluminum', 'Compacted Graphite Iron', 'Cast Iron'], crank: 'Billet', rod: ['H-Beam Billet Aluminum', 'H-Beam Forged Aluminum'],
-    piston: ['Dished Billet Aluminum', 'Dished Forged Aluminum'], rings: 'Moly-Coated Race Ring Pack', bearings: 'Bi-Metal Race',
-    head: ['Ported & Polished Forged Aluminum'], cam: 'Race Camshaft', tappet: 'Solid Roller Tappet Set',
-    spring: 'Billet Steel', timing: 'Timing Gears', plugs: 'Iridium Spark Plug' },
-  race: { label: 'Race', hint: 'Lightest, fastest parts regardless of longevity: billet aluminium, titanium rods, race valvetrain.',
-    block: ['Billet Aluminum', 'Cast Aluminum', 'Cast Iron'], crank: 'Billet', rod: ['H-Beam Titanium', 'H-Beam Billet Steel'],
-    piston: ['Dished Billet Aluminum', 'Dished Forged Aluminum'], rings: 'Moly-Coated Race Ring Pack', bearings: 'Bi-Metal Race',
-    head: ['Ported & Polished Forged Aluminum'], cam: 'Race Camshaft', tappet: 'Solid Roller Tappet Set',
-    spring: 'Billet Steel', timing: 'Timing Gears', plugs: 'Iridium Spark Plug' }
-};
-// Which engine type suits each style, with reasons a mechanic can pass on
-// to the customer. Real-world engine practice, kept consistent with this
-// builder's own limits (OHV only takes up to a Street Perf cam, so it's
-// never recommended for Race/Drag; Rotary's apex seals rule it out for the
-// mileage-heavy styles). `also` = sensible alternatives with their trade-off.
-const ENGINE_TYPE_ADVICE = {
-  economy: { pick: 'SOHC', reasons: [
-    'One camshaft per bank and fewer valves: fewer parts to buy and fewer to wear out.',
-    'Pulls well at low revs, which is where an everyday car spends its time.',
-    'The cheapest overhead-cam engine to build and service.'
-  ], also: { OHV: 'Even simpler and cheaper, if top-end power doesn\'t matter.' } },
-  comfort: { pick: 'OHV', reasons: [
-    'Big, relaxed torque low down: smooth and quiet without needing revs.',
-    'Compact pushrod design with a self-adjusting hydraulic valvetrain.',
-    'The classic luxury-cruiser choice, like the big pushrod V8s.'
-  ], also: { DOHC: 'More refined at higher revs, at a higher build cost.' } },
-  street: { pick: 'DOHC', reasons: [
-    'Four valves per cylinder, so it breathes well across the whole rev range.',
-    'Revs freely for fun on the road but stays easy-going in traffic.',
-    'The modern all-rounder that most performance road cars use.'
-  ], also: { SOHC: 'A cheaper build that still revs well.' } },
-  performance: { pick: 'DOHC', reasons: [
-    'The highest rev ceiling and the most aggressive cams we can fit.',
-    'The best airflow, so more power from the same size engine.',
-    'Separate intake and exhaust cams give a strong, wide powerband.'
-  ], also: { Rotary: 'Very light, smooth and loves revs, but thirstier, and the apex seals need looking after.' } },
-  sports_durable: { pick: 'DOHC', reasons: [
-    'Four valves per cylinder for strong top-end power, matching this build\'s Performance camshaft.',
-    'Handles the extra airflow a boosted, high-output engine needs.',
-    'Pairs with the self-adjusting hydraulic roller valvetrain, so it stays low-maintenance despite the power.'
-  ], also: { SOHC: 'A simpler, cheaper build that still takes the same durable internals, for a bit less top end.' } },
-  durability: { pick: 'OHV', reasons: [
-    'The fewest moving parts in the top end, so less to go wrong.',
-    'Low-revving and unstressed, so everything lasts longer.',
-    'Simple to inspect and repair.'
-  ], also: { SOHC: 'Still simple, with a bit more top-end power.' } },
-  heavy_machinery: { pick: 'OHV', reasons: [
-    'Maximum low-rpm torque for pulling heavy loads.',
-    'Rugged and compact: the go-to for trucks and work vehicles.',
-    'Cheap to keep running.'
-  ], also: { SOHC: 'A little more power up top, still simple.' } },
-  fleet: { pick: 'DOHC', reasons: [
-    'Holds sustained high revs without valve float: four light valves per cylinder instead of two heavy ones.',
-    'Runs cooler and more efficiently at constant speed, so it lasts for big mileage.',
-    'Pairs with the heavy-duty bearings and gear timing in this build.'
-  ], also: { SOHC: 'Fewer parts to service, if the vehicle rarely runs at high revs.' } },
-  offroad: { pick: 'OHV', reasons: [
-    'Strong torque right off idle for crawling and climbing.',
-    'Compact and simple, so easy to fix far from a workshop.',
-    'Copes with water, mud and abuse.'
-  ], also: { SOHC: 'A bit more top-end for faster trails.' } },
-  rally: { pick: 'DOHC', reasons: [
-    'Responsive, high-revving power out of every corner.',
-    'Handles boost and long stages at full throttle.',
-    'What real rally engines use: compact four-valve turbo engines.'
-  ], also: { SOHC: 'A tougher, simpler option on a budget.' } },
-  drift: { pick: 'DOHC', reasons: [
-    'Holds high revs through long slides without running out of breath.',
-    'Instant throttle response for controlling the angle.',
-    'Takes the race cams and valvetrain this build uses.'
-  ], also: {
-    Rotary: 'Light, revs very high and a drift icon, but the apex seals wear under sustained abuse.',
-    OHV: 'Big pushrod V8 torque for easy smoke, but we can only fit up to a street cam.'
-  } },
-  drag: { pick: 'DOHC', reasons: [
-    'Takes the most aggressive cams and the solid-roller valvetrain we offer.',
-    'Moves the most air at high revs, which is what big boost needs.',
-    'The highest power potential for short, all-out runs.'
-  ], also: { OHV: 'The old-school pushrod V8: huge torque and compact, but limited to a street cam in our builds.' } },
-  race: { pick: 'DOHC', reasons: [
-    'The highest rpm and most aggressive valvetrain: the most power per litre.',
-    'Lightweight valve gear for fast, precise response.',
-    'The standard in modern motorsport.'
-  ], also: { Rotary: 'Tiny, light and smooth at high revs (it has won Le Mans), but the apex seals need frequent care.' } }
-};
+// Engine build presets used to be hardcoded here; they now live in the
+// engine_style_profiles table (sql/065) so Joanna can add/edit them
+// herself from engine-presets.html as she learns more real builds,
+// instead of asking for a code change every time -- same "admin edits via
+// the app, not SQL" pattern as catalogue.html/services.html.
+//
+// ENGINE_STYLE_PROFILES/ENGINE_TYPE_ADVICE/ENGINE_STYLE_OPTIONS are `let`,
+// not `const`, and start empty -- loadEngineStyleProfiles() populates them
+// from Supabase. job-items.html's initEnginePanel() awaits that before
+// anything else here is used, so every other function in this file (and
+// every ENGINE_STYLE_PROFILES[...] lookup in job-items.html) can keep
+// reading these exactly as if they were still the old static objects.
+let ENGINE_STYLE_PROFILES = {};
+let ENGINE_TYPE_ADVICE = {};
+let ENGINE_STYLE_OPTIONS = [];
+let _engineStyleProfilesLoaded = false;
+
+async function loadEngineStyleProfiles({ force = false } = {}) {
+  if (_engineStyleProfilesLoaded && !force) return;
+  const { data, error } = await sb
+    .from('engine_style_profiles')
+    .select('key, label, hint, parts, engine_type_pick, engine_type_reasons, engine_type_also')
+    .eq('active', true)
+    .order('sort_order');
+  if (error) throw new Error(error.message);
+
+  const profiles = {};
+  const advice = {};
+  const options = [];
+  data.forEach((row) => {
+    profiles[row.key] = { label: row.label, hint: row.hint, ...row.parts };
+    if (row.engine_type_pick) {
+      advice[row.key] = { pick: row.engine_type_pick, reasons: row.engine_type_reasons || [], also: row.engine_type_also || {} };
+    }
+    options.push({ value: row.key, label: row.label, hint: row.hint });
+  });
+  ENGINE_STYLE_PROFILES = profiles;
+  ENGINE_TYPE_ADVICE = advice;
+  ENGINE_STYLE_OPTIONS = options;
+  _engineStyleProfilesLoaded = true;
+}
 
 function engineTypeAdvice(style) {
   return ENGINE_TYPE_ADVICE[style] || null;
@@ -218,8 +103,6 @@ function engineTypeAdviceText(style) {
   return `For a ${styleLabel} build we'd recommend a ${advice.pick} engine:\n`
     + advice.reasons.map((r) => `- ${r}`).join('\n');
 }
-
-const ENGINE_STYLE_OPTIONS = Object.entries(ENGINE_STYLE_PROFILES).map(([value, p]) => ({ value, label: p.label, hint: p.hint }));
 
 // Which configurations each engine type can be built as. Rotary only ever
 // pairs with a rotor housing; every piston valvetrain with a real block.

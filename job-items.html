@@ -1315,6 +1315,17 @@
     const vtSel = document.getElementById('engineValvetrain');
     const styleSel = document.getElementById('engineStyle');
     vtSel.innerHTML = VALVETRAIN_OPTIONS.map((v) => `<option value="${v}">${v === 'Rotary' ? 'Rotary (Wankel)' : v}</option>`).join('');
+
+    // Presets live in engine_style_profiles (sql/065) now, not static data --
+    // load them before anything below reads ENGINE_STYLE_PROFILES/
+    // ENGINE_STYLE_OPTIONS/ENGINE_TYPE_ADVICE.
+    document.getElementById('engineParts').innerHTML = '<tr><td colspan="4" class="empty-msg">Loading build presets…</td></tr>';
+    try {
+      await loadEngineStyleProfiles();
+    } catch (err) {
+      document.getElementById('engineParts').innerHTML = `<tr><td colspan="4" class="empty-msg">Couldn't load build presets: ${err.message}</td></tr>`;
+      return;
+    }
     styleSel.innerHTML = ENGINE_STYLE_OPTIONS.map((st) => `<option value="${st.value}">${st.label}</option>`).join('');
 
     const saved = currentLeg?.engine_spec;
