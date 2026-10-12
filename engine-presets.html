@@ -69,6 +69,15 @@
   .modal .actions .save { background: var(--red); border: none; color: white; font-weight: 600; }
   .modal .actions .cancel { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
   .modal .actions .duplicate { background: transparent; border: 1px solid var(--panel-border); color: var(--text); flex: 0 0 auto; padding: 10px 16px; }
+
+  .chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip-list:not(:empty) { margin-bottom: 6px; }
+  .chip { display: flex; align-items: center; gap: 4px; background: var(--bg); border: 1px solid var(--panel-border); border-radius: 6px; padding: 4px 4px 4px 9px; font-size: 12px; }
+  .chip .chip-order { color: var(--text-dim); }
+  .chip button { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 12px; padding: 2px 4px; line-height: 1; }
+  .chip button:hover { color: var(--text); }
+  .chip button.chip-remove:hover { color: var(--red); }
+  .field .empty-opts { color: var(--text-dim); font-size: 11px; font-style: italic; }
 </style>
 </head>
 <body>
@@ -109,7 +118,7 @@
   <div class="modal-backdrop" id="presetModalBackdrop">
     <div class="modal">
       <h2 id="presetModalTitle">New preset</h2>
-      <p class="hint" style="margin-bottom:14px;">Part fields take the exact catalogue item name. Where several materials are acceptable, list them comma-separated in preference order -- the first one the catalogue actually has for that engine wins.</p>
+      <p class="hint" style="margin-bottom:14px;">Every part field is a real catalogue option -- nothing to mistype. Where several materials are acceptable, add them in preference order: the first one the catalogue actually has for that engine wins.</p>
 
       <div class="form-grid">
         <div class="field full">
@@ -138,19 +147,36 @@
       </div>
 
       <h3>Parts</h3>
+      <p class="hint" id="partOptionsStatus" style="margin:-6px 0 12px;">Loading the catalogue's real options…</p>
       <div class="form-grid cols-3">
-        <div class="field"><label>Block material(s)</label><input type="text" id="pBlock" placeholder="Cast Aluminum, Cast Iron" /></div>
-        <div class="field"><label>Crankshaft</label><input type="text" id="pCrank" placeholder="Forged" /></div>
-        <div class="field"><label>Connecting rod(s)</label><input type="text" id="pRod" placeholder="H-Beam Forged Steel" /></div>
-        <div class="field"><label>Piston(s)</label><input type="text" id="pPiston" placeholder="Dished Forged Steel" /></div>
-        <div class="field"><label>Ring pack</label><input type="text" id="pRings" placeholder="Steel Performance Ring Pack" /></div>
-        <div class="field"><label>Bearings</label><input type="text" id="pBearings" placeholder="Bi-Metal Race" /></div>
-        <div class="field"><label>Cylinder head(s)</label><input type="text" id="pHead" placeholder="Ported & Polished Forged Steel" /></div>
-        <div class="field"><label>Camshaft</label><input type="text" id="pCam" placeholder="Performance Camshaft" /></div>
-        <div class="field"><label>Tappet set</label><input type="text" id="pTappet" placeholder="Hydraulic Roller Tappet Set" /></div>
-        <div class="field"><label>Valve spring material</label><input type="text" id="pSpring" placeholder="Forged Steel" /></div>
-        <div class="field"><label>Timing system</label><input type="text" id="pTiming" placeholder="Timing Chain Kit" /></div>
-        <div class="field"><label>Spark plug</label><input type="text" id="pPlugs" placeholder="Iridium Spark Plug" /></div>
+        <div class="field">
+          <label>Block material(s) -- preference order</label>
+          <div class="chip-list" id="chips_block"></div>
+          <select id="add_block"></select>
+        </div>
+        <div class="field"><label>Crankshaft</label><select id="pCrank"></select></div>
+        <div class="field">
+          <label>Connecting rod(s) -- preference order</label>
+          <div class="chip-list" id="chips_rod"></div>
+          <select id="add_rod"></select>
+        </div>
+        <div class="field">
+          <label>Piston(s) -- preference order</label>
+          <div class="chip-list" id="chips_piston"></div>
+          <select id="add_piston"></select>
+        </div>
+        <div class="field"><label>Ring pack</label><select id="pRings"></select></div>
+        <div class="field"><label>Bearings</label><select id="pBearings"></select></div>
+        <div class="field">
+          <label>Cylinder head(s) -- preference order</label>
+          <div class="chip-list" id="chips_head"></div>
+          <select id="add_head"></select>
+        </div>
+        <div class="field"><label>Camshaft</label><select id="pCam"></select></div>
+        <div class="field"><label>Tappet set</label><select id="pTappet"></select></div>
+        <div class="field"><label>Valve spring material</label><select id="pSpring"></select></div>
+        <div class="field"><label>Timing system</label><select id="pTiming"></select></div>
+        <div class="field"><label>Spark plug</label><select id="pPlugs"></select></div>
       </div>
 
       <h3>Engine type advice</h3>
@@ -188,6 +214,7 @@
 <script src="js/auth.js"></script>
 <script src="js/workshop.js"></script>
 <script src="js/shift.js"></script>
+<script src="js/performanceBuild.js"></script>
 <script>
   const session = requireSession();
   if (session) {
@@ -203,8 +230,140 @@
     return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   }
 
-  function splitList(value) {
-    return value.split(',').map((s) => s.trim()).filter(Boolean);
+  // Which part slot each field maps to, and whether it's a single pick or
+  // an ordered list of fallbacks (block/rod/piston/head -- the first one
+  // the catalogue has for that engine wins, same rule as the Engine
+  // Building page itself).
+  const PART_FIELD_CONFIG = {
+    block: { type: 'array', chipsId: 'chips_block', addId: 'add_block' },
+    crank: { type: 'single', selectId: 'pCrank' },
+    rod: { type: 'array', chipsId: 'chips_rod', addId: 'add_rod' },
+    piston: { type: 'array', chipsId: 'chips_piston', addId: 'add_piston' },
+    rings: { type: 'single', selectId: 'pRings' },
+    bearings: { type: 'single', selectId: 'pBearings' },
+    head: { type: 'array', chipsId: 'chips_head', addId: 'add_head' },
+    cam: { type: 'single', selectId: 'pCam' },
+    tappet: { type: 'single', selectId: 'pTappet' },
+    spring: { type: 'single', selectId: 'pSpring' },
+    timing: { type: 'single', selectId: 'pTiming' },
+    plugs: { type: 'single', selectId: 'pPlugs' }
+  };
+
+  let partOptions = {};        // slot key -> sorted array of real option strings, derived from the live catalogue
+  let chipState = {};          // slot key -> ordered array of chosen strings, for 'array' slots only
+
+  // Reads every active catalogue item name once and buckets each into the
+  // part slot(s) it matches, deriving the exact substring each slot's
+  // engine_style_profiles.parts field actually stores (see
+  // js/engineBuilder.js's buildEngineSpec -- some slots store the whole
+  // catalogue name, some just a material prefix with the rest templated
+  // on at build time).
+  async function loadPartOptions() {
+    const { data, error } = await sb.from('catalogue_items').select('name').eq('active', true);
+    if (error) throw new Error(error.message);
+
+    const configValues = ENGINE_CONFIGURATIONS.map((c) => c.value).sort((a, b) => b.length - a.length);
+    const sets = {};
+    Object.keys(PART_FIELD_CONFIG).forEach((k) => { sets[k] = new Set(); });
+
+    function stripSuffix(name, suffixRe) {
+      const m = name.match(suffixRe);
+      return m ? name.slice(0, m.index).trim() : null;
+    }
+
+    data.forEach(({ name }) => {
+      let rem = stripSuffix(name, / Engine Block$/i) || stripSuffix(name, / Rotor Housing$/i);
+      if (rem) {
+        const cfg = configValues.find((c) => rem.toLowerCase().endsWith(` ${c}`.toLowerCase()));
+        sets.block.add(cfg ? rem.slice(0, rem.length - cfg.length).trim() : rem);
+      }
+      if ((rem = stripSuffix(name, / Crankshaft$/i))) sets.crank.add(rem);
+      if ((rem = stripSuffix(name, / Connecting Rod$/i))) sets.rod.add(rem);
+      if ((rem = stripSuffix(name, / Piston$/i))) sets.piston.add(rem);
+      if (/ Ring Pack$/i.test(name)) sets.rings.add(name);
+      if ((rem = stripSuffix(name, / (Conrod|Main) Bearing$/i))) sets.bearings.add(rem);
+      if ((rem = stripSuffix(name, / Cylinder Head$/i))) sets.head.add(rem);
+      if (/Camshaft$/i.test(name)) sets.cam.add(name);
+      if (/Tappet( Set)?$/i.test(name)) sets.tappet.add(name);
+      if ((rem = stripSuffix(name, / Valve Spring Set$/i))) {
+        const typeWord = ['Beehive', 'Conical', 'Dual'].find((t) => rem.startsWith(t + ' '));
+        sets.spring.add(typeWord ? rem.slice(typeWord.length).trim() : rem);
+      }
+      if (/^Timing (Chain|Belt|Gear)/i.test(name)) sets.timing.add(name);
+      if (/ Spark Plug$/i.test(name)) sets.plugs.add(name);
+    });
+
+    partOptions = {};
+    Object.keys(sets).forEach((k) => { partOptions[k] = Array.from(sets[k]).sort(); });
+  }
+
+  function populateSingleSelect(key, currentValue) {
+    const select = document.getElementById(PART_FIELD_CONFIG[key].selectId);
+    const options = [...(partOptions[key] || [])];
+    // A value already saved on this preset might not be a live catalogue
+    // option any more (retired/renamed item) -- keep it selectable rather
+    // than silently dropping it when the form is opened.
+    if (currentValue && !options.includes(currentValue)) options.unshift(currentValue);
+    select.innerHTML = '<option value="">(choose)</option>'
+      + options.map((o) => `<option value="${o}" ${o === currentValue ? 'selected' : ''}>${o}</option>`).join('');
+  }
+
+  function renderChips(key) {
+    const list = chipState[key] || [];
+    const container = document.getElementById(PART_FIELD_CONFIG[key].chipsId);
+    container.innerHTML = list.map((val, idx) => `
+      <span class="chip" data-idx="${idx}">
+        <span class="chip-order">${idx + 1}.</span>
+        <span>${val}</span>
+        ${idx > 0 ? '<button type="button" class="chip-up" title="Move earlier">&uarr;</button>' : ''}
+        ${idx < list.length - 1 ? '<button type="button" class="chip-down" title="Move later">&darr;</button>' : ''}
+        <button type="button" class="chip-remove" title="Remove">&times;</button>
+      </span>
+    `).join('');
+    container.querySelectorAll('.chip').forEach((chipEl) => {
+      const idx = Number(chipEl.dataset.idx);
+      const upBtn = chipEl.querySelector('.chip-up');
+      const downBtn = chipEl.querySelector('.chip-down');
+      if (upBtn) upBtn.addEventListener('click', () => { [list[idx - 1], list[idx]] = [list[idx], list[idx - 1]]; renderChips(key); });
+      if (downBtn) downBtn.addEventListener('click', () => { [list[idx + 1], list[idx]] = [list[idx], list[idx + 1]]; renderChips(key); });
+      chipEl.querySelector('.chip-remove').addEventListener('click', () => { list.splice(idx, 1); renderChips(key); refreshAddSelect(key); });
+    });
+  }
+
+  function refreshAddSelect(key) {
+    const select = document.getElementById(PART_FIELD_CONFIG[key].addId);
+    const chosen = new Set(chipState[key] || []);
+    const available = (partOptions[key] || []).filter((o) => !chosen.has(o));
+    select.innerHTML = '<option value="">+ add…</option>' + available.map((o) => `<option value="${o}">${o}</option>`).join('');
+    select.value = '';
+  }
+
+  Object.entries(PART_FIELD_CONFIG).filter(([, cfg]) => cfg.type === 'array').forEach(([key, cfg]) => {
+    document.getElementById(cfg.addId).addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (!val) return;
+      chipState[key] = chipState[key] || [];
+      if (!chipState[key].includes(val)) chipState[key].push(val);
+      renderChips(key);
+      refreshAddSelect(key);
+    });
+  });
+
+  function populatePartFields(parts) {
+    Object.entries(PART_FIELD_CONFIG).forEach(([key, cfg]) => {
+      if (cfg.type === 'single') {
+        populateSingleSelect(key, (parts && parts[key]) || '');
+      } else {
+        const saved = (parts && parts[key]) || [];
+        // Same stale-value safety as the single selects: keep an old pick
+        // selectable even if it's not a live catalogue option any more.
+        chipState[key] = [...saved];
+        const missing = saved.filter((v) => !(partOptions[key] || []).includes(v));
+        if (missing.length) partOptions[key] = [...(partOptions[key] || []), ...missing].sort();
+        renderChips(key);
+        refreshAddSelect(key);
+      }
+    });
   }
 
   async function loadPresets() {
@@ -245,16 +404,11 @@
     document.getElementById('fSortOrder').value = presets.length ? Math.max(...presets.map((p) => p.sort_order)) + 1 : 0;
     document.getElementById('fHint').value = '';
     document.getElementById('fActive').checked = true;
-    ['pBlock', 'pCrank', 'pRod', 'pPiston', 'pRings', 'pBearings', 'pHead', 'pCam', 'pTappet', 'pSpring', 'pTiming', 'pPlugs'].forEach((id) => {
-      document.getElementById(id).value = '';
-    });
+    populatePartFields(null);
     document.getElementById('aPick').value = '';
     document.getElementById('aReasons').value = '';
     document.getElementById('aAlso').value = '';
   }
-
-  const ARRAY_PART_FIELDS = { pBlock: 'block', pRod: 'rod', pPiston: 'piston', pHead: 'head' };
-  const TEXT_PART_FIELDS = { pCrank: 'crank', pRings: 'rings', pBearings: 'bearings', pCam: 'cam', pTappet: 'tappet', pSpring: 'spring', pTiming: 'timing', pPlugs: 'plugs' };
 
   function fillPresetForm(preset) {
     document.getElementById('fLabel').value = preset.label;
@@ -264,14 +418,7 @@
     document.getElementById('fSortOrder').value = preset.sort_order;
     document.getElementById('fHint').value = preset.hint || '';
     document.getElementById('fActive').checked = preset.active;
-    const parts = preset.parts || {};
-    Object.entries(ARRAY_PART_FIELDS).forEach(([fieldId, key]) => {
-      const v = parts[key];
-      document.getElementById(fieldId).value = Array.isArray(v) ? v.join(', ') : (v || '');
-    });
-    Object.entries(TEXT_PART_FIELDS).forEach(([fieldId, key]) => {
-      document.getElementById(fieldId).value = parts[key] || '';
-    });
+    populatePartFields(preset.parts || {});
     document.getElementById('aPick').value = preset.engine_type_pick || '';
     document.getElementById('aReasons').value = (preset.engine_type_reasons || []).join('\n');
     document.getElementById('aAlso').value = Object.entries(preset.engine_type_also || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
@@ -279,13 +426,14 @@
 
   function readPresetForm() {
     const parts = {};
-    Object.entries(ARRAY_PART_FIELDS).forEach(([fieldId, key]) => {
-      const list = splitList(document.getElementById(fieldId).value);
-      if (list.length) parts[key] = list;
-    });
-    Object.entries(TEXT_PART_FIELDS).forEach(([fieldId, key]) => {
-      const v = document.getElementById(fieldId).value.trim();
-      if (v) parts[key] = v;
+    Object.entries(PART_FIELD_CONFIG).forEach(([key, cfg]) => {
+      if (cfg.type === 'single') {
+        const v = document.getElementById(cfg.selectId).value;
+        if (v) parts[key] = v;
+      } else {
+        const list = chipState[key] || [];
+        if (list.length) parts[key] = [...list];
+      }
     });
 
     const also = {};
@@ -386,6 +534,13 @@
       document.querySelector('.actions-row').remove();
       document.querySelector('main').innerHTML = '<div class="empty-msg" style="padding:60px;">This page is restricted to your role.</div>';
       return;
+    }
+    const status = document.getElementById('partOptionsStatus');
+    try {
+      await loadPartOptions();
+      status.textContent = 'Options are pulled live from the active catalogue.';
+    } catch (err) {
+      status.textContent = `Couldn't load catalogue options: ${err.message}`;
     }
     loadPresets();
   })();
