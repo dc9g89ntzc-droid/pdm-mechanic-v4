@@ -11,7 +11,8 @@
 // real catalogue rows happens in the page.
 
 // Styles: the six from the Performance panel plus Economy, Performance,
-// Durability, Rally and Heavy Machinery. Each style names its own pick for
+// Durability, Rally, Heavy Machinery, Emergency/Fleet and Sports Durable.
+// Each style names its own pick for
 // every part (reassessed 2026-10-08 -- a single "how far up the ladder"
 // setting gave unrealistic results, e.g. aluminium rods on a Performance
 // build or steel heads on Comfort). Where a style lists several options,
@@ -68,6 +69,20 @@ const ENGINE_STYLE_PROFILES = {
     piston: ['Domed Forged Aluminum'], rings: 'Steel Performance Ring Pack', bearings: 'Bi-Metal Race',
     head: ['Ported & Polished Forged Aluminum', 'Ported & Polished Cast Aluminum'], cam: 'Performance Camshaft', tappet: 'Hydraulic Roller Tappet Set',
     spring: 'Billet Steel', timing: 'Timing Chain Kit', plugs: 'Iridium Spark Plug' },
+  // Added 2026-10-12 from a real in-game build Joanna tested on a DOHC
+  // Inline 4 and found both durable and strong: an aluminium block keeps
+  // weight down (the Performance side), but forged STEEL rods, pistons and
+  // a steel ported head carry the load instead of aluminium/titanium (the
+  // Durability side) -- it deliberately doesn't pick a side the way
+  // Performance (all-aluminium) or Durability (iron/CGI, mild cam) do.
+  // Dished pistons assume forced induction, matching the other boosted
+  // styles. Hydraulic roller tappets (not solid) keep it low-maintenance,
+  // which caps the cam just below Race -- Performance Camshaft, same as Rally.
+  sports_durable: { label: 'Sports Durable', hint: 'High horsepower that still takes abuse: aluminium block for weight, forged steel rods/pistons/head for toughness under boost. Splits the difference between Performance and Durability.',
+    block: ['Cast Aluminum', 'Compacted Graphite Iron', 'Cast Iron'], crank: 'Forged', rod: ['H-Beam Forged Steel', 'I-Beam Forged Steel'],
+    piston: ['Dished Forged Steel', 'Dished Cast Steel'], rings: 'Steel Performance Ring Pack', bearings: 'Bi-Metal Race',
+    head: ['Ported & Polished Forged Steel', 'Ported & Polished Forged Aluminum'], cam: 'Performance Camshaft', tappet: 'Hydraulic Roller Tappet Set',
+    spring: 'Forged Steel', timing: 'Timing Chain Kit', plugs: 'Iridium Spark Plug' },
   durability: { label: 'Durability', hint: 'Built to last: CGI block, forged steel internals, heavy-duty bearings, mild cam and gear-driven timing.',
     block: ['Compacted Graphite Iron', 'Cast Iron'], crank: 'Forged', rod: ['H-Beam Forged Steel', 'I-Beam Forged Steel'],
     piston: ['Flat Top Forged Steel'], rings: 'Steel Performance Ring Pack', bearings: 'Tri-Metal',
@@ -141,6 +156,11 @@ const ENGINE_TYPE_ADVICE = {
     'The best airflow, so more power from the same size engine.',
     'Separate intake and exhaust cams give a strong, wide powerband.'
   ], also: { Rotary: 'Very light, smooth and loves revs, but thirstier, and the apex seals need looking after.' } },
+  sports_durable: { pick: 'DOHC', reasons: [
+    'Four valves per cylinder for strong top-end power, matching this build\'s Performance camshaft.',
+    'Handles the extra airflow a boosted, high-output engine needs.',
+    'Pairs with the self-adjusting hydraulic roller valvetrain, so it stays low-maintenance despite the power.'
+  ], also: { SOHC: 'A simpler, cheaper build that still takes the same durable internals, for a bit less top end.' } },
   durability: { pick: 'OHV', reasons: [
     'The fewest moving parts in the top end, so less to go wrong.',
     'Low-revving and unstressed, so everything lasts longer.',
