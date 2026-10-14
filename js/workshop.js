@@ -306,13 +306,28 @@ async function getOpenShift(mechanicId) {
   return data;
 }
 
+// js/shift.js only calls this after getOpenShift() found nothing, but two
+// near-simultaneous page loads (two tabs/devices) can both pass that check
+// before either INSERT lands -- without a DB-level guard that leaves a
+// mechanic with two open shifts at once, which breaks getOpenShift()'s
+// .maybeSingle() on every later page load (sql/066 fixes the stuck-open
+// case this already caused once and adds the guard: a partial unique index
+// on shift_log(mechanic_id) where clock_out is null). If this insert loses
+// that race, re-fetch the shift the other tab already created instead of
+// surfacing a raw constraint-violation error.
 async function clockIn(mechanicId) {
   const { data, error } = await sb
     .from('shift_log')
     .insert({ mechanic_id: mechanicId })
     .select('id, clock_in')
     .single();
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.code === '23505') {
+      const existing = await getOpenShift(mechanicId);
+      if (existing) return existing;
+    }
+    throw new Error(error.message);
+  }
   return data;
 }
 

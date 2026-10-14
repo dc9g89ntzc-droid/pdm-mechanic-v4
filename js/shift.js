@@ -35,6 +35,8 @@
     .shift-widget { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim, #9c9691); }
     .shift-widget .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim, #9c9691); flex: 0 0 auto; }
     .shift-widget.on-shift .dot { background: var(--green, #22c55e); }
+    .shift-widget.shift-error .dot { background: var(--red, #d81f27); }
+    .shift-widget.shift-error .shift-label { color: var(--red, #d81f27); cursor: help; }
     .shift-widget button { background: transparent; border: 1px solid var(--panel-border, #2a2b2e); color: var(--text, #f0ebe4); border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
     .shift-widget button:hover { border-color: var(--red, #d81f27); }
     .shift-modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); align-items: center; justify-content: center; z-index: 100; }
@@ -79,13 +81,25 @@
     return `${h}:${String(m).padStart(2, '0')}`;
   }
 
+  let lastError = null;
+
   function renderWidget() {
+    widget.classList.remove('on-shift', 'shift-error');
+    labelEl.title = '';
     if (shiftId) {
       widget.classList.add('on-shift');
       labelEl.textContent = `On shift · ${formatElapsed(Date.now() - new Date(clockInAt).getTime())}`;
       btnEl.textContent = 'Clock out';
+    } else if (lastError) {
+      // Previously this failed silently (console.error only) -- a mechanic
+      // clicking Clock in and seeing nothing happen, with no idea why, is
+      // exactly what happened here. Visible but not an alert() on every
+      // page load for what's normally a one-off/rare failure.
+      widget.classList.add('shift-error');
+      labelEl.textContent = 'Clock-in failed -- tap to retry';
+      labelEl.title = lastError;
+      btnEl.textContent = 'Retry';
     } else {
-      widget.classList.remove('on-shift');
       labelEl.textContent = 'Clocked out';
       btnEl.textContent = 'Clock in';
     }
@@ -117,9 +131,11 @@
       }
       shiftId = open.id;
       clockInAt = open.clock_in;
+      lastError = null;
       markActivity();
     } catch (err) {
       console.error('Failed to start shift:', err.message);
+      lastError = err.message;
     }
     renderWidget();
   }
