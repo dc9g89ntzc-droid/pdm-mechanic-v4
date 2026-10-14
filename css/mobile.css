@@ -1,0 +1,74 @@
+/* Shared mobile/responsive rules for the mechanic shop staff pages.
+   Linked after each page's own inline <style> block (see every page's
+   <head>), so these rules win ties in the cascade without needing
+   !important everywhere -- a few !importants remain below only where a
+   page might reasonably have a more specific selector of its own.
+
+   Every page shares the same header/nav, .filters/.actions-row toolbar,
+   .form-grid admin form, table, and .modal-backdrop/.modal patterns
+   (confirmed by reading them, not assumed), so one shared file covers
+   most of the site. A handful of pages with bespoke layouts (dashboard's
+   kanban board, job-items' tabbed build panels, inspection's SVG
+   diagram) get additional small @media rules in their own <style> block
+   on top of this, where this generic pass doesn't reach far enough.
+
+   Breakpoint: 720px catches phones in both orientations and small
+   tablets; the flow-layout sidebar pages (inspection/job-items/quote/
+   receipt) already stack their own sidebar below 980px via their own
+   existing rule, independent of this file. */
+
+@media (max-width: 720px) {
+  /* ---- Header & nav ----
+     nav holds ~10 links; left to wrap it breaks onto several lines and
+     eats the whole screen before any page content shows. A horizontally
+     scrollable strip keeps it to one line and still reaches every link. */
+  header { padding: 10px 14px; gap: 8px; }
+  header h1 { font-size: 14px; }
+  nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: 100%;
+  }
+  nav::-webkit-scrollbar { display: none; }
+  nav a { padding: 7px 10px; font-size: 12px; white-space: nowrap; flex: 0 0 auto; }
+  /* "Name (role)" text -- reclaims header space; Sign out stays reachable. */
+  header .who { display: none; }
+
+  /* ---- Page content width ---- */
+  main { padding-left: 14px !important; padding-right: 14px !important; }
+
+  /* ---- Filter/action toolbars: stack instead of squeezing into one row ---- */
+  .filters, .actions-row {
+    flex-direction: column;
+    align-items: stretch !important;
+    padding: 12px 14px !important;
+  }
+  .filters > *, .actions-row > * { width: 100%; margin-left: 0 !important; }
+
+  /* ---- Two/three-column admin forms collapse to one column ---- */
+  .form-grid, .form-grid.cols-3 { grid-template-columns: 1fr !important; }
+
+  /* ---- Tables: scroll horizontally instead of squeezing columns or
+     breaking the page layout. No wrapper div needed -- table keeps its
+     row/cell display types, just scrolls as a block. ---- */
+  table { font-size: 12px; }
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  thead, tbody { display: table; width: 100%; }
+
+  /* ---- Modals: use the real screen width instead of a fixed max-width
+     sized for desktop ---- */
+  .modal-backdrop { padding: 10px !important; }
+  .modal { max-width: 100% !important; padding: 16px !important; }
+
+  /* ---- iOS auto-zooms any input/select/textarea under 16px on focus.
+     Every page here sets 13-14px, so every text field on iPhone zooms in
+     when tapped -- the single most disruptive mobile bug on this site,
+     fixed everywhere at once here. ---- */
+  input, select, textarea { font-size: 16px !important; }
+
+  /* ---- Comfortable tap targets (buttons were ~34-36px tall at desktop
+     sizing; Apple HIG / Material both call for >=40-44px). ---- */
+  button, .btn { min-height: 40px; padding-top: 10px; padding-bottom: 10px; }
+}
