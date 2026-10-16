@@ -1,9 +1,5 @@
--- Towing: new business arm (dispatch -> roadside work -> tow to shop).
--- Tow is a leg type on the existing jobs/job_legs system (sql/031), not a
--- standalone table -- a job created at dispatch can later grow a repair
--- leg once the vehicle is actually at the shop, same job record throughout.
-
-alter type job_type add value if not exists 'tow';
+-- Towing, part 2 of 2 -- run sql/067_towing_enum.sql first and let it
+-- commit on its own; this one uses the 'tow' enum value it adds.
 
 -- Leg-specific payload for a tow leg: which hex was picked, the computed
 -- fee, and the free-text dispatch stage (dispatched/en_route/at_scene/
