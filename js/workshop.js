@@ -20,7 +20,12 @@ const JOB_TYPES = [
   { value: 'repair', label: 'Repair and Service' },
   { value: 'customisation', label: 'Customisation' },
   { value: 'performance', label: 'Performance' },
-  { value: 'engine_building', label: 'Engine Building' }
+  { value: 'engine_building', label: 'Engine Building' },
+  // Tow isn't a Workshop-board leg (see LEG_ORDER below) -- it has its own
+  // dispatch page, towing.html. This entry exists so jobTypeLabel() and
+  // services.html's category dropdown can show "Tow" for the leg's
+  // services, same as any other job_type.
+  { value: 'tow', label: 'Tow' }
 ];
 
 // The fixed sequence a job's selected legs run in -- a job with more than
@@ -41,10 +46,10 @@ const JOB_STAGES = [
   { value: 'cancelled', label: 'Cancelled' }
 ];
 
-// The shop's real staff hierarchy, low to high. Stocker sits outside that
-// hierarchy entirely (deliveries, not repair work -- paid flat per
-// delivery, not the shift-clock hourly wage) so it's appended rather than
-// slotted into the skill ladder.
+// The shop's real staff hierarchy, low to high. Stocker and Tow Driver both
+// sit outside that hierarchy entirely (deliveries/tows, not repair work --
+// each paid its own flat rate, not the shift-clock hourly wage) so they're
+// appended rather than slotted into the skill ladder.
 const STAFF_ROLES = [
   { value: 'apprentice', label: 'Apprentice' },
   { value: 'mechanic', label: 'Mechanic' },
@@ -52,7 +57,8 @@ const STAFF_ROLES = [
   { value: 'foreman', label: 'Foreman' },
   { value: 'manager', label: 'Manager' },
   { value: 'boss', label: 'Boss (Admin)' },
-  { value: 'stocker', label: 'Stocker' }
+  { value: 'stocker', label: 'Stocker' },
+  { value: 'tow_driver', label: 'Tow Driver' }
 ];
 
 function staffRoleLabel(value) {
@@ -371,6 +377,25 @@ const DELIVERY_PAY_AMOUNT = 2500;
 async function recordDelivery(mechanicId, notes) {
   const { error } = await sb.from('payroll_ledger').insert({
     mechanic_id: mechanicId, entry_type: 'delivery', amount: DELIVERY_PAY_AMOUNT, notes
+  });
+  if (error) throw new Error(error.message);
+}
+
+// Tow pricing (towing.html): hex-distance from the shop, in hex-steps on
+// the dispatch map -- base covers the callout, each step is one hex of
+// travel. Placeholder numbers, Joanna's to retune (same precedent as every
+// other rate constant on this page).
+const TOW_BASE_FEE = 1500;
+const TOW_PER_HEX_RATE = 75;
+
+// Flat per-tow pay for the Tow Driver role -- same shape as
+// DELIVERY_PAY_AMOUNT/recordDelivery above, not a cut of the tow fee (that
+// fee already goes to the shop/customer bill via job_services, see
+// totalLabourFee's tow exclusion below).
+const TOW_DRIVER_FLAT_FEE = 5000;
+async function recordTow(mechanicId, legId, notes) {
+  const { error } = await sb.from('payroll_ledger').insert({
+    mechanic_id: mechanicId, entry_type: 'tow', amount: TOW_DRIVER_FLAT_FEE, reference_id: legId, notes
   });
   if (error) throw new Error(error.message);
 }
@@ -750,9 +775,13 @@ async function updateJobTypes(jobId, jobTypes) {
 
 // Repair legs start with an inspection; customisation/performance skip
 // straight to item-selection (quote_preparation already covers "pick items
-// then generate a quote", see job-items.html/quote.html).
+// then generate a quote", see job-items.html/quote.html). A tow leg is
+// accepted/dispatched the moment it's created -- no inspection or quote
+// step, towing.html drives it straight to work_in_progress on "En Route".
 function initialLegStatus(jobType) {
-  return jobType === 'repair' ? 'awaiting_inspection' : 'quote_preparation';
+  if (jobType === 'repair') return 'awaiting_inspection';
+  if (jobType === 'tow') return 'approved';
+  return 'quote_preparation';
 }
 
 async function listJobLegs(jobId) {
@@ -760,6 +789,26 @@ async function listJobLegs(jobId) {
     .from('job_legs')
     .select('id, job_type, status, engine_spec, approved_at, work_started_at, completed_at, cancelled_at')
     .eq('job_id', jobId);
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// towing.html's dispatch board -- every tow leg still in flight, across
+// every job, with just enough of the parent job/customer/vehicle to show a
+// useful row. Tow has no board tab of its own (not in LEG_ORDER), so this
+// is the one place that needs to query job_legs globally rather than per-job.
+async function listOpenTows() {
+  const { data, error } = await sb
+    .from('job_legs')
+    .select(`
+      id, job_id, status, tow_pickup, approved_at, work_started_at, completed_at,
+      jobs ( id, job_number, assigned_staff_id,
+        customers ( customer_name, phone ),
+        owned_vehicles ( registration, make, model ) )
+    `)
+    .eq('job_type', 'tow')
+    .not('status', 'in', '(completed,cancelled)')
+    .order('approved_at', { ascending: false });
   if (error) throw new Error(error.message);
   return data;
 }
@@ -1051,6 +1100,13 @@ async function updateLegEngineSpec(jobId, spec) {
   if (error) throw new Error(error.message);
 }
 
+// Tow leg's pickup (sql/067): { hexQ, hexR, label, distanceSteps, fee, stage }.
+async function updateLegTowPickup(jobId, pickup) {
+  const { error } = await sb.from('job_legs').update({ tow_pickup: pickup })
+    .eq('job_id', jobId).eq('job_type', 'tow');
+  if (error) throw new Error(error.message);
+}
+
 // Maps a leg's job_type to the matching catalogue_items.categories tag
 // (sql/046 synced these from Joanna's own master list) -- used to filter
 // the item picker to the categories that actually belong on this leg, so a
@@ -1109,6 +1165,16 @@ function totalLabourFee(legs, jobServices, jobItems) {
     if (legFee != null) { total += legFee; anyKnown = true; }
   });
   return anyKnown ? Math.round(total * 100) / 100 : null;
+}
+
+// Same total, minus any tow leg -- for feeding commission only. The tow
+// fee still belongs in the customer's bill (totalLabourFee above includes
+// it), but the tow driver is already paid their own flat TOW_DRIVER_FLAT_FEE
+// per tow (see recordTow); crediting the job's assigned mechanic a 20% cut
+// of the tow fee too would be an unrelated double-pay, not a real
+// commission on work they did.
+function commissionableLabourFee(legs, jobServices, jobItems) {
+  return totalLabourFee((legs || []).filter((l) => l.job_type !== 'tow'), jobServices, jobItems);
 }
 
 // Commission is a fixed 20% cut of billed labour. It used to be derived as

@@ -160,3 +160,12 @@ async function removeServiceFromJob(jobServiceId) {
   const { error } = await sb.from('job_services').delete().eq('id', jobServiceId);
   if (error) throw new Error(error.message);
 }
+
+// Hand-correct an already-attached service's snapshotted fee -- used by
+// towing.html's management-only "Edit fee" control, for the cases where a
+// tow's hex-distance estimate doesn't match the real drive (water, a
+// mountain pass, a long bridge).
+async function updateJobServiceFee(jobServiceId, fee) {
+  const { error } = await sb.from('job_services').update({ labour_fee: fee }).eq('id', jobServiceId);
+  if (error) throw new Error(error.message);
+}
