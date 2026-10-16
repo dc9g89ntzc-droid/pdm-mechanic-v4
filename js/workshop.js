@@ -1105,6 +1105,21 @@ async function updateLabourRate(jobType, rate, updatedBy) {
   INSTALL_CHARGE_BY_JOB_TYPE[jobType] = Number(rate);
 }
 
+// Shop's own pin on the towing hex map (sql/070) -- a single shared row,
+// not a per-browser guess, since the shop never moves. Boss-only to
+// change, enforced by RLS, not just hidden in the UI.
+async function getShopLocation() {
+  const { data, error } = await sb.from('shop_location').select('hex_q, hex_r').eq('id', 1).single();
+  if (error) throw new Error(error.message);
+  return { q: data.hex_q, r: data.hex_r };
+}
+async function setShopLocation(hexQ, hexR, updatedBy) {
+  const { error } = await sb.from('shop_location')
+    .update({ hex_q: hexQ, hex_r: hexR, updated_at: new Date().toISOString(), updated_by: updatedBy || null })
+    .eq('id', 1);
+  if (error) throw new Error(error.message);
+}
+
 // Engine Building leg's engine (sql/060): { valvetrain, configuration, style }.
 async function updateLegEngineSpec(jobId, spec) {
   const { error } = await sb.from('job_legs').update({ engine_spec: spec })

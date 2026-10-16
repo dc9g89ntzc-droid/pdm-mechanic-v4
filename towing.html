@@ -238,6 +238,12 @@
   document.getElementById('logoutBtn').addEventListener('click', logout);
   applyRoleNav(session);
 
+  // The shop's pin never moves once set -- only Boss can touch it (also
+  // enforced server-side by sql/070's RLS policy, this is just the UI side).
+  if (!isBossRole(session?.role)) {
+    document.getElementById('pinModeBtn').style.display = 'none';
+  }
+
   function esc(value) {
     return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
@@ -291,8 +297,9 @@
     return `rgb(${Math.round(c1[0]+(c2[0]-c1[0])*t)},${Math.round(c1[1]+(c2[1]-c1[1])*t)},${Math.round(c1[2]+(c2[2]-c1[2])*t)})`;
   }
 
-  // Best estimate for the shop's own pickup point on this map (see the
-  // approved Artifact prototype) -- fixed, since the shop doesn't move.
+  // Fallback only -- the real shop location is shared/persisted in the
+  // shop_location table (sql/070) and loaded below. This is just what's
+  // used if that fetch fails outright.
   const SHOP_PIXEL = { x: 310, y: 860 };
 
   const canvas = document.getElementById('mapCanvas');
@@ -458,10 +465,28 @@
     const pos = canvasPosFromEvent(evt);
     const hex = pixelToHex(pos.x, pos.y);
     if (pinArmed) {
+      const previous = shopHex;
       shopHex = hex;
       pinArmed = false;
       wrap.classList.remove('arming');
-      mapNote.textContent = 'Tap the map to set where the vehicle is.';
+      mapNote.textContent = 'Saving shop location…';
+      renderMap();
+      // Shared, persisted, boss-only (sql/070 RLS) -- this moves the one
+      // canonical shop pin everyone sees, not just this browser's guess.
+      setShopLocation(hex.q, hex.r, session?.id)
+        .then(() => {
+          mapNote.textContent = 'Shop location saved.';
+          logActivity({
+            actorId: session?.id, action: 'shop_location_set', entityType: 'shop_location', entityId: null,
+            summary: `${session?.employee_name || 'Someone'} set the shop's pin on the towing map`
+          });
+        })
+        .catch((err) => {
+          shopHex = previous;
+          mapNote.textContent = `Failed to save: ${err.message}`;
+          renderMap();
+        });
+      return;
     } else {
       selectedHex = hex;
       if (onHexSelected) onHexSelected(hex);
@@ -555,19 +580,34 @@
   let mapReady = false;
   let mapReadyResolve;
   const mapReadyPromise = new Promise((res) => { mapReadyResolve = res; });
-  img.onload = () => {
-    imgLoaded = true;
-    shopHex = pixelToHex(SHOP_PIXEL.x, SHOP_PIXEL.y);
-    buildGrid();
-    filterToLand();
-    addCoastalRing();
-    mapReady = true;
-    mapReadyResolve();
-    renderMap();
-  };
+
+  const imgLoadPromise = new Promise((resolve) => {
+    img.onload = () => {
+      imgLoaded = true;
+      buildGrid();
+      filterToLand();
+      addCoastalRing();
+      resolve();
+    };
+  });
   img.src = 'images/ls-map.jpg';
   buildGrid();
   renderMap();
+
+  // The shop's pin is shared/persisted (sql/070) -- fall back to the old
+  // hardcoded guess only if that fetch genuinely fails.
+  const shopHexLoadPromise = getShopLocation()
+    .then((hex) => { shopHex = hex; })
+    .catch((err) => {
+      console.error('Failed to load shop location, using fallback:', err.message);
+      shopHex = pixelToHex(SHOP_PIXEL.x, SHOP_PIXEL.y);
+    });
+
+  Promise.all([imgLoadPromise, shopHexLoadPromise]).then(() => {
+    mapReady = true;
+    mapReadyResolve();
+    renderMap();
+  });
 
   // ---- Page state ----
   const listView = document.getElementById('listView');
