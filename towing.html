@@ -84,8 +84,10 @@
 
   .canvas-wrap { position: relative; width: 100%; max-width: 520px; aspect-ratio: 1/1; border-radius: 10px; overflow: hidden; border: 1px solid var(--panel-border); background: #0a2e3e; margin: 0 auto; touch-action: none; }
   .canvas-wrap.arming canvas { cursor: crosshair; }
-  canvas { width: 100%; height: 100%; display: block; cursor: pointer; }
+  canvas { width: 100%; height: 100%; display: block; cursor: pointer; touch-action: none; }
   .map-toolbar { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .zoom-group { display: flex; gap: 4px; }
+  .zoom-group .btn { padding: 6px 11px; }
   .pin-note { font-size: 12px; color: var(--text-dim); }
 
   .fee-readout { text-align: center; margin: 16px 0; }
@@ -183,7 +185,12 @@
         <h2>Pickup location</h2>
         <div class="map-toolbar">
           <button class="btn secondary small" id="pinModeBtn">Pick / move pin</button>
-          <span class="pin-note" id="mapNote">Tap the map to set where the vehicle is.</span>
+          <div class="zoom-group">
+            <button type="button" class="btn secondary small" id="zoomOutBtn" title="Zoom out">&minus;</button>
+            <button type="button" class="btn secondary small" id="zoomInBtn" title="Zoom in">+</button>
+            <button type="button" class="btn secondary small" id="zoomResetBtn" title="Reset view">Reset</button>
+          </div>
+          <span class="pin-note" id="mapNote">Tap the map to set where the vehicle is. Pinch, scroll, or use +/- to zoom.</span>
         </div>
         <div class="canvas-wrap" id="canvasWrap">
           <canvas id="mapCanvas"></canvas>
@@ -300,6 +307,18 @@
   let shopHex = null;
   let selectedHex = null;
   let hexes = [];
+
+  // ---- Zoom / pan state ----
+  // viewScale 1 = fully fit to the canvas; viewCenter is the hex-space
+  // point (0..HEX_RES) currently at the canvas's center.
+  let viewScale = 1;
+  let viewCenter = { x: HEX_RES / 2, y: HEX_RES / 2 };
+  function clampNum(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function clampViewCenter() {
+    const margin = HEX_RES * 0.15;
+    viewCenter.x = clampNum(viewCenter.x, -margin, HEX_RES + margin);
+    viewCenter.y = clampNum(viewCenter.y, -margin, HEX_RES + margin);
+  }
   const sampleCanvas = document.createElement('canvas');
   sampleCanvas.width = HEX_RES; sampleCanvas.height = HEX_RES;
   const sampleCtx = sampleCanvas.getContext('2d');
@@ -355,6 +374,13 @@
     ctx.save();
     ctx.setTransform(dpr * cssSize / HEX_RES, 0, 0, dpr * cssSize / HEX_RES, 0, 0);
     ctx.clearRect(0, 0, HEX_RES, HEX_RES);
+    // Pan/zoom on top of the base fit -- everything below still draws in
+    // plain hex-space (HEX_RES) units, this just moves/scales the whole
+    // picture so a hex-space point at viewCenter lands at the canvas
+    // center, magnified by viewScale.
+    ctx.translate(HEX_RES / 2, HEX_RES / 2);
+    ctx.scale(viewScale, viewScale);
+    ctx.translate(-viewCenter.x, -viewCenter.y);
     if (imgLoaded) ctx.drawImage(img, 0, 0, HEX_RES, HEX_RES);
 
     const maxDist = shopHex ? Math.max(1, ...hexes.map((h) => hexDistance(shopHex, h))) : 1;
@@ -403,13 +429,32 @@
     ctx.restore();
   }
 
+  // Inverts renderMap()'s transform: a CSS pixel on the canvas -> the
+  // hex-space point currently drawn there, accounting for the base fit
+  // plus whatever pan/zoom is active.
   function canvasPosFromEvent(evt) {
     const rect = canvas.getBoundingClientRect();
-    return { x: (evt.clientX - rect.left) / rect.width * HEX_RES, y: (evt.clientY - rect.top) / rect.height * HEX_RES };
+    const drawX = (evt.clientX - rect.left) / rect.width * HEX_RES;
+    const drawY = (evt.clientY - rect.top) / rect.height * HEX_RES;
+    return {
+      x: (drawX - HEX_RES / 2) / viewScale + viewCenter.x,
+      y: (drawY - HEX_RES / 2) / viewScale + viewCenter.y
+    };
+  }
+
+  function zoomTowardClientPoint(clientX, clientY, newScale) {
+    newScale = clampNum(newScale, 1, 6);
+    const p0 = canvasPosFromEvent({ clientX, clientY });
+    const oldScale = viewScale;
+    viewScale = newScale;
+    viewCenter.x = p0.x - (p0.x - viewCenter.x) * (oldScale / newScale);
+    viewCenter.y = p0.y - (p0.y - viewCenter.y) * (oldScale / newScale);
+    clampViewCenter();
   }
 
   let onHexSelected = null; // set per-tow by openDetail()
-  canvas.addEventListener('click', (evt) => {
+
+  function handleTap(evt) {
     const pos = canvasPosFromEvent(evt);
     const hex = pixelToHex(pos.x, pos.y);
     if (pinArmed) {
@@ -422,11 +467,88 @@
       if (onHexSelected) onHexSelected(hex);
     }
     renderMap();
+  }
+
+  // Pointer Events unify mouse/touch/pen: one finger that doesn't move much
+  // is a tap (select hex / drop pin, handleTap above); one finger that
+  // moves pans the view; two fingers pinch-zoom. touch-action:none on the
+  // canvas (CSS) hands all of that gesture handling to us instead of the
+  // browser's default scroll/zoom.
+  const activePointers = new Map();
+  let dragStart = null;
+  let didDrag = false;
+  let pinchStartDist = null;
+  let pinchStartScale = 1;
+
+  canvas.addEventListener('pointerdown', (evt) => {
+    canvas.setPointerCapture(evt.pointerId);
+    activePointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+    didDrag = false;
+    if (activePointers.size === 1) {
+      dragStart = { clientX: evt.clientX, clientY: evt.clientY, centerX: viewCenter.x, centerY: viewCenter.y };
+    } else if (activePointers.size === 2) {
+      dragStart = null;
+      const pts = [...activePointers.values()];
+      pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      pinchStartScale = viewScale;
+    }
   });
+  canvas.addEventListener('pointermove', (evt) => {
+    if (!activePointers.has(evt.pointerId)) return;
+    activePointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+    if (activePointers.size === 2 && pinchStartDist) {
+      const pts = [...activePointers.values()];
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const midX = (pts[0].x + pts[1].x) / 2, midY = (pts[0].y + pts[1].y) / 2;
+      didDrag = true;
+      zoomTowardClientPoint(midX, midY, pinchStartScale * (dist / pinchStartDist));
+      renderMap();
+    } else if (activePointers.size === 1 && dragStart) {
+      const rect = canvas.getBoundingClientRect();
+      const dxCss = evt.clientX - dragStart.clientX;
+      const dyCss = evt.clientY - dragStart.clientY;
+      if (Math.hypot(dxCss, dyCss) > 4) didDrag = true;
+      viewCenter.x = dragStart.centerX - (dxCss / rect.width * HEX_RES) / viewScale;
+      viewCenter.y = dragStart.centerY - (dyCss / rect.height * HEX_RES) / viewScale;
+      clampViewCenter();
+      renderMap();
+    }
+  });
+  function endPointer(evt) {
+    activePointers.delete(evt.pointerId);
+    if (activePointers.size < 2) pinchStartDist = null;
+    if (activePointers.size === 0) {
+      if (!didDrag) handleTap(evt);
+      dragStart = null;
+    }
+  }
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('wheel', (evt) => {
+    evt.preventDefault();
+    zoomTowardClientPoint(evt.clientX, evt.clientY, viewScale * (evt.deltaY < 0 ? 1.15 : 1 / 1.15));
+    renderMap();
+  }, { passive: false });
+
   pinModeBtn.addEventListener('click', () => {
     pinArmed = !pinArmed;
     wrap.classList.toggle('arming', pinArmed);
     mapNote.textContent = pinArmed ? 'Tap the map to drop the pickup pin' : 'Tap the map to set where the vehicle is.';
+  });
+  document.getElementById('zoomInBtn').addEventListener('click', () => {
+    const rect = canvas.getBoundingClientRect();
+    zoomTowardClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, viewScale * 1.5);
+    renderMap();
+  });
+  document.getElementById('zoomOutBtn').addEventListener('click', () => {
+    const rect = canvas.getBoundingClientRect();
+    zoomTowardClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, viewScale / 1.5);
+    renderMap();
+  });
+  document.getElementById('zoomResetBtn').addEventListener('click', () => {
+    viewScale = 1;
+    viewCenter = { x: HEX_RES / 2, y: HEX_RES / 2 };
+    renderMap();
   });
   window.addEventListener('resize', renderMap);
 
