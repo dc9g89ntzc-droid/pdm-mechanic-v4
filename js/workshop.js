@@ -388,10 +388,22 @@ async function recordDelivery(mechanicId, notes) {
 const TOW_BASE_FEE = 1500;
 const TOW_PER_HEX_RATE = 75;
 
-// Flat per-tow pay for the Tow Driver role -- same shape as
-// DELIVERY_PAY_AMOUNT/recordDelivery above, not a cut of the tow fee (that
-// fee already goes to the shop/customer bill via job_services, see
-// totalLabourFee's tow exclusion below).
+// Paid on every closed tow.html job regardless of outcome -- the driver's
+// base pay for responding at all, towed or fixed on site.
+// TOW_DRIVER_FLAT_FEE below is paid additionally, only when the vehicle is
+// actually recovered.
+const TOW_CALLOUT_FEE = 1000;
+async function recordTowCallout(mechanicId, legId, notes) {
+  const { error } = await sb.from('payroll_ledger').insert({
+    mechanic_id: mechanicId, entry_type: 'tow_callout', amount: TOW_CALLOUT_FEE, reference_id: legId, notes
+  });
+  if (error) throw new Error(error.message);
+}
+
+// Flat per-tow pay for the Tow Driver role, on top of TOW_CALLOUT_FEE --
+// same shape as DELIVERY_PAY_AMOUNT/recordDelivery above, not a cut of the
+// tow fee (that fee already goes to the shop/customer bill via
+// job_services, see totalLabourFee's tow exclusion below).
 const TOW_DRIVER_FLAT_FEE = 5000;
 async function recordTow(mechanicId, legId, notes) {
   const { error } = await sb.from('payroll_ledger').insert({
@@ -802,7 +814,7 @@ async function listOpenTows() {
     .from('job_legs')
     .select(`
       id, job_id, status, tow_pickup, approved_at, work_started_at, completed_at,
-      jobs ( id, job_number, assigned_staff_id,
+      jobs ( id, job_number, assigned_staff_id, customer_id, owned_vehicle_id,
         customers ( customer_name, phone ),
         owned_vehicles ( registration, make, model ) )
     `)

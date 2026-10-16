@@ -78,14 +78,9 @@
   .detail-head h2 { font-size: 18px; margin: 0; text-transform: none; letter-spacing: normal; color: var(--text); }
   .detail-sub { color: var(--text-dim); font-size: 13px; margin: 2px 0 16px; }
 
-  .stage-track { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
-  .stage-btn {
-    flex: 1 1 auto; min-width: 110px; padding: 10px 8px; text-align: center; font-size: 12px; font-weight: 600;
-    background: var(--bg); border: 1px solid var(--panel-border); border-radius: 8px; color: var(--text-dim); cursor: pointer;
-  }
-  .stage-btn.done { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.3); color: var(--green); }
-  .stage-btn.current { background: var(--red); border-color: var(--red); color: #fff; }
-  .stage-btn:disabled { cursor: default; }
+  .decision-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .hint-note { color: var(--amber); font-size: 12px; margin: 8px 0 0; }
+  .pickup-note { color: var(--text-dim); font-size: 13px; margin: 2px 0 0; font-style: italic; }
 
   .canvas-wrap { position: relative; width: 100%; max-width: 520px; aspect-ratio: 1/1; border-radius: 10px; overflow: hidden; border: 1px solid var(--panel-border); background: #0a2e3e; margin: 0 auto; touch-action: none; }
   .canvas-wrap.arming canvas { cursor: crosshair; }
@@ -138,7 +133,7 @@
   <main>
     <div id="listView">
       <h1 class="page-title">Towing</h1>
-      <p class="page-sub">Pick a vehicle up, price it off the hex map, and bring it back to the shop.</p>
+      <p class="page-sub">Note the call, pick the hex once you're on scene, then close it out there or bring it back to the shop.</p>
 
       <div class="card">
         <h2>Open tows</h2>
@@ -162,6 +157,10 @@
           </div>
         </div>
         <div style="margin-top:14px;">
+          <label for="pickupNote">Postal / pickup note</label>
+          <input type="text" id="pickupNote" autocomplete="off" placeholder="e.g. postal 4800, corner of Vinewood and 3rd" />
+        </div>
+        <div style="margin-top:14px;">
           <button class="btn" id="createTowBtn">Create &amp; dispatch</button>
         </div>
         <div class="error-box" id="createError"></div>
@@ -177,8 +176,7 @@
           <span class="stage-pill" id="detailStagePill">Dispatched</span>
         </div>
         <p class="detail-sub" id="detailVehicle"></p>
-
-        <div class="stage-track" id="stageTrack"></div>
+        <p class="pickup-note" id="detailNote" style="display:none;"></p>
       </div>
 
       <div class="card">
@@ -201,12 +199,17 @@
       </div>
 
       <div class="card">
-        <h2>Roadside work performed</h2>
+        <h2>Service performed</h2>
         <div id="attachedServices"><div class="empty-note">None yet.</div></div>
         <div class="add-service-row">
           <select id="serviceSelect"></select>
           <button class="btn secondary small" id="attachServiceBtn">Add</button>
         </div>
+      </div>
+
+      <div class="card">
+        <h2>Outcome</h2>
+        <div id="decisionBody"></div>
       </div>
 
       <div class="error-box" id="detailError"></div>
@@ -242,14 +245,6 @@
     'Jump Start', 'Nitrous Refill',
     'Duct Tape Engine', 'Duct Tape Transmission', 'Duct Tape Fuel System', 'Duct Tape Cooling System',
     'Battery Replacement', 'Starter Replacement', 'Alternator Replacement', 'Brake Line Replacement'
-  ];
-
-  const STAGES = [
-    { value: 'dispatched', label: 'Dispatched' },
-    { value: 'en_route', label: 'En Route' },
-    { value: 'at_scene', label: 'At Scene' },
-    { value: 'towing', label: 'Towing to Shop' },
-    { value: 'delivered', label: 'Delivered' }
   ];
 
   // ---- Hex grid math (flat-top axial), ported from the approved prototype ----
@@ -471,8 +466,19 @@
     return towServiceId;
   }
 
-  function stageFromPickup(pickup) {
-    return (pickup && pickup.stage) || 'dispatched';
+  // Outcome/stage live in tow_pickup (sql/068) as free-form fields, not a
+  // fixed enum -- 'pending' outcome means still at the decision point,
+  // 'fixed_on_site'/'towed' are terminal. Used by both the list row and
+  // the detail header pill.
+  function stageLabelFor(pickup) {
+    const outcome = (pickup && pickup.outcome) || 'pending';
+    if (outcome === 'fixed_on_site') return 'Fixed on site';
+    if (outcome === 'towed') return pickup.stage === 'delivered' ? 'Delivered' : 'Towing to shop';
+    return pickup && pickup.stage === 'at_scene' ? 'At scene' : 'Dispatched';
+  }
+  function isClosedOut(pickup) {
+    const outcome = (pickup && pickup.outcome) || 'pending';
+    return outcome === 'fixed_on_site' || (outcome === 'towed' && pickup.stage === 'delivered');
   }
 
   function renderTowRow(leg) {
@@ -482,9 +488,10 @@
       ? `${job.owned_vehicles.make || ''} ${job.owned_vehicles.model || ''}`.trim() || 'Unknown vehicle'
       : 'Unknown vehicle';
     const reg = job?.owned_vehicles?.registration || 'No plate on file';
-    const stage = stageFromPickup(leg.tow_pickup);
-    const stageLabel = STAGES.find((s) => s.value === stage)?.label || stage;
-    const fee = leg.tow_pickup?.fee;
+    const pickup = leg.tow_pickup || {};
+    const stageLabel = stageLabelFor(pickup);
+    const feeText = pickup.outcome === 'towed' ? formatMoney(pickup.fee)
+      : pickup.outcome === 'fixed_on_site' ? 'On-site' : 'To confirm';
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'tow-row';
@@ -494,8 +501,8 @@
         <div class="meta">${esc(vehicle)} · ${esc(reg)}</div>
       </div>
       <div class="right">
-        <span class="stage-pill ${stage === 'delivered' ? 'delivered' : ''}">${esc(stageLabel)}</span>
-        <div class="fee">${fee != null ? formatMoney(fee) : 'To confirm'}</div>
+        <span class="stage-pill ${isClosedOut(pickup) ? 'delivered' : ''}">${esc(stageLabel)}</span>
+        <div class="fee">${feeText}</div>
       </div>
     `;
     row.addEventListener('click', () => openDetail(leg));
@@ -523,6 +530,7 @@
     const name = document.getElementById('customerName').value.trim();
     const phone = document.getElementById('customerPhone').value.trim();
     const plate = document.getElementById('plateInput').value.trim();
+    const note = document.getElementById('pickupNote').value.trim();
     if (!name) {
       errBox.textContent = 'Customer name is required (even a rough description is fine).';
       errBox.style.display = 'block';
@@ -549,6 +557,8 @@
         created_by: session?.id || null
       });
       await syncJobLegs(job.id, ['tow']);
+      const initialPickup = { note: note || null, hexQ: null, hexR: null, distanceSteps: null, fee: null, outcome: 'pending', stage: 'dispatched' };
+      await updateLegTowPickup(job.id, initialPickup);
       logActivity({
         actorId: session?.id, action: 'tow_dispatched', entityType: 'job', entityId: job.id,
         summary: `${session?.employee_name || 'Someone'} dispatched a tow for ${customer.customer_name} (Job #${job.job_number})`
@@ -556,11 +566,13 @@
       document.getElementById('customerName').value = '';
       document.getElementById('customerPhone').value = '';
       document.getElementById('plateInput').value = '';
+      document.getElementById('pickupNote').value = '';
       const legs = await listJobLegs(job.id);
       const towLeg = legs.find((l) => l.job_type === 'tow');
       await loadTowList();
-      openDetail({ id: towLeg.id, job_id: job.id, status: towLeg.status, tow_pickup: null,
+      openDetail({ id: towLeg.id, job_id: job.id, status: towLeg.status, tow_pickup: initialPickup,
         jobs: { id: job.id, job_number: job.job_number, assigned_staff_id: session?.id,
+          customer_id: customer.customer_id, owned_vehicle_id: vehicle.owned_vehicle_id,
           customers: { customer_name: customer.customer_name, phone: customer.phone },
           owned_vehicles: { registration: vehicle.registration, make: vehicle.make, model: vehicle.model } } });
     } catch (err) {
@@ -581,81 +593,185 @@
     loadTowList();
   });
 
-  function renderStageTrack(stage) {
-    const track = document.getElementById('stageTrack');
-    const idx = STAGES.findIndex((s) => s.value === stage);
-    track.innerHTML = STAGES.map((s, i) => {
-      const cls = i < idx ? 'done' : i === idx ? 'current' : '';
-      return `<button type="button" class="stage-btn ${cls}" data-stage="${s.value}" ${i <= idx ? 'disabled' : ''}>${esc(s.label)}</button>`;
-    }).join('');
-    track.querySelectorAll('.stage-btn:not(:disabled)').forEach((btn) => {
-      btn.addEventListener('click', () => advanceStage(btn.dataset.stage));
-    });
+  function refreshStagePill() {
+    const pill = document.getElementById('detailStagePill');
+    const pickup = currentLeg.tow_pickup || {};
+    pill.textContent = stageLabelFor(pickup);
+    pill.classList.toggle('delivered', isClosedOut(pickup));
   }
 
-  async function advanceStage(stage) {
+  // The outcome card: before a decision, two buttons (recovery disabled
+  // until a hex is picked, so there's a fee to attach); while towing,
+  // just a Mark Delivered button; once closed out either way, links to
+  // bill the job and (towed only) hand off to inspection as a new job.
+  function renderDecision() {
+    const pickup = currentLeg.tow_pickup || {};
+    const outcome = pickup.outcome || 'pending';
+    const body = document.getElementById('decisionBody');
+
+    if (outcome === 'pending') {
+      const canRecover = pickup.hexQ != null;
+      body.innerHTML = `
+        <div class="decision-row">
+          <button type="button" class="btn secondary" id="fixedOnSiteBtn">Fixed on site — no recovery needed</button>
+          <button type="button" class="btn" id="needsRecoveryBtn" ${canRecover ? '' : 'disabled'}>Needs recovery — tow to shop</button>
+        </div>
+        ${canRecover ? '' : '<p class="hint-note">Pick a hex on the map above first, so the tow fee can be priced.</p>'}
+      `;
+      document.getElementById('fixedOnSiteBtn').addEventListener('click', closeFixedOnSite);
+      document.getElementById('needsRecoveryBtn').addEventListener('click', startRecovery);
+    } else if (outcome === 'towed' && pickup.stage !== 'delivered') {
+      body.innerHTML = `
+        <p class="detail-sub" style="margin-top:0;">Heading back to the shop with this one.</p>
+        <button type="button" class="btn" id="markDeliveredBtn">Mark Delivered</button>
+      `;
+      document.getElementById('markDeliveredBtn').addEventListener('click', markDelivered);
+    } else {
+      const parts = [`<a class="btn secondary" href="receipt.html?job=${currentJobId}">Bill this job</a>`];
+      if (outcome === 'towed') parts.push('<button type="button" class="btn" id="startInspectionBtn">Start inspection</button>');
+      body.innerHTML = `
+        <p class="detail-sub" style="margin-top:0;">${outcome === 'towed' ? 'Delivered to the shop.' : 'Closed on site.'}</p>
+        <div class="decision-row">${parts.join('')}</div>
+        <div id="inspectionResult"></div>
+      `;
+      if (outcome === 'towed') document.getElementById('startInspectionBtn').addEventListener('click', startInspection);
+      document.getElementById('pinModeBtn').disabled = true;
+      document.getElementById('attachServiceBtn').disabled = true;
+    }
+  }
+
+  async function closeFixedOnSite() {
     const errBox = document.getElementById('detailError');
     errBox.style.display = 'none';
     try {
-      const pickup = { ...(currentLeg.tow_pickup || {}), stage };
-      if (stage === 'delivered') {
-        const proceed = await promptFurtherWork();
-        if (!proceed) return;
-        await updateLegTowPickup(currentJobId, pickup);
-        await updateLegStatus(currentJobId, 'tow', 'completed');
-        await recordTow(session?.id, currentLegId, `Tow delivered -- Job #${currentLeg.jobs?.job_number ?? ''}`);
-        logActivity({
-          actorId: session?.id, action: 'tow_delivered', entityType: 'job', entityId: currentJobId,
-          summary: `${session?.employee_name || 'Someone'} delivered a tow to the shop (Job #${currentLeg.jobs?.job_number ?? ''})`
-        });
-      } else {
-        await updateLegTowPickup(currentJobId, pickup);
-        if (stage === 'en_route' && currentLeg.status !== 'work_in_progress') {
-          await updateLegStatus(currentJobId, 'tow', 'work_in_progress');
-        }
-      }
+      const pickup = { ...(currentLeg.tow_pickup || {}), outcome: 'fixed_on_site' };
+      await updateLegTowPickup(currentJobId, pickup);
+      await updateLegStatus(currentJobId, 'tow', 'completed');
+      await recordTowCallout(session?.id, currentLegId, `Tow callout (fixed on site) -- Job #${currentLeg.jobs?.job_number ?? ''}`);
       currentLeg.tow_pickup = pickup;
-      renderStageTrack(stage);
-      document.getElementById('detailStagePill').textContent = STAGES.find((s) => s.value === stage)?.label || stage;
-      document.getElementById('detailStagePill').classList.toggle('delivered', stage === 'delivered');
-      if (stage === 'delivered') {
-        setTimeout(() => { detailView.style.display = 'none'; listView.style.display = ''; loadTowList(); }, 600);
-      }
+      currentLeg.status = 'completed';
+      refreshStagePill();
+      updateFeeReadout();
+      renderDecision();
+      logActivity({
+        actorId: session?.id, action: 'tow_closed_on_site', entityType: 'job', entityId: currentJobId,
+        summary: `${session?.employee_name || 'Someone'} fixed a vehicle on site and closed Job #${currentLeg.jobs?.job_number ?? ''}`
+      });
     } catch (err) {
-      errBox.textContent = `Failed to update: ${err.message}`;
+      errBox.textContent = `Failed to close job: ${err.message}`;
       errBox.style.display = 'block';
     }
   }
 
-  // If this tow is still just a tow (no repair/customisation/etc added yet),
-  // marking it Delivered would otherwise flip the job straight to Billing
-  // with nothing else queued (see sql/067's job_legs.tow_pickup comment) --
-  // ask once, up front, whether the vehicle needs further work.
-  async function promptFurtherWork() {
-    const legs = await listJobLegs(currentJobId);
-    const hasOtherWork = legs.some((l) => l.job_type !== 'tow');
-    if (hasOtherWork) return true;
-    const choices = LEG_ORDER.map((t) => jobTypeLabel(t)).join(', ');
-    const answer = prompt(
-      `Does this vehicle need further work at the shop? Type one or more of: ${choices} (comma separated), or leave blank for none.`
-    );
-    if (answer === null) return false;
-    const picked = answer.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-    const matched = LEG_ORDER.filter((t) => picked.includes(jobTypeLabel(t).toLowerCase()) || picked.includes(t));
-    if (matched.length > 0) {
-      await syncJobLegs(currentJobId, ['tow', ...matched]);
+  async function startRecovery() {
+    const errBox = document.getElementById('detailError');
+    errBox.style.display = 'none';
+    const pickup = currentLeg.tow_pickup;
+    if (!pickup || pickup.hexQ == null) return;
+    try {
+      const fee = TOW_BASE_FEE + pickup.distanceSteps * TOW_PER_HEX_RATE;
+      // Same look-up-then-insert-or-update as before, so re-entering this
+      // step never attaches a second "Tow to Shop" row.
+      const jobServices = await listJobServices(currentJobId, 'tow');
+      const towRow = jobServices.find((js) => js.service_id === towServiceId);
+      if (towRow) {
+        if (Number(towRow.labour_fee) !== fee) await updateJobServiceFee(towRow.id, fee);
+      } else {
+        await addServiceToJob({ jobId: currentJobId, jobType: 'tow', service: { id: towServiceId, labour_fee: fee }, performedBy: session?.id });
+      }
+      const updated = { ...pickup, fee, outcome: 'towed', stage: 'towing' };
+      await updateLegTowPickup(currentJobId, updated);
+      if (currentLeg.status !== 'work_in_progress') {
+        await updateLegStatus(currentJobId, 'tow', 'work_in_progress');
+        currentLeg.status = 'work_in_progress';
+      }
+      currentLeg.tow_pickup = updated;
+      updateFeeReadout();
+      setupFeeEdit();
+      refreshStagePill();
+      renderDecision();
+      logActivity({
+        actorId: session?.id, action: 'tow_recovery_started', entityType: 'job', entityId: currentJobId,
+        summary: `${session?.employee_name || 'Someone'} started recovery for Job #${currentLeg.jobs?.job_number ?? ''}`
+      });
+    } catch (err) {
+      errBox.textContent = `Failed to start recovery: ${err.message}`;
+      errBox.style.display = 'block';
     }
-    return true;
+  }
+
+  async function markDelivered() {
+    const errBox = document.getElementById('detailError');
+    errBox.style.display = 'none';
+    try {
+      const pickup = { ...(currentLeg.tow_pickup || {}), stage: 'delivered' };
+      await updateLegTowPickup(currentJobId, pickup);
+      await updateLegStatus(currentJobId, 'tow', 'completed');
+      await recordTowCallout(session?.id, currentLegId, `Tow callout -- Job #${currentLeg.jobs?.job_number ?? ''}`);
+      await recordTow(session?.id, currentLegId, `Tow delivered -- Job #${currentLeg.jobs?.job_number ?? ''}`);
+      currentLeg.tow_pickup = pickup;
+      currentLeg.status = 'completed';
+      refreshStagePill();
+      renderDecision();
+      logActivity({
+        actorId: session?.id, action: 'tow_delivered', entityType: 'job', entityId: currentJobId,
+        summary: `${session?.employee_name || 'Someone'} delivered a tow to the shop (Job #${currentLeg.jobs?.job_number ?? ''})`
+      });
+    } catch (err) {
+      errBox.textContent = `Failed to mark delivered: ${err.message}`;
+      errBox.style.display = 'block';
+    }
+  }
+
+  // "Transfer into the vehicle inspection area" -- this app only ever
+  // bills a job once, permanently (receipt.html marks it completed), and
+  // the tow job is about to be billed for the tow + roadside work. So
+  // further shop work is a new job for the same customer/vehicle, created
+  // exactly the way checkin.html creates one, landing on the normal
+  // Workshop repair board at Awaiting Inspection.
+  async function startInspection() {
+    const container = document.getElementById('inspectionResult');
+    container.innerHTML = '<p class="detail-sub">Creating…</p>';
+    try {
+      const job = currentLeg.jobs;
+      const newJob = await createJob({
+        customer_id: job.customer_id,
+        owned_vehicle_id: job.owned_vehicle_id,
+        job_types: ['repair'],
+        status: 'awaiting_inspection',
+        stage: 'in_progress',
+        short_description: 'Tow-in repair',
+        internal_notes: `Brought in by tow -- Job #${job.job_number}`,
+        created_by: session?.id || null
+      });
+      await syncJobLegs(newJob.id, ['repair']);
+      logActivity({
+        actorId: session?.id, action: 'tow_handoff_to_inspection', entityType: 'job', entityId: newJob.id,
+        summary: `${session?.employee_name || 'Someone'} moved a towed-in vehicle to inspection as Job #${newJob.job_number} (from tow Job #${job.job_number})`
+      });
+      container.innerHTML = `<p class="detail-sub">Created <a href="job-items.html?job=${newJob.id}&type=repair">Job #${newJob.job_number}</a> in the inspection queue.</p>`;
+    } catch (err) {
+      container.innerHTML = `<p class="detail-sub">Failed: ${esc(err.message)}</p>`;
+    }
   }
 
   function updateFeeReadout() {
-    const pickup = currentLeg.tow_pickup;
-    if (!pickup) {
+    const pickup = currentLeg.tow_pickup || {};
+    if (pickup.outcome === 'fixed_on_site') {
+      document.getElementById('feeAmount').innerHTML = 'No tow fee <small>fixed on site</small>';
+      document.getElementById('feeBreakdown').textContent = '';
+      return;
+    }
+    if (pickup.hexQ == null) {
       document.getElementById('feeAmount').innerHTML = '— <small>pick a hex on the map</small>';
       document.getElementById('feeBreakdown').textContent = '';
       return;
     }
-    document.getElementById('feeAmount').textContent = formatMoney(pickup.fee);
+    const preview = TOW_BASE_FEE + pickup.distanceSteps * TOW_PER_HEX_RATE;
+    const committed = pickup.outcome === 'towed';
+    document.getElementById('feeAmount').innerHTML = committed
+      ? formatMoney(pickup.fee)
+      : `${formatMoney(preview)} <small>if towed</small>`;
     document.getElementById('feeBreakdown').textContent =
       `${pickup.distanceSteps} hex-step${pickup.distanceSteps === 1 ? '' : 's'} from shop — base ${formatMoney(TOW_BASE_FEE)} + ${pickup.distanceSteps} × ${formatMoney(TOW_PER_HEX_RATE)}`;
   }
@@ -718,7 +834,8 @@
 
   function setupFeeEdit() {
     const row = document.getElementById('feeEditRow');
-    row.style.display = isManagementRole(session?.role) ? 'flex' : 'none';
+    const show = isManagementRole(session?.role) && currentLeg.tow_pickup?.outcome === 'towed';
+    row.style.display = show ? 'flex' : 'none';
     document.getElementById('feeEditBtn').onclick = async () => {
       const input = document.getElementById('feeEditInput');
       const value = Number(input.value);
@@ -747,6 +864,8 @@
     listView.style.display = 'none';
     detailView.style.display = '';
     document.getElementById('detailError').style.display = 'none';
+    document.getElementById('pinModeBtn').disabled = false;
+    document.getElementById('attachServiceBtn').disabled = false;
 
     const job = leg.jobs;
     document.getElementById('detailWho').textContent = `${job?.customers?.customer_name || 'Unknown customer'} — Job #${job?.job_number ?? '?'}`;
@@ -755,47 +874,45 @@
       : 'Unknown vehicle';
     document.getElementById('detailVehicle').textContent =
       `${vehicle} · ${job?.owned_vehicles?.registration || 'No plate on file'} · ${job?.customers?.phone || 'No phone on file'}`;
+    const noteEl = document.getElementById('detailNote');
+    if (leg.tow_pickup?.note) {
+      noteEl.textContent = `Phone note: ${leg.tow_pickup.note}`;
+      noteEl.style.display = '';
+    } else {
+      noteEl.style.display = 'none';
+    }
 
-    const stage = stageFromPickup(leg.tow_pickup);
-    renderStageTrack(stage);
-    document.getElementById('detailStagePill').textContent = STAGES.find((s) => s.value === stage)?.label || stage;
-    document.getElementById('detailStagePill').classList.toggle('delivered', stage === 'delivered');
+    refreshStagePill();
 
     await ensureTowServiceId();
     updateFeeReadout();
     setupFeeEdit();
+    renderDecision();
     await Promise.all([renderAttachedServices(), initServicePicker()]);
 
     if (!mapReady) await mapReadyPromise;
-    selectedHex = leg.tow_pickup ? { q: leg.tow_pickup.hexQ, r: leg.tow_pickup.hexR } : null;
+    selectedHex = (leg.tow_pickup && leg.tow_pickup.hexQ != null) ? { q: leg.tow_pickup.hexQ, r: leg.tow_pickup.hexR } : null;
     renderMap();
 
+    // Picking a hex just records where the vehicle is and marks the driver
+    // as on scene -- it no longer attaches any fee. The tow fee only gets
+    // attached once "Needs recovery" is actually chosen (startRecovery()).
     onHexSelected = async (hex) => {
+      if (isClosedOut(currentLeg.tow_pickup)) return;
       const distanceSteps = hexDistance(shopHex, hex);
-      const fee = TOW_BASE_FEE + distanceSteps * TOW_PER_HEX_RATE;
+      const prev = currentLeg.tow_pickup || {};
+      const stage = (!prev.stage || prev.stage === 'dispatched') ? 'at_scene' : prev.stage;
+      const pickup = { ...prev, hexQ: hex.q, hexR: hex.r, distanceSteps, stage };
       try {
-        // Re-picking a hex corrects the existing "Tow to Shop" row's fee
-        // rather than attaching a second one -- addServiceToJob() always
-        // inserts, so only call it the first time this job gets a pickup.
-        const jobServices = await listJobServices(currentJobId, 'tow');
-        const towRow = jobServices.find((js) => js.service_id === towServiceId);
-        if (towRow) {
-          if (Number(towRow.labour_fee) !== fee) await updateJobServiceFee(towRow.id, fee);
-        } else {
-          await addServiceToJob({
-            jobId: currentJobId, jobType: 'tow',
-            service: { id: towServiceId, labour_fee: fee }, performedBy: session?.id
-          });
-        }
+        await updateLegTowPickup(currentJobId, pickup);
       } catch (err) {
-        alert(`Failed to price this pickup: ${err.message}`);
+        alert(`Failed to save pickup location: ${err.message}`);
         return;
       }
-
-      const pickup = { hexQ: hex.q, hexR: hex.r, distanceSteps, fee, stage: stageFromPickup(currentLeg.tow_pickup) };
-      await updateLegTowPickup(currentJobId, pickup);
       currentLeg.tow_pickup = pickup;
       updateFeeReadout();
+      refreshStagePill();
+      renderDecision();
     };
   }
 
