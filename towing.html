@@ -749,7 +749,13 @@
         actorId: session?.id, action: 'tow_handoff_to_inspection', entityType: 'job', entityId: newJob.id,
         summary: `${session?.employee_name || 'Someone'} moved a towed-in vehicle to inspection as Job #${newJob.job_number} (from tow Job #${job.job_number})`
       });
-      container.innerHTML = `<p class="detail-sub">Created <a href="job-items.html?job=${newJob.id}&type=repair">Job #${newJob.job_number}</a> in the inspection queue.</p>`;
+      // jobFlowUrlFor is the same shared "where does this job go" rule
+      // check-in's own redirect uses -- a fresh repair leg at
+      // awaiting_inspection resolves straight to inspection.html, which
+      // moves itself to inspection_in_progress once the mechanic starts it.
+      const legs = await listJobLegs(newJob.id);
+      container.innerHTML = `<p class="detail-sub">Created Job #${newJob.job_number} -- opening inspection…</p>`;
+      window.location.href = jobFlowUrlFor(newJob.id, legs);
     } catch (err) {
       container.innerHTML = `<p class="detail-sub">Failed: ${esc(err.message)}</p>`;
     }
